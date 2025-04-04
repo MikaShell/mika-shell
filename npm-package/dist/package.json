@@ -1,0 +1,19 @@
+{
+    "name": "@mikami/mikami",
+    "version": "0.0.1",
+    "description": "Mikami frontend library",
+    "main": "index.js",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/HumXC/mikami.git"
+    },
+    "author": "HumXC",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/HumXC/mikami/issues"
+    },
+    "homepage": "https://github.com/HumXC/mikami#readme",
+    "dependencies": {
+        "@wailsio/runtime": "^3.0.0-alpha.66"
+    }
+}
