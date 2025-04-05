@@ -1,8 +1,10 @@
 package services
 
 /*
-#cgo linux pkg-config: gtk+-3.0
+#cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
+
 #include <gtk/gtk.h>
+#include <webkit2/webkit2.h>
 */
 import "C"
 import (
@@ -67,6 +69,27 @@ func (w *Mikami) NewWindow(path string) uint {
 	window := w.app.NewWebviewWindowWithOptions(application.WebviewWindowOptions{
 		Hidden: true,
 		URL:    path,
+	})
+	impl := reflect.ValueOf(window).Elem().FieldByName("impl").Elem().Elem()
+	windowPtr := (*C.GtkWindow)(unsafe.Pointer(impl.FieldByName("window").Pointer()))
+	windowWidgetPtr := (*C.GtkWidget)(unsafe.Pointer(impl.FieldByName("window").Pointer()))
+	webviewPtr := (*C.WebKitWebView)(unsafe.Pointer(impl.FieldByName("webview").Pointer()))
+	application.InvokeSync(func() {
+		// 解除 wails 默认的最大最小Size的设置
+		C.gtk_window_set_geometry_hints(windowPtr, nil, nil, C.GDK_HINT_MAX_SIZE|C.GDK_HINT_MIN_SIZE)
+		// 设置背景透明
+		rgba := C.GdkRGBA{C.double(0), C.double(0), C.double(0), C.double(0)}
+		C.webkit_web_view_set_background_color(webviewPtr, &rgba)
+		cssStr := C.CString("window {background-color: transparent;}")
+		provider := C.gtk_css_provider_new()
+		context := C.gtk_widget_get_style_context(windowWidgetPtr)
+		C.gtk_style_context_add_provider(
+			context,
+			(*C.GtkStyleProvider)(unsafe.Pointer(provider)),
+			C.GTK_STYLE_PROVIDER_PRIORITY_USER)
+		C.g_object_unref(C.gpointer(provider))
+		C.gtk_css_provider_load_from_data(provider, cssStr, -1, nil)
+		C.free(unsafe.Pointer(cssStr))
 	})
 	return w.registerWindow(window)
 }

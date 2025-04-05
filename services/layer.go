@@ -32,15 +32,14 @@ func (l *Layer) Init(id uint, options LayerOptions) error {
 	if err != nil {
 		return err
 	}
-	if window.IsInit {
-		return nil
-	}
+
 	gtkWindow := window.GtkWindow
 	gtkWidget := window.GtkWidget
 	application.InvokeSync(func() {
-		C.gtk_window_set_geometry_hints(gtkWindow, nil, nil, C.GDK_HINT_MAX_SIZE|C.GDK_HINT_MIN_SIZE)
 		layer := layershell.NewWindow(unsafe.Pointer(gtkWindow))
-		layer.Init()
+		if !window.IsInit {
+			layer.Init()
+		}
 		layer.SetLayer(options.Layer)
 		if options.Title != "" {
 			window.WebviewWindow.SetTitle(options.Title)
@@ -69,7 +68,7 @@ func (l *Layer) Init(id uint, options LayerOptions) error {
 			}
 		}
 		C.gtk_window_set_default_size(gtkWindow, -1, -1)
-		if options.Width == 0 && options.Height == 0 {
+		if options.Width <= 0 && options.Height <= 0 {
 			C.gtk_window_set_resizable(gtkWindow, C.gboolean(0))
 		}
 		C.gtk_widget_set_size_request(gtkWidget, C.gint(options.Width), C.gint(options.Height))

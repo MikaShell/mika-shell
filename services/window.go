@@ -1,7 +1,7 @@
 package services
 
 /*
-#cgo linux pkg-config: gtk+-3.0
+#cgo pkg-config: gtk+-3.0
 #include <gtk/gtk.h>
 */
 import "C"
@@ -25,20 +25,18 @@ func (w *Window) Init(id uint, options WindowOption) error {
 	if win.IsInit {
 		return nil
 	}
-	gtkWindow := win.GtkWindow
 	webviewWindow := win.WebviewWindow
-	C.gtk_window_set_geometry_hints(gtkWindow, nil, nil, C.GDK_HINT_MAX_SIZE|C.GDK_HINT_MIN_SIZE)
 
 	if options.Title != "" {
 		webviewWindow.SetTitle(options.Title)
 	}
-	if options.MinWidth != 0 && options.MinHeight != 0 {
+	if options.MinWidth != 0 || options.MinHeight != 0 {
 		webviewWindow.SetMinSize(options.MinWidth, options.MinHeight)
 	}
-	if options.MaxWidth != 0 && options.MaxHeight != 0 {
+	if options.MaxWidth != 0 || options.MaxHeight != 0 {
 		webviewWindow.SetMaxSize(options.MaxWidth, options.MaxHeight)
 	}
-	if options.Width != 0 && options.Height != 0 {
+	if options.Width != 0 || options.Height != 0 {
 		webviewWindow.SetSize(options.Width, options.Height)
 	}
 	win.IsInit = true
