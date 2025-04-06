@@ -16,12 +16,21 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
+func NewMikami() application.Service {
+	return application.NewService(&Mikami{})
+}
+
 type Mikami struct {
 	app *application.App
 }
 
-func SetupApp(mikami *Mikami, app *application.App) {
-	mikami.app = app
+func SetupMikami(mikami application.Service, app *application.App) {
+	instance := mikami.Instance().(*Mikami)
+	instance.app = app
+	app.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
+		// TODO: 设置webview的storage
+		instance.NewWindow("/")
+	})
 }
 
 type MikamiWindow struct {
@@ -42,7 +51,7 @@ func GetWindow(id uint) (*MikamiWindow, error) {
 	}
 	// 0 是由npm包配置的默认值，如果为0，则表示还没有初始化完成
 	if id == 0 {
-		return nil, fmt.Errorf("mikami is not ready yet. Please wait for the 'Init' function.")
+		return nil, fmt.Errorf("mikami is not ready yet. Please wait for the 'Init' function")
 	}
 	return nil, fmt.Errorf("window with id %d not found", id)
 }

@@ -5,6 +5,11 @@ package services
 #include <gtk/gtk.h>
 */
 import "C"
+import "github.com/wailsapp/wails/v3/pkg/application"
+
+func NewWindow() application.Service {
+	return application.NewService(&Window{})
+}
 
 type Window struct{}
 type WindowOption struct {

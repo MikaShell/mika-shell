@@ -12,6 +12,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
+func NewLayer() application.Service {
+	return application.NewService(&Layer{})
+}
+
 type Layer struct {
 }
 

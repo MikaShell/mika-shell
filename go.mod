@@ -2,7 +2,10 @@ module github.com/HumXC/mikami
 
 go 1.23.6
 
-require github.com/wailsapp/wails/v3 v3.0.0-alpha.9
+require (
+	github.com/thiagokokada/hyprland-go v0.4.1
+	github.com/wailsapp/wails/v3 v3.0.0-alpha.9
+)
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect

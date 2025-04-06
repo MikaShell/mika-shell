@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/HumXC/mikami/services"
 	"github.com/urfave/cli/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const DEFAULT_ASSETS_DIR = "/usr/share/aikadm"
@@ -55,26 +55,23 @@ func CmdMain(ctx *cli.Context) error {
 		return nil
 	}
 	os.MkdirAll(configDir, 0755)
-	// TODO: 设置webview的storage
 	assetsPath := ctx.String("assets")
-	mikami := &services.Mikami{}
-	window := &services.Window{}
-	layer := &services.Layer{}
+	mikami := services.NewMikami()
+
 	app := application.New(application.Options{
 		Assets: application.AssetOptions{
 			Handler: NewAssetServer(assetsPath),
 		},
 		Services: []application.Service{
-			application.NewService(mikami),
-			application.NewService(window),
-			application.NewService(layer),
+			mikami,
+			services.NewHyprland(),
+			services.NewLayer(),
+			services.NewWindow(),
+			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})
-	services.SetupApp(mikami, app)
+	services.SetupMikami(mikami, app)
 
-	app.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
-		mikami.NewWindow("/")
-	})
 	return app.Run()
 }
 
