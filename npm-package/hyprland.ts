@@ -1,43 +1,43 @@
 // @ts-ignore
 import { Events as wailsEvent } from "@wailsio/runtime";
 
-import * as bindings from "./bindings/github.com/HumXC/mikami/services/index";
+import * as hyprland from "./bindings/github.com/HumXC/mikami/services/hyprland";
 import { id, WaitReady } from "./init";
-import * as hyprlandEvent from "./bindings/github.com/thiagokokada/hyprland-go/event/models";
+import * as hyprlandEventModels from "./bindings/github.com/thiagokokada/hyprland-go/event/models";
 export enum EventType {
-    Workspace = hyprlandEvent.EventType.EventWorkspace,
-    FocusedMonitor = hyprlandEvent.EventType.EventFocusedMonitor,
-    ActiveWindow = hyprlandEvent.EventType.EventActiveWindow,
-    Fullscreen = hyprlandEvent.EventType.EventFullscreen,
-    MonitorRemoved = hyprlandEvent.EventType.EventMonitorRemoved,
-    MonitorAdded = hyprlandEvent.EventType.EventMonitorAdded,
-    CreateWorkspace = hyprlandEvent.EventType.EventCreateWorkspace,
-    DestroyWorkspace = hyprlandEvent.EventType.EventDestroyWorkspace,
-    MoveWorkspace = hyprlandEvent.EventType.EventMoveWorkspace,
-    ActiveLayout = hyprlandEvent.EventType.EventActiveLayout,
-    OpenWindow = hyprlandEvent.EventType.EventOpenWindow,
-    CloseWindow = hyprlandEvent.EventType.EventCloseWindow,
-    MoveWindow = hyprlandEvent.EventType.EventMoveWindow,
-    OpenLayer = hyprlandEvent.EventType.EventOpenLayer,
-    CloseLayer = hyprlandEvent.EventType.EventCloseLayer,
-    SubMap = hyprlandEvent.EventType.EventSubMap,
-    Screencast = hyprlandEvent.EventType.EventScreencast,
+    Workspace = hyprlandEventModels.EventType.EventWorkspace,
+    FocusedMonitor = hyprlandEventModels.EventType.EventFocusedMonitor,
+    ActiveWindow = hyprlandEventModels.EventType.EventActiveWindow,
+    Fullscreen = hyprlandEventModels.EventType.EventFullscreen,
+    MonitorRemoved = hyprlandEventModels.EventType.EventMonitorRemoved,
+    MonitorAdded = hyprlandEventModels.EventType.EventMonitorAdded,
+    CreateWorkspace = hyprlandEventModels.EventType.EventCreateWorkspace,
+    DestroyWorkspace = hyprlandEventModels.EventType.EventDestroyWorkspace,
+    MoveWorkspace = hyprlandEventModels.EventType.EventMoveWorkspace,
+    ActiveLayout = hyprlandEventModels.EventType.EventActiveLayout,
+    OpenWindow = hyprlandEventModels.EventType.EventOpenWindow,
+    CloseWindow = hyprlandEventModels.EventType.EventCloseWindow,
+    MoveWindow = hyprlandEventModels.EventType.EventMoveWindow,
+    OpenLayer = hyprlandEventModels.EventType.EventOpenLayer,
+    CloseLayer = hyprlandEventModels.EventType.EventCloseLayer,
+    SubMap = hyprlandEventModels.EventType.EventSubMap,
+    Screencast = hyprlandEventModels.EventType.EventScreencast,
 }
 export namespace Event {
-    export type ActiveLayout = hyprlandEvent.ActiveLayout;
-    export type ActiveWindow = hyprlandEvent.ActiveWindow;
-    export type CloseLayer = hyprlandEvent.CloseLayer;
-    export type CloseWindow = hyprlandEvent.CloseWindow;
-    export type FocusedMonitor = hyprlandEvent.FocusedMonitor;
-    export type Fullscreen = hyprlandEvent.Fullscreen;
-    export type MonitorName = hyprlandEvent.MonitorName;
-    export type MoveWindow = hyprlandEvent.MoveWindow;
-    export type MoveWorkspace = hyprlandEvent.MoveWorkspace;
-    export type OpenLayer = hyprlandEvent.OpenLayer;
-    export type OpenWindow = hyprlandEvent.OpenWindow;
-    export type Screencast = hyprlandEvent.Screencast;
-    export type SubMap = hyprlandEvent.SubMap;
-    export type WorkspaceName = hyprlandEvent.WorkspaceName;
+    export type ActiveLayout = hyprlandEventModels.ActiveLayout;
+    export type ActiveWindow = hyprlandEventModels.ActiveWindow;
+    export type CloseLayer = hyprlandEventModels.CloseLayer;
+    export type CloseWindow = hyprlandEventModels.CloseWindow;
+    export type FocusedMonitor = hyprlandEventModels.FocusedMonitor;
+    export type Fullscreen = hyprlandEventModels.Fullscreen;
+    export type MonitorName = hyprlandEventModels.MonitorName;
+    export type MoveWindow = hyprlandEventModels.MoveWindow;
+    export type MoveWorkspace = hyprlandEventModels.MoveWorkspace;
+    export type OpenLayer = hyprlandEventModels.OpenLayer;
+    export type OpenWindow = hyprlandEventModels.OpenWindow;
+    export type Screencast = hyprlandEventModels.Screencast;
+    export type SubMap = hyprlandEventModels.SubMap;
+    export type WorkspaceName = hyprlandEventModels.WorkspaceName;
 }
 type TypeMap = {
     [EventType.Workspace]: Event.WorkspaceName;
@@ -64,7 +64,7 @@ export async function Subscribe<T extends EventType>(
     callback: (data: TypeMap[T]) => void
 ) {
     if (id === 0) await WaitReady();
-    bindings.Hyprland.Subscribe(id, event as unknown as hyprlandEvent.EventType);
+    hyprland.Subscribe(id, event as unknown as hyprlandEventModels.EventType);
     if (!listeners[event]) listeners[event] = [];
     listeners[event].push(callback);
     wailsEvent.On(`Hyprland.${event}`, (ev: any) => {
@@ -80,53 +80,47 @@ export async function Unsubscribe<T extends EventType>(
     callback: (data: TypeMap[T]) => void
 ) {
     if (id === 0) await WaitReady();
-    bindings.Hyprland.Unsubscribe(id, event as unknown as hyprlandEvent.EventType);
+    hyprland.Unsubscribe(id, event as unknown as hyprlandEventModels.EventType);
     if (listeners[event]) {
         const index = listeners[event].indexOf(callback);
         if (index !== -1) listeners[event].splice(index, 1);
     }
 }
 
-const ActiveWindow = bindings.Hyprland.ActiveWindow;
-const ActiveWorkspace = bindings.Hyprland.ActiveWorkspace;
-const Animations = bindings.Hyprland.Animations;
-const Binds = bindings.Hyprland.Binds;
-const Clients = bindings.Hyprland.Clients;
-const ConfigErrors = bindings.Hyprland.ConfigErrors;
-const CursorPos = bindings.Hyprland.CursorPos;
-const Decorations = bindings.Hyprland.Decorations;
-const Devices = bindings.Hyprland.Devices;
-const Dispatch = bindings.Hyprland.Dispatch;
-const GetOption = bindings.Hyprland.GetOption;
-const Keyword = bindings.Hyprland.Keyword;
-const Kill = bindings.Hyprland.Kill;
-const Layers = bindings.Hyprland.Layers;
-const Monitors = bindings.Hyprland.Monitors;
-const Reload = bindings.Hyprland.Reload;
-const SetCursor = bindings.Hyprland.SetCursor;
-const Splash = bindings.Hyprland.Splash;
-const SwitchXkbLayout = bindings.Hyprland.SwitchXkbLayout;
-const Workspace = bindings.Hyprland.Workspace;
+export {
+    ActiveWindow as GetActiveWindow,
+    ActiveWorkspace as GetActiveWorkspace,
+    Animations as GetAnimations,
+    Binds as GetBinds,
+    Clients as GetClients,
+    ConfigErrors as GetConfigErrors,
+    CursorPos as GetCursorPos,
+    Decorations as GetDecorations,
+    Devices as GetDevices,
+    GetOption as GetOption,
+    Layers as GetLayers,
+    Monitors as GetMonitors,
+    Reload as GetReload,
+    Splash as GetSplash,
+    Workspace as GetWorkspace,
+    Dispatch,
+    Kill,
+    Keyword,
+    SetCursor,
+    SwitchXkbLayout,
+} from "./bindings/github.com/HumXC/mikami/services/hyprland";
 
 export {
-    ActiveWindow,
-    ActiveWorkspace,
-    Animations,
-    Binds,
-    Clients,
-    ConfigErrors,
-    CursorPos,
-    Decorations,
-    Devices,
-    Dispatch,
-    GetOption,
-    Keyword,
-    Kill,
-    Layers,
-    Monitors,
-    Reload,
-    SetCursor,
-    Splash,
-    SwitchXkbLayout,
+    Window,
     Workspace,
-};
+    Animation,
+    Bind,
+    ConfigError,
+    CursorPos,
+    Decoration,
+    Devices,
+    Response,
+    Option,
+    Layer,
+    Monitor,
+} from "./bindings/github.com/thiagokokada/hyprland-go/models";

@@ -185,7 +185,7 @@ func (h *Hyprland) init() error {
 	if h.c != nil {
 		return nil
 	}
-	sock, err := helpers.GetSocket(helpers.EventSocket)
+	sock, err := helpers.GetSocket(helpers.RequestSocket)
 	if err != nil {
 		return err
 	}
