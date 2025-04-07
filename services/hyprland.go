@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/thiagokokada/hyprland-go"
@@ -17,7 +16,7 @@ func NewHyprland() application.Service {
 
 type HyprlandEventHandler struct {
 	c           *hyprEvent.EventClient
-	ctx         context.Context
+	cancel      context.CancelFunc
 	listenerMap map[*application.WebviewWindow][]hyprEvent.EventType
 	allEvents   []hyprEvent.EventType
 }
@@ -51,15 +50,16 @@ func (h *HyprlandEventHandler) Add(window *application.WebviewWindow, event hypr
 
 	if !slices.Contains(h.allEvents, event) {
 		h.allEvents = append(h.allEvents, event)
-		if h.ctx != nil {
-			h.ctx.Done()
+		if h.cancel != nil {
+			h.cancel()
 		}
-		h.ctx = context.WithoutCancel(context.Background())
-
-		h.c.Subscribe(h.ctx, h, h.allEvents...)
+		ctx, cancel := context.WithCancel(context.Background())
+		h.cancel = cancel
+		h.c.Subscribe(ctx, h, h.allEvents...)
 	}
 	return nil
 }
+
 func (h *HyprlandEventHandler) Remove(window *application.WebviewWindow, event hyprEvent.EventType) error {
 	listeners := h.listenerMap[window]
 	if listeners == nil {
@@ -75,11 +75,13 @@ func (h *HyprlandEventHandler) Remove(window *application.WebviewWindow, event h
 		delete(h.listenerMap, window)
 	}
 	if len(h.listenerMap) == 0 {
-		h.ctx.Done()
-		h.ctx = nil
+		h.cancel()
+		h.cancel = nil
+		h.c = nil
 	}
 	return nil
 }
+
 func (h *HyprlandEventHandler) EmitEventToWindow(eventType hyprEvent.EventType, data any) {
 	for window, events := range h.listenerMap {
 		if slices.Contains(events, eventType) {
@@ -199,7 +201,7 @@ func (h *Hyprland) Subscribe(id uint, event hyprEvent.EventType) error {
 	}
 	window, err := GetWindow(id)
 	if err != nil {
-		return fmt.Errorf("failed to initialize hyprland client: %w", err)
+		return err
 	}
 	return h.e.Add(window.WebviewWindow, event)
 }

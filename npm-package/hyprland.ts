@@ -59,6 +59,7 @@ type TypeMap = {
     [EventType.Screencast]: Event.Screencast;
 };
 const listeners: { [key in EventType]?: Function[] } = {};
+let isEventListening = false;
 export async function Subscribe<T extends EventType>(
     event: T,
     callback: (data: TypeMap[T]) => void
@@ -67,12 +68,15 @@ export async function Subscribe<T extends EventType>(
     hyprland.Subscribe(id, event as unknown as hyprlandEventModels.EventType);
     if (!listeners[event]) listeners[event] = [];
     listeners[event].push(callback);
-    wailsEvent.On(`Hyprland.${event}`, (ev: any) => {
-        const data = ev.data[0];
-        for (const listener of listeners[event] || []) {
-            listener(data as TypeMap[T]);
-        }
-    });
+    if (!isEventListening) {
+        isEventListening = true;
+        wailsEvent.On(`Hyprland.${event}`, (ev: any) => {
+            const data = ev.data[0];
+            for (const listener of listeners[event] || []) {
+                listener(data as TypeMap[T]);
+            }
+        });
+    }
 }
 
 export async function Unsubscribe<T extends EventType>(

@@ -23,21 +23,21 @@ export async function Init(options: Options = new Options()) {
     if (id === 0) await WaitReady();
     return bindings.Window.Init(id, options);
 }
-export async function Show() {
+export function Show() {
     return bindings.Window.Show(id);
 }
-export async function Close() {
+export function Close() {
     return bindings.Window.Close(id);
 }
-export async function Hide() {
+export function Hide() {
     return bindings.Window.Hide(id);
 }
-export async function SetTitle(title: string) {
+export function SetTitle(title: string) {
     return bindings.Window.SetTitle(id, title);
 }
-export async function SetMinSize(width: number, height: number) {
+export function SetMinSize(width: number, height: number) {
     return bindings.Window.SetMinSize(id, width, height);
 }
-export async function SetMaxSize(width: number, height: number) {
+export function SetMaxSize(width: number, height: number) {
     return bindings.Window.SetMaxSize(id, width, height);
 }

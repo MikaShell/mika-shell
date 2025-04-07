@@ -80,42 +80,42 @@ export async function Init(options: Options = new Options()) {
     if (id === 0) await WaitReady();
     return bindings.Layer.Init(id, options._toBindings());
 }
-export async function SetLayer(layer: Layer) {
+export function SetLayer(layer: Layer) {
     return bindings.Layer.SetLayer(id, layer as unknown as LayerFlags);
 }
-export async function Show() {
+export function Show() {
     return bindings.Layer.Show(id);
 }
-export async function Close() {
+export function Close() {
     return bindings.Layer.Close(id);
 }
-export async function Hide() {
+export function Hide() {
     return bindings.Layer.Hide(id);
 }
-export async function Size() {
+export function Size() {
     return bindings.Layer.Size(id);
 }
-export async function SetSize(width: number, height: number) {
+export function SetSize(width: number, height: number) {
     return bindings.Layer.SetSize(id, width, height);
 }
-export async function SetAnchor(edge: Edge) {
+export function SetAnchor(edge: Edge) {
     if (edge === Edge.None) {
         return bindings.Layer.ResetAnchor(id);
     }
     return bindings.Layer.SetAnchor(id, ConvertEdge(edge), true);
 }
-export async function SetExclusiveZone(zone: number) {
+export function SetExclusiveZone(zone: number) {
     return bindings.Layer.SetExclusiveZone(id, zone);
 }
-export async function SetMargin(edge: Edge, margin: number) {
+export function SetMargin(edge: Edge, margin: number) {
     return bindings.Layer.SetMargin(id, ConvertEdge(edge), margin);
 }
-export async function SetNamespace(namespace: string) {
+export function SetNamespace(namespace: string) {
     return bindings.Layer.SetNamespace(id, namespace);
 }
-export async function AutoExclusiveZoneEnable() {
+export function AutoExclusiveZoneEnable() {
     return bindings.Layer.AutoExclusiveZoneEnable(id);
 }
-export async function SetTitle(title: string) {
+export function SetTitle(title: string) {
     return bindings.Layer.SetTitle(id, title);
 }

@@ -67,6 +67,7 @@ func CmdMain(ctx *cli.Context) error {
 			services.NewHyprland(),
 			services.NewLayer(),
 			services.NewWindow(),
+			services.NewTray(),
 			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})
