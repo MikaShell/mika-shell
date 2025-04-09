@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"slices"
+	"sort"
+	"time"
 
 	"github.com/thiagokokada/hyprland-go"
 	hyprEvent "github.com/thiagokokada/hyprland-go/event"
@@ -16,22 +18,50 @@ func NewHyprland() application.Service {
 
 type HyprlandEventHandler struct {
 	c           *hyprEvent.EventClient
-	cancel      context.CancelFunc
+	closeClient context.CancelFunc
 	listenerMap map[*application.WebviewWindow][]hyprEvent.EventType
 	allEvents   []hyprEvent.EventType
+	ch          chan HyprlandEventHandlerPayload
+}
+type HyprlandEventHandlerPayload struct {
+	EventType hyprEvent.EventType
+	Data      any
 }
 
 func (h *HyprlandEventHandler) Add(window *application.WebviewWindow, event hyprEvent.EventType) error {
-	sock, err := helpers.GetSocket(helpers.EventSocket)
-	if err != nil {
-		return err
-	}
 	if h.c == nil {
+		sock, err := helpers.GetSocket(helpers.EventSocket)
+		if err != nil {
+			return err
+		}
 		c, err := hyprEvent.NewClient(sock)
 		if err != nil {
 			return err
 		}
 		h.c = c
+		h.ch = make(chan HyprlandEventHandlerPayload, 10)
+		go func() {
+			duration := 20 * time.Millisecond
+			timer := time.NewTimer(duration)
+			timer.Stop()
+			defer timer.Stop()
+			tasks := make(map[hyprEvent.EventType]any, 0)
+			for {
+				select {
+				case event, ok := <-h.ch:
+					if !ok {
+						return
+					}
+					tasks[event.EventType] = event.Data
+					timer.Reset(duration)
+				case <-timer.C:
+					for typ, data := range tasks {
+						h.EmitEventToWindow(typ, data)
+					}
+					tasks = make(map[hyprEvent.EventType]any, 0)
+				}
+			}
+		}()
 	}
 	if h.listenerMap == nil {
 		h.listenerMap = make(map[*application.WebviewWindow][]hyprEvent.EventType)
@@ -50,11 +80,11 @@ func (h *HyprlandEventHandler) Add(window *application.WebviewWindow, event hypr
 
 	if !slices.Contains(h.allEvents, event) {
 		h.allEvents = append(h.allEvents, event)
-		if h.cancel != nil {
-			h.cancel()
+		if h.closeClient != nil {
+			h.closeClient()
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		h.cancel = cancel
+		h.closeClient = cancel
 		h.c.Subscribe(ctx, h, h.allEvents...)
 	}
 	return nil
@@ -75,87 +105,89 @@ func (h *HyprlandEventHandler) Remove(window *application.WebviewWindow, event h
 		delete(h.listenerMap, window)
 	}
 	if len(h.listenerMap) == 0 {
-		h.cancel()
-		h.cancel = nil
+		h.closeClient()
+		h.closeClient = nil
 		h.c = nil
+		close(h.ch)
+		h.ch = nil
 	}
 	return nil
 }
 
-func (h *HyprlandEventHandler) EmitEventToWindow(eventType hyprEvent.EventType, data any) {
+func (h *HyprlandEventHandler) EmitEventToWindow(e hyprEvent.EventType, data any) {
 	for window, events := range h.listenerMap {
-		if slices.Contains(events, eventType) {
-			window.EmitEvent("Hyprland."+string(eventType), data)
+		if slices.Contains(events, e) {
+			window.EmitEvent("Hyprland."+string(e), data)
 		}
 	}
 }
 
 func (h *HyprlandEventHandler) ActiveLayout(l hyprEvent.ActiveLayout) {
-	h.EmitEventToWindow(hyprEvent.EventActiveLayout, l)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventActiveLayout, l}
 }
 
 func (h *HyprlandEventHandler) ActiveWindow(w hyprEvent.ActiveWindow) {
-	h.EmitEventToWindow(hyprEvent.EventActiveWindow, w)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventActiveWindow, w}
 }
 
 func (h *HyprlandEventHandler) CloseLayer(c hyprEvent.CloseLayer) {
-	h.EmitEventToWindow(hyprEvent.EventCloseLayer, c)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventCloseLayer, c}
 }
 
 func (h *HyprlandEventHandler) CloseWindow(c hyprEvent.CloseWindow) {
-	h.EmitEventToWindow(hyprEvent.EventCloseWindow, c)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventCloseWindow, c}
 }
 
 func (h *HyprlandEventHandler) CreateWorkspace(w hyprEvent.WorkspaceName) {
-	h.EmitEventToWindow(hyprEvent.EventCreateWorkspace, w)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventCreateWorkspace, w}
 }
 
 func (h *HyprlandEventHandler) DestroyWorkspace(w hyprEvent.WorkspaceName) {
-	h.EmitEventToWindow(hyprEvent.EventDestroyWorkspace, w)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventDestroyWorkspace, w}
 }
 
 func (h *HyprlandEventHandler) FocusedMonitor(m hyprEvent.FocusedMonitor) {
-	h.EmitEventToWindow(hyprEvent.EventFocusedMonitor, m)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventFocusedMonitor, m}
 }
 
 func (h *HyprlandEventHandler) Fullscreen(f hyprEvent.Fullscreen) {
-	h.EmitEventToWindow(hyprEvent.EventFullscreen, f)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventFullscreen, f}
 }
 
 func (h *HyprlandEventHandler) MonitorAdded(m hyprEvent.MonitorName) {
-	h.EmitEventToWindow(hyprEvent.EventMonitorAdded, m)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventMonitorAdded, m}
 }
 
 func (h *HyprlandEventHandler) MonitorRemoved(m hyprEvent.MonitorName) {
-	h.EmitEventToWindow(hyprEvent.EventMonitorRemoved, m)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventMonitorRemoved, m}
 }
 
 func (h *HyprlandEventHandler) MoveWindow(m hyprEvent.MoveWindow) {
-	h.EmitEventToWindow(hyprEvent.EventMoveWindow, m)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventMoveWindow, m}
 }
 
 func (h *HyprlandEventHandler) MoveWorkspace(w hyprEvent.MoveWorkspace) {
-	h.EmitEventToWindow(hyprEvent.EventMoveWorkspace, w)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventMoveWorkspace, w}
 }
 
 func (h *HyprlandEventHandler) OpenLayer(l hyprEvent.OpenLayer) {
-	h.EmitEventToWindow(hyprEvent.EventOpenLayer, l)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventOpenLayer, l}
 }
 
 func (h *HyprlandEventHandler) OpenWindow(o hyprEvent.OpenWindow) {
-	h.EmitEventToWindow(hyprEvent.EventOpenWindow, o)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventOpenWindow, o}
 }
 
 func (h *HyprlandEventHandler) Screencast(s hyprEvent.Screencast) {
-	h.EmitEventToWindow(hyprEvent.EventScreencast, s)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventScreencast, s}
 }
 
 func (h *HyprlandEventHandler) SubMap(s hyprEvent.SubMap) {
-	h.EmitEventToWindow(hyprEvent.EventSubMap, s)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventSubMap, s}
 }
 
 func (h *HyprlandEventHandler) Workspace(w hyprEvent.WorkspaceName) {
-	h.EmitEventToWindow(hyprEvent.EventWorkspace, w)
+	h.ch <- HyprlandEventHandlerPayload{hyprEvent.EventWorkspace, w}
 }
 
 var _ hyprEvent.EventHandler = (*HyprlandEventHandler)(nil)
@@ -354,5 +386,12 @@ func (h *Hyprland) Workspace() ([]hyprland.Workspace, error) {
 	if err := h.init(); err != nil {
 		return nil, err
 	}
-	return h.c.Workspaces()
+	ws, err := h.c.Workspaces()
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(ws, func(i, j int) bool {
+		return ws[i].Id < ws[j].Id
+	})
+	return ws, nil
 }

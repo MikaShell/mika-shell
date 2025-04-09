@@ -1,15 +1,12 @@
 package lib
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
@@ -81,27 +78,6 @@ func Store(v dbus.Variant, ptr any) {
 	v.Store(ptr)
 }
 
-func PixmapToPng(p Pixmap) []byte {
-	img := image.NewNRGBA(image.Rect(0, 0, int(p.Width), int(p.Height)))
-
-	for y := range int(p.Height) {
-		for x := range int(p.Width) {
-			i := (y*int(p.Width) + x) * 4
-			if i+3 >= len(p.Bytes) {
-				continue
-			}
-			a := p.Bytes[i]
-			r := p.Bytes[i+1]
-			g := p.Bytes[i+2]
-			b := p.Bytes[i+3]
-			img.Set(x, y, color.NRGBA{R: r, G: g, B: b, A: a})
-		}
-	}
-	buf := new(bytes.Buffer)
-	png.Encode(buf, img)
-	return buf.Bytes()
-}
-
 type StatusNotifierItem struct {
 	bus                 dbus.BusObject
 	AttentionIconName   string
@@ -122,92 +98,55 @@ type StatusNotifierItem struct {
 	WindowId            int32
 }
 
-func (i *StatusNotifierItem) getProperty(name string) (dbus.Variant, error) {
-	return i.bus.GetProperty("org.kde.StatusNotifierItem." + name)
-}
-func (i *StatusNotifierItem) onNewAttentionIcon() {
-	var v dbus.Variant
-	v, _ = i.getProperty("AttentionIconName")
-	Store(v, &i.AttentionIconName)
-	v, _ = i.getProperty("AttentionPixmap")
-	i.AttentionIconPixmap = StorePixmap(v.Value())
-	v, _ = i.getProperty("AttentionMovieName")
-	Store(v, &i.AttentionMovieName)
+func (i *StatusNotifierItem) getAllProperty() (map[string]dbus.Variant, error) {
+	var props map[string]dbus.Variant
+	err := i.bus.Call("org.freedesktop.DBus.Properties.GetAll", 0, "org.kde.StatusNotifierItem").Store(&props)
+	if err != nil {
+		return nil, err
+	}
+	return props, nil
 }
 
-func (i *StatusNotifierItem) onNewIcon() {
-	var v dbus.Variant
-	v, _ = i.getProperty("IconName")
-	Store(v, &i.IconName)
-	v, _ = i.getProperty("IconPixmap")
-	i.IconPixmap = StorePixmap(v.Value())
-	v, _ = i.getProperty("IconThemePath")
-	Store(v, &i.IconThemePath)
-}
-
-func (i *StatusNotifierItem) onNewMenu() {
-	v, _ := i.getProperty("Menu")
-	Store(v, &i.Menu)
-}
-
-func (i *StatusNotifierItem) onNewOverlayIcon() {
-	var v dbus.Variant
-	v, _ = i.getProperty("OverlayIconName")
-	Store(v, &i.OverlayIconName)
-	v, _ = i.getProperty("OverlayPixmap")
-	i.OverlayIconPixmap = StorePixmap(v.Value())
-}
-
-func (i *StatusNotifierItem) onNewStatus() {
-	v, _ := i.getProperty("Status")
-	Store(v, &i.Status)
-}
-
-func (i *StatusNotifierItem) onNewTitle() {
-	v, _ := i.getProperty("Title")
-	Store(v, &i.Title)
-}
-
-func (i *StatusNotifierItem) onNewToolTip() {
-	v, _ := i.getProperty("ToolTip")
-	i.ToolTip.FromDBus(v.Value())
-}
-
-func (i *StatusNotifierItem) init() {
-	var v dbus.Variant
-	i.onNewAttentionIcon()
-	i.onNewIcon()
-	i.onNewMenu()
-	i.onNewOverlayIcon()
-	i.onNewStatus()
-	i.onNewTitle()
-	i.onNewToolTip()
-	v, _ = i.getProperty("Category")
-	Store(v, &i.Category)
-	v, _ = i.getProperty("Id")
-	Store(v, &i.Id)
-	v, _ = i.getProperty("ItemIsMenu")
-	Store(v, &i.ItemIsMenu)
-	v, _ = i.getProperty("WindowId")
-	Store(v, &i.WindowId)
-}
-
-func (i *StatusNotifierItem) handleSignal(signal *dbus.Signal) {
-	switch strings.TrimPrefix(signal.Name, "org.kde.StatusNotifierItem.") {
-	case "NewAttentionIcon":
-		i.onNewAttentionIcon()
-	case "NewIcon":
-		i.onNewIcon()
-	case "NewMenu":
-		i.onNewMenu()
-	case "NewOverlayIcon":
-		i.onNewOverlayIcon()
-	case "NewStatus":
-		i.onNewStatus()
-	case "NewTitle":
-		i.onNewTitle()
-	case "NewToolTip":
-		i.onNewToolTip()
+func (i *StatusNotifierItem) update() {
+	props, err := i.getAllProperty()
+	if err != nil {
+		return
+	}
+	for k, v := range props {
+		switch k {
+		case "AttentionIconName":
+			Store(v, &i.AttentionIconName)
+		case "AttentionIconPixmap":
+			i.AttentionIconPixmap = StorePixmap(v.Value())
+		case "AttentionMovieName":
+			Store(v, &i.AttentionMovieName)
+		case "Category":
+			Store(v, &i.Category)
+		case "IconName":
+			Store(v, &i.IconName)
+		case "IconPixmap":
+			i.IconPixmap = StorePixmap(v.Value())
+		case "IconThemePath":
+			Store(v, &i.IconThemePath)
+		case "Id":
+			Store(v, &i.Id)
+		case "ItemIsMenu":
+			Store(v, &i.ItemIsMenu)
+		case "Menu":
+			Store(v, &i.Menu)
+		case "OverlayIconName":
+			Store(v, &i.OverlayIconName)
+		case "OverlayIconPixmap":
+			i.OverlayIconPixmap = StorePixmap(v.Value())
+		case "Status":
+			Store(v, &i.Status)
+		case "Title":
+			Store(v, &i.Title)
+		case "ToolTip":
+			i.ToolTip.FromDBus(v.Value())
+		case "WindowId":
+			Store(v, &i.WindowId)
+		}
 	}
 }
 
@@ -235,7 +174,7 @@ func NewItem(conn *dbus.Conn, service, path string) *StatusNotifierItem {
 	path_ := filepath.Join(path, "StatusNotifierItem")
 	bus := conn.Object(service, dbus.ObjectPath(path_))
 	item := &StatusNotifierItem{bus: bus}
-	go item.init()
+	item.update()
 	return item
 }
 
@@ -270,18 +209,38 @@ func (w *StatusNotifierWatcher) RegisterStatusNotifierItem(service string, sende
 	return nil
 }
 
-func (w *StatusNotifierWatcher) RegisteredStatusNotifierItems() ([]string, *dbus.Error) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	keys := make([]string, 0, len(w.Items))
-	for k := range w.Items {
-		keys = append(keys, k+"/StatusNotifierItem")
+func (w *StatusNotifierWatcher) Get(iface, property string) (dbus.Variant, *dbus.Error) {
+	switch property {
+	case "ProtocolVersion":
+		return dbus.MakeVariant(0), nil
+	case "RegisteredStatusNotifierItems":
+		w.mutex.Lock()
+		defer w.mutex.Unlock()
+		keys := make([]string, 0, len(w.Items))
+		for k := range w.Items {
+			keys = append(keys, k+"/StatusNotifierItem")
+		}
+		return dbus.MakeVariant(keys), nil
+	case "IsStatusNotifierHostRegistered":
+		return dbus.MakeVariant(true), nil
+	default:
+		return dbus.MakeVariant(nil), nil
 	}
-	return keys, nil
+}
+func (w *StatusNotifierWatcher) GetAll(iface string) (map[string]dbus.Variant, *dbus.Error) {
+	props := make(map[string]dbus.Variant)
+	registeredStatusNotifierItems, err := w.Get(iface, "RegisteredStatusNotifierItems")
+	if err != nil {
+		return nil, err
+	}
+	props["RegisteredStatusNotifierItems"] = registeredStatusNotifierItems
+	props["ProtocolVersion"] = dbus.MakeVariant(0)
+	props["IsStatusNotifierHostRegistered"] = dbus.MakeVariant(true)
+	return props, nil
 }
 
-func (w *StatusNotifierWatcher) ProtocolVersion() (int32, *dbus.Error) {
-	return 1, nil
+func (w *StatusNotifierWatcher) Set(iface, property string, value dbus.Variant) *dbus.Error {
+	return nil
 }
 
 func NewWatcher() (*StatusNotifierWatcher, error) {
@@ -303,24 +262,24 @@ func NewWatcher() (*StatusNotifierWatcher, error) {
 	}
 
 	conn.Export(watcher, "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher")
+	conn.Export(watcher, "/StatusNotifierWatcher", "org.freedesktop.DBus.Properties")
 	node := &introspect.Node{
 		Name: "/StatusNotifierWatcher",
 		Interfaces: []introspect.Interface{
 			introspect.IntrospectData,
 			{
 				Name: "org.kde.StatusNotifierWatcher",
+				Properties: []introspect.Property{
+					{Name: "ProtocolVersion", Type: "i", Access: "read"},
+					{Name: "RegisteredStatusNotifierItems", Type: "as", Access: "read"},
+					{Name: "IsStatusNotifierHostRegistered", Type: "b", Access: "read"},
+				},
 				Methods: []introspect.Method{
 					{Name: "RegisterStatusNotifierItem", Args: []introspect.Arg{
 						{Name: "service", Type: "s", Direction: "in"},
 					}},
 					{Name: "RegisterStatusNotifierHost", Args: []introspect.Arg{
 						{Name: "service", Type: "s", Direction: "in"},
-					}},
-					{Name: "RegisteredStatusNotifierItems", Args: []introspect.Arg{
-						{Name: "items", Type: "as", Direction: "out"},
-					}},
-					{Name: "ProtocolVersion", Args: []introspect.Arg{
-						{Name: "version", Type: "i", Direction: "out"},
 					}},
 				},
 				Signals: []introspect.Signal{
@@ -335,7 +294,6 @@ func NewWatcher() (*StatusNotifierWatcher, error) {
 
 	conn.Export(introspect.NewIntrospectable(node), "/StatusNotifierWatcher",
 		"org.freedesktop.DBus.Introspectable")
-
 	// 监听StatusNotifierItem信号
 	signals := []string{
 		"NewAttentionIcon", "NewIcon", "NewMenu",
@@ -351,39 +309,52 @@ func NewWatcher() (*StatusNotifierWatcher, error) {
 		dbus.WithMatchMember("NameOwnerChanged"),
 		dbus.WithMatchArg(2, ""),
 	)
+	// TODO: 优化性能
 	go func(watcher *StatusNotifierWatcher) {
 		ch := make(chan *dbus.Signal)
 		conn.Signal(ch)
+		defer conn.RemoveSignal(ch)
+		needUpdate := make(map[string]struct{})
+		const duration = 50 * time.Millisecond
+		timer := time.NewTimer(duration)
+		timer.Stop()
+		defer timer.Stop()
 		for {
 			select {
 			case <-watcher.ctx.Done():
 				conn.RemoveSignal(ch)
 				return
-			case signal := <-ch:
-				if signal.Name == "org.freedesktop.DBus.NameOwnerChanged" {
-					oldOwner := signal.Body[1].(string)
-					if _, exists := watcher.Items[oldOwner]; exists {
-						delete(watcher.Items, oldOwner)
-						watcher.mutex.Lock()
-						conn.Emit("/StatusNotifierWatcher",
-							"org.kde.StatusNotifierWatcher.StatusNotifierItemUnregistered",
-							oldOwner)
-						conn.Emit("/StatusNotifierWatcher",
-							"org.kde.StatusNotifierWatcher.StatusNotifierItemUnregistered",
-							oldOwner)
-						watcher.mutex.Unlock()
-					}
-				} else {
-					item, ok := watcher.Items[signal.Sender]
-					if ok {
-						item.handleSignal(signal)
+			case <-timer.C:
+				for k := range needUpdate {
+					if watcher.Items[k] != nil {
+						watcher.Items[k].update()
 					}
 				}
+				needUpdate = make(map[string]struct{})
 				for _, handler := range watcher.listener {
 					if handler != nil {
 						handler()
 					}
 				}
+			case signal := <-ch:
+				if signal.Name == "org.freedesktop.DBus.NameOwnerChanged" {
+					oldOwner := signal.Body[1].(string)
+					if _, exists := watcher.Items[oldOwner]; exists {
+						delete(watcher.Items, oldOwner)
+						conn.Emit("/StatusNotifierWatcher",
+							"org.kde.StatusNotifierWatcher.StatusNotifierItemUnregistered",
+							oldOwner)
+						conn.Emit("/StatusNotifierWatcher",
+							"org.kde.StatusNotifierWatcher.StatusNotifierItemUnregistered",
+							oldOwner)
+					}
+				} else {
+					_, ok := watcher.Items[signal.Sender]
+					if ok {
+						needUpdate[signal.Sender] = struct{}{}
+					}
+				}
+				timer.Reset(duration)
 			}
 		}
 	}(watcher)

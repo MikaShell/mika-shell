@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"sort"
+	"sync"
 
 	"github.com/HumXC/mikami/lib"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -23,6 +24,7 @@ type Icon struct {
 	Base64  string
 }
 
+// TODO: 优化视觉中心的算法
 func (i *Icon) fromPixmap(p lib.Pixmap) {
 	i.Width = p.Width
 	i.Height = p.Height
@@ -67,37 +69,38 @@ type TrayItem struct {
 	Attention struct {
 		IconName  string
 		MovieName string
-		Icons     []Icon
+		Icon      *Icon
 	}
 	Icon struct {
-		Name      string
-		ThemePath string
-		Icons     []Icon
+		Width   int32
+		Height  int32
+		OffsetX int32
+		OffsetY int32
+		Base64  string
 	}
 	OverlayIcon struct {
-		Name  string
-		Icons []Icon
+		Name string
+		Icon *Icon
 	}
 	ToolTip struct {
 		IconName    string
-		Icons       []Icon
+		Icon        *Icon
 		Title       string
 		Description string
 	}
 }
 
 func (t *TrayItem) fromDBus(service string, item *lib.StatusNotifierItem) {
-	parseIcon := func(p []lib.Pixmap) []Icon {
-		result := make([]Icon, 0, len(p))
+	parseIcon := func(p []lib.Pixmap) *Icon {
+		slices.SortFunc(p, func(a, b lib.Pixmap) int {
+			return int(b.Height - a.Height)
+		})
 		for _, pix := range p {
 			i := Icon{}
 			i.fromPixmap(pix)
-			result = append(result, i)
+			return &i
 		}
-		slices.SortFunc(result, func(a, b Icon) int {
-			return int(b.Height - a.Height)
-		})
-		return result
+		return nil
 	}
 	t.Service = service
 	t.Id = item.Id
@@ -108,14 +111,19 @@ func (t *TrayItem) fromDBus(service string, item *lib.StatusNotifierItem) {
 	t.WindowId = item.WindowId
 	t.Attention.IconName = item.AttentionIconName
 	t.Attention.MovieName = item.AttentionMovieName
-	t.Attention.Icons = parseIcon(item.AttentionIconPixmap)
-	t.Icon.Name = item.IconName
-	t.Icon.ThemePath = item.IconThemePath
-	t.Icon.Icons = parseIcon(item.IconPixmap)
+	t.Attention.Icon = parseIcon(item.AttentionIconPixmap)
+
+	if icon := parseIcon(item.IconPixmap); icon != nil {
+		t.Icon.Width = icon.Width
+		t.Icon.Height = icon.Height
+		t.Icon.OffsetX = icon.Width/2 - icon.CenterX
+		t.Icon.OffsetY = icon.Height/2 - icon.CenterY
+		t.Icon.Base64 = icon.Base64
+	}
 	t.OverlayIcon.Name = item.OverlayIconName
-	t.OverlayIcon.Icons = parseIcon(item.OverlayIconPixmap)
+	t.OverlayIcon.Icon = parseIcon(item.OverlayIconPixmap)
 	t.ToolTip.IconName = item.ToolTip.IconName
-	t.ToolTip.Icons = parseIcon(item.ToolTip.IconPixmap)
+	t.ToolTip.Icon = parseIcon(item.ToolTip.IconPixmap)
 	t.ToolTip.Title = item.ToolTip.Title
 	t.ToolTip.Description = item.ToolTip.Description
 }
@@ -126,6 +134,8 @@ func NewTray() application.Service {
 type Tray struct {
 	watcher   *lib.StatusNotifierWatcher
 	listeners []*application.WebviewWindow
+	cache     []TrayItem
+	mutex     sync.Mutex
 }
 
 func (t *Tray) Init() error {
@@ -136,6 +146,7 @@ func (t *Tray) Init() error {
 		}
 		t.watcher = watcher
 		watcher.AddListener(func() {
+			t.cache = nil
 			for _, listener := range t.listeners {
 				listener.EmitEvent("Tray.Update")
 			}
@@ -150,8 +161,13 @@ func (t *Tray) Stop() {
 }
 
 func (t *Tray) Items() []TrayItem {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
 	if t.watcher == nil {
 		return nil
+	}
+	if t.cache != nil {
+		return t.cache
 	}
 	result := make([]TrayItem, 0, len(t.watcher.Items))
 	for s, it := range t.watcher.Items {
@@ -162,7 +178,7 @@ func (t *Tray) Items() []TrayItem {
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Id < result[j].Id
 	})
-
+	t.cache = result
 	return result
 }
 func (t *Tray) Subscribe(id uint) error {
