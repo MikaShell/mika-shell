@@ -2,11 +2,16 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/HumXC/mikami/bundle"
 	"github.com/HumXC/mikami/services"
+	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -26,7 +31,8 @@ func NewCli() *cli.App {
 		fmt.Println(err)
 		return nil
 	}
-	return &cli.App{
+	hasBudle := bundle.HasBundle()
+	app := &cli.App{
 		Name:   "mikami",
 		Action: CmdMain,
 		Flags: []cli.Flag{
@@ -37,14 +43,27 @@ func NewCli() *cli.App {
 				Usage:   "Set of assets to serve",
 			},
 		},
-		Commands: []*cli.Command{
-			{
-				Name:   "install",
-				Usage:  "Install frontend assets to the specified directory, which can be a compressed file, directory or a link to a compressed file. If directory is not exists, it will be created.",
-				Action: CmdInstall,
-			},
-		},
 	}
+	if !hasBudle {
+		app.Flags = append(app.Flags,
+			&cli.StringFlag{
+				Name:  "dev",
+				Usage: "Need a http server to serve frontend assets.",
+			},
+		)
+		app.Commands = append(app.Commands, &cli.Command{
+			Name:   "bundle",
+			Usage:  "Bundle frontend assets into executable file. e.g. mikami bundle <AssetsDir> <OutputFile> <Description>",
+			Action: CmdBundle,
+		})
+	} else {
+		app.Commands = append(app.Commands, &cli.Command{
+			Name:   "unbundle",
+			Usage:  "Extract bundled assets from executable file. e.g. mikami unbundle <OutputDir>",
+			Action: CmdUnBundle,
+		})
+	}
+	return app
 
 }
 
@@ -55,12 +74,33 @@ func CmdMain(ctx *cli.Context) error {
 		return nil
 	}
 	os.MkdirAll(configDir, 0755)
-	assetsPath := ctx.String("assets")
+	assetsPath := ctx.String("dev")
+	isDevMode := true
+	if assetsPath == "" {
+		assetsPath = ctx.String("assets")
+		isDevMode = false
+	}
+	var assetsServer http.Handler
+	hasBundle := bundle.HasBundle()
+	if hasBundle {
+		assets, err := bundle.UnBundle()
+		if err != nil {
+			return err
+		}
+		fmt.Println("Use bundled assets from executable file")
+		fmt.Println("Assets description:", assets.Description)
+		fmt.Println("Assets create time:", assets.CreateTime)
+		fmt.Println("Assets size:", humanize.Bytes(uint64(assets.Size)))
+		assetsServer = NewBundledAssetServer(assets)
+	} else {
+		assetsServer = NewAssetServer(assetsPath, isDevMode)
+	}
+
 	mikami := services.NewMikami()
 
 	app := application.New(application.Options{
 		Assets: application.AssetOptions{
-			Handler: NewAssetServer(assetsPath),
+			Handler: assetsServer,
 		},
 		Services: []application.Service{
 			mikami,
@@ -68,6 +108,7 @@ func CmdMain(ctx *cli.Context) error {
 			services.NewLayer(),
 			services.NewWindow(),
 			services.NewTray(),
+			services.NewNotifd(),
 			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})
@@ -76,7 +117,62 @@ func CmdMain(ctx *cli.Context) error {
 	return app.Run()
 }
 
-func CmdInstall(ctx *cli.Context) error {
+func CmdBundle(ctx *cli.Context) error {
+	assetsDir := ctx.Args().Get(0)
+	outputFile := ctx.Args().Get(1)
+	description := ctx.Args().Get(2)
+	if assetsDir == "" || outputFile == "" || description == "" {
+		return fmt.Errorf("invalid arguments. Usage: mikami bundle <AssetsDir> <OutputFile> <Description>")
+	}
+	if stat, err := os.Stat(assetsDir); os.IsNotExist(err) {
+		return fmt.Errorf("sssets directory not found: %s", assetsDir)
+	} else if !stat.IsDir() {
+		return fmt.Errorf("sssets path is not a directory: %s", assetsDir)
+	}
+	return bundle.Bundle(os.DirFS(assetsDir), outputFile, description)
+}
 
-	return nil
+func CmdUnBundle(ctx *cli.Context) error {
+	if !bundle.HasBundle() {
+		return fmt.Errorf("no bundle found")
+	}
+	dist := ctx.Args().Get(0)
+	if dist == "" {
+		exe, _ := os.Executable()
+		dist = exe + "-assets"
+	}
+	assets, err := bundle.UnBundle()
+	if err != nil {
+		return err
+	}
+	fmt.Println("Use bundled assets from executable file")
+	fmt.Println("Assets description:", assets.Description)
+	fmt.Println("Assets create time:", assets.CreateTime)
+	fmt.Println("Assets size:", humanize.Bytes(uint64(assets.Size)))
+	fmt.Println("Extracting assets to:", dist)
+	os.MkdirAll(dist, 0755)
+	err = fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			os.Mkdir(filepath.Join(dist, path), 0755)
+			return nil
+		}
+		src, err := assets.Open(path)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		dst, err := os.Create(filepath.Join(dist, path))
+		if err != nil {
+			return err
+		}
+		defer dst.Close()
+		if _, err := io.Copy(dst, src); err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
 }
