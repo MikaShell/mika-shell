@@ -1,6 +1,3 @@
-// @ts-ignore
-import { Events as wailsEvent } from "@wailsio/runtime";
-
 import { TrayItem } from "./bindings/github.com/HumXC/mikami/services/models";
 import {
     Activate,
@@ -10,7 +7,7 @@ import {
     SecondaryActivate,
     Items as Items_,
 } from "./bindings/github.com/HumXC/mikami/services/tray";
-import { id, WaitReady } from "./init";
+import { id, WailsEventOff, WailsEventOn, WaitReady } from "./common";
 import * as tray from "./bindings/github.com/HumXC/mikami/services/tray";
 
 export class Item extends TrayItem {
@@ -60,23 +57,26 @@ export async function Items(): Promise<Item[]> {
 export { Init, Stop } from "./bindings/github.com/HumXC/mikami/services/tray";
 
 const listeners: ((items: Item[]) => void)[] = [];
-let isEventListening = false;
 export async function Subscribe(callback: (items: Item[]) => void) {
     if (id === 0) await WaitReady();
-    tray.Subscribe(id);
-    listeners.push(callback);
-    if (!isEventListening) {
-        isEventListening = true;
-        wailsEvent.On("Tray.Update", async () => {
+    if (listeners.length === 0) {
+        tray.Subscribe(id);
+        WailsEventOn("Tray.Update", async () => {
             const items = await Items();
             for (const listener of listeners) {
                 listener(items);
             }
         });
     }
+
+    listeners.push(callback);
 }
 
 export function Unsubscribe(callback: (items: Item[]) => void) {
     const index = listeners.indexOf(callback);
     if (index !== -1) listeners.splice(index, 1);
+    if (listeners.length === 0) {
+        tray.Unsubscribe(id);
+        WailsEventOff(`Notifd.Notification`);
+    }
 }

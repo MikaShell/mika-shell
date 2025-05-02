@@ -87,7 +87,7 @@ func (l *Layer) SetSize(id uint, width int, height int) error {
 		return err
 	}
 	application.InvokeSync(func() {
-		if width == 0 || height == 0 {
+		if width <= 0 || height <= 0 {
 			C.gtk_window_set_resizable(window.GtkWindow, C.gboolean(0))
 		} else {
 			C.gtk_window_set_resizable(window.GtkWindow, C.gboolean(1))
@@ -118,14 +118,16 @@ func (l *Layer) SetTitle(id uint, title string) error {
 	return nil
 }
 
-func (l *Layer) SetAnchor(id uint, edge layershell.EdgeFlags, anchor bool) error {
+func (l *Layer) SetAnchor(id uint, edges []layershell.EdgeFlags, anchor bool) error {
 	window, err := GetWindow(id)
 	if err != nil {
 		return err
 	}
 	application.InvokeSync(func() {
 		layer := layershell.NewWindow(unsafe.Pointer(window.GtkWindow))
-		layer.SetAnchor(edge, anchor)
+		for _, edge := range edges {
+			layer.SetAnchor(edge, anchor)
+		}
 	})
 	return nil
 }

@@ -1,30 +1,19 @@
 import * as bindings from "./bindings/github.com/HumXC/mikami/services/index";
 import { EdgeFlags, LayerFlags } from "./bindings/github.com/HumXC/mikami/layershell/models";
-import { id, WaitReady } from "./init";
+import { id, WaitReady } from "./common";
 
-export enum Edge {
-    None = 0,
-    Top = 1,
-    Right = 2,
-    Bottom = 4,
-    Left = 8,
-}
-export enum Layer {
-    Background = 0,
-    Bottom = 1,
-    Top = 2,
-    Overlay = 3,
-}
+export type Edge = "top" | "bottom" | "left" | "right" | "none";
+export type Layer = "top" | "bottom" | "overlay" | "background";
 export class Options {
     Title: string;
     Namespace: string;
     AutoExclusiveZoneEnable: boolean;
     ExclusiveZone: number = -1;
-    Anchor: Edge;
+    Anchor: Edge[];
     Margin: number[];
     Width: number;
     Height: number;
-    Layer: Layer = Layer.Background;
+    Layer: Layer = "background";
     _toBindings(): bindings.LayerOptions {
         let opt = new bindings.LayerOptions();
         opt.Title = this.Title;
@@ -34,19 +23,23 @@ export class Options {
         opt.Margin = this.Margin;
         opt.Width = this.Width;
         opt.Height = this.Height;
-        opt.Layer = this.Layer as unknown as LayerFlags;
-        if (this.Anchor & Edge.Top) {
-            opt.Anchor.push(EdgeFlags.EDGE_TOP);
+        switch (this.Layer) {
+            case "top":
+                opt.Layer = LayerFlags.LAYER_TOP;
+                break;
+            case "bottom":
+                opt.Layer = LayerFlags.LAYER_BOTTOM;
+                break;
+            case "overlay":
+                opt.Layer = LayerFlags.LAYER_OVERLAY;
+                break;
+            case "background":
+                opt.Layer = LayerFlags.LAYER_BACKGROUND;
+                break;
+            default:
+                break;
         }
-        if (this.Anchor & Edge.Right) {
-            opt.Anchor.push(EdgeFlags.EDGE_RIGHT);
-        }
-        if (this.Anchor & Edge.Bottom) {
-            opt.Anchor.push(EdgeFlags.EDGE_BOTTOM);
-        }
-        if (this.Anchor & Edge.Left) {
-            opt.Anchor.push(EdgeFlags.EDGE_LEFT);
-        }
+        opt.Anchor = ConvertEdge(this.Anchor);
         return opt;
     }
     constructor(props: Partial<Options> = {}) {
@@ -62,26 +55,46 @@ export class Options {
         if (props.Layer) this.Layer = props.Layer;
     }
 }
-function ConvertEdge(edge: Edge): EdgeFlags {
-    switch (edge) {
-        case Edge.Top:
-            return EdgeFlags.EDGE_TOP;
-        case Edge.Right:
-            return EdgeFlags.EDGE_RIGHT;
-        case Edge.Bottom:
-            return EdgeFlags.EDGE_BOTTOM;
-        case Edge.Left:
-            return EdgeFlags.EDGE_LEFT;
-        default:
-            return EdgeFlags.EDGE_LEFT;
-    }
+function ConvertEdge(edges: Edge[]): EdgeFlags[] {
+    const result = edges
+        .map((edge) => {
+            switch (edge) {
+                case "top":
+                    return EdgeFlags.EDGE_TOP;
+                case "right":
+                    return EdgeFlags.EDGE_RIGHT;
+                case "bottom":
+                    return EdgeFlags.EDGE_BOTTOM;
+                case "left":
+                    return EdgeFlags.EDGE_LEFT;
+            }
+        })
+        .filter((v) => v !== undefined);
+    return result;
 }
 export async function Init(options: Options = new Options()) {
     if (id === 0) await WaitReady();
     return bindings.Layer.Init(id, options._toBindings());
 }
 export function SetLayer(layer: Layer) {
-    return bindings.Layer.SetLayer(id, layer as unknown as LayerFlags);
+    let flag: LayerFlags;
+    switch (layer) {
+        case "top":
+            flag = LayerFlags.LAYER_TOP;
+            break;
+        case "bottom":
+            flag = LayerFlags.LAYER_BOTTOM;
+            break;
+        case "overlay":
+            flag = LayerFlags.LAYER_OVERLAY;
+            break;
+        case "background":
+            flag = LayerFlags.LAYER_BACKGROUND;
+            break;
+        default:
+            throw new Error("");
+    }
+    return bindings.Layer.SetLayer(id, flag);
 }
 export function Show() {
     return bindings.Layer.Show(id);
@@ -98,8 +111,8 @@ export function Size() {
 export function SetSize(width: number, height: number) {
     return bindings.Layer.SetSize(id, width, height);
 }
-export function SetAnchor(edge: Edge) {
-    if (edge === Edge.None) {
+export function SetAnchor(...edge: Edge[]) {
+    if (edge.find((e) => e === "none")) {
         return bindings.Layer.ResetAnchor(id);
     }
     return bindings.Layer.SetAnchor(id, ConvertEdge(edge), true);
@@ -108,7 +121,7 @@ export function SetExclusiveZone(zone: number) {
     return bindings.Layer.SetExclusiveZone(id, zone);
 }
 export function SetMargin(edge: Edge, margin: number) {
-    return bindings.Layer.SetMargin(id, ConvertEdge(edge), margin);
+    return bindings.Layer.SetMargin(id, ConvertEdge([edge])[0], margin);
 }
 export function SetNamespace(namespace: string) {
     return bindings.Layer.SetNamespace(id, namespace);

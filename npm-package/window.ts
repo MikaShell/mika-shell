@@ -1,5 +1,5 @@
 import * as bindings from "./bindings/github.com/HumXC/mikami/services/index";
-import { id, WaitReady } from "./init";
+import { id, WaitReady } from "./common";
 
 class Options {
     Title: string;
