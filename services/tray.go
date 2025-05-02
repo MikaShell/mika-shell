@@ -8,7 +8,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/HumXC/mikami/lib"
+	"github.com/HumXC/mikami/lib/tray"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"slices"
@@ -17,15 +17,13 @@ import (
 )
 
 type Icon struct {
-	Height  int32
-	Width   int32
-	CenterX int32
-	CenterY int32
-	Base64  string
+	Height int32
+	Width  int32
+	Base64 string
 }
 
 // TODO: 优化视觉中心的算法
-func (i *Icon) fromPixmap(p lib.Pixmap) {
+func (i *Icon) fromPixmap(p tray.Pixmap) {
 	i.Width = p.Width
 	i.Height = p.Height
 	img := image.NewNRGBA(image.Rect(0, 0, int(p.Width), int(p.Height)))
@@ -48,16 +46,16 @@ func (i *Icon) fromPixmap(p lib.Pixmap) {
 			sumAlpha += alpha
 		}
 	}
-	i.CenterX = int32(sumX / sumAlpha)
-	i.CenterY = int32(sumY / sumAlpha)
 	buf := new(bytes.Buffer)
 
 	webp.Encode(buf, img, nil)
 	i.Base64 = base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
-type Category lib.Category
-type Status lib.Status
+type Category tray.Category
+type Status tray.Status
+
+// TODO: 优化这一坨结构
 type TrayItem struct {
 	Service   string
 	Id        string
@@ -72,11 +70,9 @@ type TrayItem struct {
 		Icon      *Icon
 	}
 	Icon struct {
-		Width   int32
-		Height  int32
-		OffsetX int32
-		OffsetY int32
-		Base64  string
+		Width  int32
+		Height int32
+		Base64 string
 	}
 	OverlayIcon struct {
 		Name string
@@ -90,9 +86,9 @@ type TrayItem struct {
 	}
 }
 
-func (t *TrayItem) fromDBus(service string, item *lib.StatusNotifierItem) {
-	parseIcon := func(p []lib.Pixmap) *Icon {
-		slices.SortFunc(p, func(a, b lib.Pixmap) int {
+func (t *TrayItem) fromDBus(service string, item *tray.StatusNotifierItem) {
+	parseIcon := func(p []tray.Pixmap) *Icon {
+		slices.SortFunc(p, func(a, b tray.Pixmap) int {
 			return int(b.Height - a.Height)
 		})
 		for _, pix := range p {
@@ -116,8 +112,6 @@ func (t *TrayItem) fromDBus(service string, item *lib.StatusNotifierItem) {
 	if icon := parseIcon(item.IconPixmap); icon != nil {
 		t.Icon.Width = icon.Width
 		t.Icon.Height = icon.Height
-		t.Icon.OffsetX = icon.Width/2 - icon.CenterX
-		t.Icon.OffsetY = icon.Height/2 - icon.CenterY
 		t.Icon.Base64 = icon.Base64
 	}
 	t.OverlayIcon.Name = item.OverlayIconName
@@ -132,7 +126,7 @@ func NewTray() application.Service {
 }
 
 type Tray struct {
-	watcher   *lib.StatusNotifierWatcher
+	watcher   *tray.StatusNotifierWatcher
 	listeners []*application.WebviewWindow
 	cache     []TrayItem
 	mutex     sync.Mutex
@@ -140,7 +134,7 @@ type Tray struct {
 
 func (t *Tray) Init() error {
 	if t.watcher == nil {
-		watcher, err := lib.NewWatcher()
+		watcher, err := tray.New()
 		if err != nil {
 			return err
 		}

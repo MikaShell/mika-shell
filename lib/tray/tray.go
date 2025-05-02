@@ -1,4 +1,4 @@
-package lib
+package tray
 
 import (
 	"context"
@@ -243,7 +243,7 @@ func (w *StatusNotifierWatcher) Set(iface, property string, value dbus.Variant) 
 	return nil
 }
 
-func NewWatcher() (*StatusNotifierWatcher, error) {
+func New() (*StatusNotifierWatcher, error) {
 	conn, err := dbus.SessionBus()
 	if err != nil {
 		return nil, err
