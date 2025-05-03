@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,12 +12,15 @@ import (
 
 	"github.com/HumXC/mikami/bundle"
 	"github.com/HumXC/mikami/services"
+	"github.com/adrg/xdg"
 	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const DEFAULT_ASSETS_DIR = "/usr/share/aikadm"
+
+var SOCK_PATH = filepath.Join(xdg.RuntimeDir, "mikami.sock")
 
 func ConfigDir() (string, error) {
 	userConfigDir, err := os.UserConfigDir()
@@ -25,6 +29,7 @@ func ConfigDir() (string, error) {
 	}
 	return filepath.Join(userConfigDir, "mikami"), nil
 }
+
 func NewCli() *cli.App {
 	configDir, err := ConfigDir()
 	if err != nil {
@@ -41,6 +46,13 @@ func NewCli() *cli.App {
 				Aliases: []string{"a"},
 				Value:   filepath.Join(configDir, "assets"),
 				Usage:   "Set of assets to serve",
+			},
+		},
+		Commands: []*cli.Command{
+			{
+				Name:   "event",
+				Usage:  "Send an event to mikami. e.g. mikami event <EventName> <EventData>",
+				Action: CmdEvent,
 			},
 		},
 	}
@@ -68,6 +80,7 @@ func NewCli() *cli.App {
 }
 
 func CmdMain(ctx *cli.Context) error {
+	var err error
 	configDir, err := ConfigDir()
 	if err != nil {
 		fmt.Println(err)
@@ -114,7 +127,27 @@ func CmdMain(ctx *cli.Context) error {
 	})
 	services.SetupMikami(mikami, app)
 
-	return app.Run()
+	if eventServer, err := NewEventServer(SOCK_PATH); err != nil {
+		return err
+	} else {
+		go func() {
+			err = eventServer.Listen(context.Background(), func(err error, name string, data any) {
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				fmt.Println("Received event:", name, data)
+				app.EmitEvent(name, data)
+			})
+			if err != nil {
+				app.Quit()
+			}
+		}()
+	}
+	if err_ := app.Run(); err_ != nil {
+		return err_
+	}
+	return err
 }
 
 func CmdBundle(ctx *cli.Context) error {
@@ -175,4 +208,13 @@ func CmdUnBundle(ctx *cli.Context) error {
 		return nil
 	})
 	return err
+}
+
+func CmdEvent(ctx *cli.Context) error {
+	if ctx.Args().Len() < 2 {
+		return fmt.Errorf("invalid arguments. Usage: mikami event <EventName> <EventData>")
+	}
+	eventName := ctx.Args().Get(0)
+	eventData := ctx.Args().Get(1)
+	return SendEvent(SOCK_PATH, eventName, eventData)
 }
