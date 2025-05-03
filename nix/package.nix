@@ -6,8 +6,8 @@
   glib-networking,
   gsettings-desktop-schemas,
   gtk3,
-  webkitgtk_4_0,
-  wails,
+  webkitgtk_4_1,
+  gtk-layer-shell,
   debug ? false,
 }:
 buildGoModule {
@@ -16,11 +16,11 @@ buildGoModule {
 
   src = ./..;
 
-  vendorHash = "sha256-TNfL809d/rWAY8fETGEJjMcWv20Ijk6dqffzPU4Epqs=";
-  nativeBuildInputs = [makeWrapper pkg-config wails];
+  vendorHash = "sha256-8kHYeqyFh68llsQOFPx4jXtTDrZ4EmjHunMg9cJAfOc=";
+  nativeBuildInputs = [makeWrapper pkg-config];
   proxyVendor = true;
   allowGoReference = true;
-  buildInputs = [webkitgtk_4_0];
+  buildInputs = [webkitgtk_4_1 gtk-layer-shell];
   tags =
     [
       "desktop"
@@ -31,26 +31,16 @@ buildGoModule {
     "-s"
     "-w"
   ];
-  preBuild = ''
-    mkdir -p frontend/wailsjs
-    # Make sure 'wails generate module' can work
-    touch frontend/wailsjs/keep
-    echo "{}" > wails.json
-    wails generate module
-    rm frontend/wailsjs/keep
-  '';
-  postBuild = ''
-    rm -r frontend wails.json
-  '';
+
   # https://wails.io/docs/guides/nixos-font/
   postFixup = ''
-    wrapProgram $out/bin/html-greet \
+    wrapProgram $out/bin/mikami \
       --set XDG_DATA_DIRS ${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}:${gtk3}/share/gsettings-schemas/${gtk3.name}:$XDG_DATA_DIRS \
       --set GIO_MODULE_DIR ${glib-networking}/lib/gio/modules/
   '';
   meta = {
     description = "Build display manager using HTML + CSS + JS";
-    homepage = "https://github.com/HumXC/html-greet";
+    homepage = "https://github.com/HumXC/mikami";
     license = lib.licenses.mit;
     mainProgram = "html-greet";
     platforms = lib.platforms.unix;
