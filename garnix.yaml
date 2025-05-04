@@ -1,0 +1,5 @@
+builds:
+    include:
+        - packages.*.defautl
+        - packages.*.wails3
+        - devShell.*.default
