@@ -6,3 +6,4 @@ export * as Window from "./window";
 export * as Hyprland from "./hyprland";
 export * as Tray from "./tray";
 export * as Notifd from "./notifd";
+export * as OS from "./os";

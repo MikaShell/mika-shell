@@ -75,10 +75,7 @@ func NewEventServer(path string) (*EventServer, error) {
 		defer conn.Close()
 		return nil, fmt.Errorf("event server already running on %s", path)
 	} else {
-		err := os.Remove(path)
-		if err != nil {
-			return nil, err
-		}
+		os.Remove(path)
 	}
 	listener, err := net.Listen("unix", path)
 	if err != nil {

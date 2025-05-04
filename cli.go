@@ -122,6 +122,7 @@ func CmdMain(ctx *cli.Context) error {
 			services.NewWindow(),
 			services.NewTray(),
 			services.NewNotifd(),
+			services.NewOS(),
 			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})
@@ -211,8 +212,8 @@ func CmdUnBundle(ctx *cli.Context) error {
 }
 
 func CmdEvent(ctx *cli.Context) error {
-	if ctx.Args().Len() < 2 {
-		return fmt.Errorf("invalid arguments. Usage: mikami event <EventName> <EventData>")
+	if ctx.Args().Len() < 1 {
+		return fmt.Errorf("invalid arguments. Usage: mikami event <EventName> <EventData|null>")
 	}
 	eventName := ctx.Args().Get(0)
 	eventData := ctx.Args().Get(1)
