@@ -23,7 +23,7 @@ type WindowOption struct {
 }
 
 func (w *Window) Init(id uint, options WindowOption) error {
-	win, err := GetWindow(id)
+	win, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (w *Window) Init(id uint, options WindowOption) error {
 }
 
 func (w *Window) SetTitle(id uint, title string) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (w *Window) SetTitle(id uint, title string) error {
 }
 
 func (w *Window) SetSize(id uint, width, height int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (w *Window) SetSize(id uint, width, height int) error {
 }
 
 func (w *Window) SetMinSize(id uint, width, height int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (w *Window) SetMinSize(id uint, width, height int) error {
 }
 
 func (w *Window) SetMaxSize(id uint, width, height int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -85,16 +85,11 @@ func (w *Window) SetMaxSize(id uint, width, height int) error {
 }
 
 func (w *Window) Close(id uint) error {
-	window, err := GetWindow(id)
-	if err != nil {
-		return err
-	}
-	window.WebviewWindow.Close()
-	return nil
+	return CloseWebview(id)
 }
 
 func (l *Window) Hide(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -103,7 +98,7 @@ func (l *Window) Hide(id uint) error {
 }
 
 func (w *Window) Show(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}

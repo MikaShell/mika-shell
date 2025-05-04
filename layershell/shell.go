@@ -28,6 +28,14 @@ const (
 	LAYER_OVERLAY
 )
 
+type KeyboardMode int
+
+const (
+	KEYBOARD_MODE_NONE KeyboardMode = iota
+	KEYBOARD_MODE_EXCLUSIVE
+	KEYBOARD_MODE_ON_DEMAND
+)
+
 type Window struct {
 	ptr *C.GtkWindow
 }
@@ -61,4 +69,7 @@ func (w *Window) SetNamespace(namespace string) {
 }
 func (w *Window) AutoExclusiveZoneEnable() {
 	C.gtk_layer_auto_exclusive_zone_enable(w.ptr)
+}
+func (w *Window) SetKeyboardMode(mode KeyboardMode) {
+	C.gtk_layer_set_keyboard_mode(w.ptr, C.GtkLayerShellKeyboardMode(mode))
 }

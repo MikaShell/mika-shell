@@ -1,5 +1,16 @@
 package services
 
+import (
+	"fmt"
+	"reflect"
+	"slices"
+	"sync"
+	"unsafe"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
 /*
 #cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
 
@@ -7,14 +18,6 @@ package services
 #include <webkit2/webkit2.h>
 */
 import "C"
-import (
-	"fmt"
-	"reflect"
-	"unsafe"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
-)
 
 func NewMikami() application.Service {
 	return application.NewService(&Mikami{})
@@ -33,7 +36,7 @@ func SetupMikami(mikami application.Service, app *application.App) {
 	})
 }
 
-type MikamiWindow struct {
+type Webview struct {
 	ID            uint
 	WebviewWindow *application.WebviewWindow
 	GtkWindow     *C.GtkWindow
@@ -41,10 +44,13 @@ type MikamiWindow struct {
 	IsInit        bool
 }
 
-var windows = []*MikamiWindow{}
+var mutex sync.Mutex
+var webviews = []*Webview{}
 
-func GetWindow(id uint) (*MikamiWindow, error) {
-	for _, w := range windows {
+func GetWebview(id uint) (*Webview, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	for _, w := range webviews {
 		if w.ID == id {
 			return w, nil
 		}
@@ -55,8 +61,20 @@ func GetWindow(id uint) (*MikamiWindow, error) {
 	}
 	return nil, fmt.Errorf("window with id %d not found", id)
 }
+func CloseWebview(id uint) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+	for i, w := range webviews {
+		if w.ID == id {
+			w.WebviewWindow.Close()
+			webviews = slices.Delete(webviews, i, i+1)
+			return nil
+		}
+	}
+	return nil
+}
 
-func (m *Mikami) registerWindow(window *application.WebviewWindow) uint {
+func registerWindow(window *application.WebviewWindow) uint {
 	id := window.ID()
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(event *application.WindowEvent) {
 		window.ExecJS(fmt.Sprintf("sessionStorage.setItem(\"mikami_id\", \"%d\");", id))
@@ -65,7 +83,7 @@ func (m *Mikami) registerWindow(window *application.WebviewWindow) uint {
 	})
 	impl := reflect.ValueOf(window).Elem().FieldByName("impl").Elem().Elem()
 	windowPtr := unsafe.Pointer(impl.FieldByName("window").Pointer())
-	windows = append(windows, &MikamiWindow{
+	webviews = append(webviews, &Webview{
 		ID:            id,
 		WebviewWindow: window,
 		IsInit:        false,
@@ -101,21 +119,16 @@ func (m *Mikami) NewWindow(path string) uint {
 		C.gtk_css_provider_load_from_data(provider, cssStr, -1, nil)
 		C.free(unsafe.Pointer(cssStr))
 	})
-	return m.registerWindow(window)
+	return registerWindow(window)
 }
 
-func (m *Mikami) CloseWindow(id uint) error {
-	w, err := GetWindow(id)
-	if err != nil {
-		return err
-	}
-	w.WebviewWindow.Close()
-	return nil
+func (m *Mikami) CloseWebview(id uint) error {
+	return CloseWebview(id)
 }
 
-func (m *Mikami) Windows() []WindowInfo {
-	result := make([]WindowInfo, len(windows))
-	for i, w := range windows {
+func (m *Mikami) GetAllWebview() []WindowInfo {
+	result := make([]WindowInfo, len(webviews))
+	for i, w := range webviews {
 		field := reflect.ValueOf(w.WebviewWindow).Elem().FieldByName("options")
 		options := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Interface().(*application.WebviewWindowOptions)
 
@@ -128,6 +141,15 @@ func (m *Mikami) Windows() []WindowInfo {
 	return result
 }
 
+func (m *Mikami) OpenDevTools(id uint) error {
+	w, err := GetWebview(id)
+	if err != nil {
+		return err
+	}
+	w.WebviewWindow.OpenDevTools()
+	return nil
+}
+
 type WindowInfo struct {
 	Name  string
 	Title string
@@ -135,17 +157,16 @@ type WindowInfo struct {
 	ID    uint
 }
 
-func (m *Mikami) GetWindow(id uint) *WindowInfo {
-	for _, w := range windows {
-		if w.ID == id {
-			options := reflect.ValueOf(w.WebviewWindow).Elem().FieldByName("options").Interface().(application.WebviewWindowOptions)
-			return &WindowInfo{
-				Name:  w.WebviewWindow.Name(),
-				Title: options.Title,
-				URL:   options.URL,
-				ID:    w.ID,
-			}
-		}
+func (m *Mikami) GetWebview(id uint) *WindowInfo {
+	w, err := GetWebview(id)
+	if err != nil {
+		return nil
 	}
-	return nil
+	options := reflect.ValueOf(w.WebviewWindow).Elem().FieldByName("options").Interface().(application.WebviewWindowOptions)
+	return &WindowInfo{
+		Name:  w.WebviewWindow.Name(),
+		Title: options.Title,
+		URL:   options.URL,
+		ID:    w.ID,
+	}
 }

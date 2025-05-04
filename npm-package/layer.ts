@@ -1,5 +1,9 @@
 import * as bindings from "./bindings/github.com/HumXC/mikami/services/index";
-import { EdgeFlags, LayerFlags } from "./bindings/github.com/HumXC/mikami/layershell/models";
+import {
+    EdgeFlags,
+    KeyboardMode,
+    LayerFlags,
+} from "./bindings/github.com/HumXC/mikami/layershell/models";
 import { id, WaitReady } from "./common";
 
 export type Edge = "top" | "bottom" | "left" | "right" | "none";
@@ -14,6 +18,7 @@ export class Options {
     Width: number;
     Height: number;
     Layer: Layer = "background";
+    KeyboardMode: "none" | "exclusive" | "on-demand" = "none";
     _toBindings(): bindings.LayerOptions {
         let opt = new bindings.LayerOptions();
         opt.Title = this.Title;
@@ -23,6 +28,19 @@ export class Options {
         opt.Margin = this.Margin;
         opt.Width = this.Width;
         opt.Height = this.Height;
+        switch (this.KeyboardMode) {
+            case "none":
+                opt.KeyboardMode = KeyboardMode.KEYBOARD_MODE_NONE;
+                break;
+            case "exclusive":
+                opt.KeyboardMode = KeyboardMode.KEYBOARD_MODE_EXCLUSIVE;
+                break;
+            case "on-demand":
+                opt.KeyboardMode = KeyboardMode.KEYBOARD_MODE_ON_DEMAND;
+                break;
+            default:
+                break;
+        }
         switch (this.Layer) {
             case "top":
                 opt.Layer = LayerFlags.LAYER_TOP;
@@ -53,6 +71,7 @@ export class Options {
         if (props.Width) this.Width = props.Width;
         if (props.Height) this.Height = props.Height;
         if (props.Layer) this.Layer = props.Layer;
+        if (props.KeyboardMode) this.KeyboardMode = props.KeyboardMode;
     }
 }
 function ConvertEdge(edges: Edge[]): EdgeFlags[] {
@@ -75,6 +94,10 @@ function ConvertEdge(edges: Edge[]): EdgeFlags[] {
 export async function Init(options: Options = new Options()) {
     if (id === 0) await WaitReady();
     return bindings.Layer.Init(id, options._toBindings());
+}
+export async function OpenDevTools() {
+    if (id === 0) await WaitReady();
+    return bindings.Mikami.OpenDevTools(id);
 }
 export function SetLayer(layer: Layer) {
     let flag: LayerFlags;
@@ -99,6 +122,7 @@ export function SetLayer(layer: Layer) {
 export function Show() {
     return bindings.Layer.Show(id);
 }
+// FIXME: ** (mikami:127234): CRITICAL **: 11:42:26.853: void webkitWebViewEvaluateJavascriptInternal(WebKitWebView *, const char *, gssize, const char *, const char *, RunJavascriptReturnType, GCancellable *, GAsyncReadyCallback, gpointer): assertion 'WEBKIT_IS_WEB_VIEW(webView)' failed
 export function Close() {
     return bindings.Layer.Close(id);
 }
@@ -131,4 +155,21 @@ export function AutoExclusiveZoneEnable() {
 }
 export function SetTitle(title: string) {
     return bindings.Layer.SetTitle(id, title);
+}
+export function SetKeyboardMode(mode: "none" | "exclusive" | "on-demand") {
+    var kbMode = KeyboardMode.KEYBOARD_MODE_NONE;
+    switch (mode) {
+        case "none":
+            kbMode = KeyboardMode.KEYBOARD_MODE_NONE;
+            break;
+        case "exclusive":
+            kbMode = KeyboardMode.KEYBOARD_MODE_EXCLUSIVE;
+            break;
+        case "on-demand":
+            kbMode = KeyboardMode.KEYBOARD_MODE_ON_DEMAND;
+            break;
+        default:
+            break;
+    }
+    return bindings.Layer.SetKeyboardMode(id, kbMode);
 }

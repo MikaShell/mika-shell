@@ -22,12 +22,10 @@ type Icon struct {
 	Base64 string
 }
 
-// TODO: 优化视觉中心的算法
 func (i *Icon) fromPixmap(p tray.Pixmap) {
 	i.Width = p.Width
 	i.Height = p.Height
 	img := image.NewNRGBA(image.Rect(0, 0, int(p.Width), int(p.Height)))
-	var sumX, sumY, sumAlpha float64
 	for y := range int(p.Height) {
 		for x := range int(p.Width) {
 			i := (y*int(p.Width) + x) * 4
@@ -39,11 +37,6 @@ func (i *Icon) fromPixmap(p tray.Pixmap) {
 			g := p.Bytes[i+2]
 			b := p.Bytes[i+3]
 			img.Set(x, y, color.NRGBA{R: r, G: g, B: b, A: a})
-			alpha := float64(a) / 65535.0
-
-			sumX += float64(x) * alpha
-			sumY += float64(y) * alpha
-			sumAlpha += alpha
 		}
 	}
 	buf := new(bytes.Buffer)
@@ -176,7 +169,7 @@ func (t *Tray) Items() []TrayItem {
 	return result
 }
 func (t *Tray) Subscribe(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -188,7 +181,7 @@ func (t *Tray) Subscribe(id uint) error {
 }
 
 func (t *Tray) Unsubscribe(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}

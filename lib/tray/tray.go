@@ -251,7 +251,7 @@ func New() (*StatusNotifierWatcher, error) {
 
 	reply, err := conn.RequestName("org.kde.StatusNotifierWatcher", dbus.NameFlagDoNotQueue)
 	if err != nil || reply != dbus.RequestNameReplyPrimaryOwner {
-		return nil, fmt.Errorf("failed to request name: %v", err)
+		return nil, fmt.Errorf("failed to request name, is there another process registered tray? err: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	watcher := &StatusNotifierWatcher{

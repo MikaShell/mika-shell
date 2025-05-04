@@ -121,13 +121,13 @@ func (n *Notifd) onNotify(notification notifd.Notification) {
 	nn := Notification{}
 	nn.FromDBus(notification)
 	for _, listener := range n.listeners {
-		w, _ := GetWindow(listener)
+		w, _ := GetWebview(listener)
 		w.WebviewWindow.EmitEvent("Notifd.Notification", nn)
 	}
 }
 func (n *Notifd) onCloseNotification(id uint32) {
 	for _, listener := range n.listeners {
-		w, _ := GetWindow(listener)
+		w, _ := GetWebview(listener)
 		w.WebviewWindow.EmitEvent("Notifd.CloseNotification", id)
 	}
 }

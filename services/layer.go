@@ -29,10 +29,11 @@ type LayerOptions struct {
 	Margin                  []int
 	Width                   int
 	Height                  int
+	KeyboardMode            layershell.KeyboardMode
 }
 
 func (l *Layer) Init(id uint, options LayerOptions) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -53,6 +54,7 @@ func (l *Layer) Init(id uint, options LayerOptions) error {
 		}
 		layer.SetNamespace(options.Namespace)
 		layer.SetExclusiveZone(options.ExclusiveZone)
+		layer.SetKeyboardMode(options.KeyboardMode)
 		if options.AutoExclusiveZoneEnable {
 			layer.AutoExclusiveZoneEnable()
 		}
@@ -82,7 +84,7 @@ func (l *Layer) Init(id uint, options LayerOptions) error {
 }
 
 func (l *Layer) SetSize(id uint, width int, height int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -98,7 +100,7 @@ func (l *Layer) SetSize(id uint, width int, height int) error {
 }
 
 func (l *Layer) SetLayer(id uint, layer layershell.LayerFlags) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,7 @@ func (l *Layer) SetLayer(id uint, layer layershell.LayerFlags) error {
 }
 
 func (l *Layer) SetTitle(id uint, title string) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -119,7 +121,7 @@ func (l *Layer) SetTitle(id uint, title string) error {
 }
 
 func (l *Layer) SetAnchor(id uint, edges []layershell.EdgeFlags, anchor bool) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -132,8 +134,20 @@ func (l *Layer) SetAnchor(id uint, edges []layershell.EdgeFlags, anchor bool) er
 	return nil
 }
 
+func (l *Layer) SetKeyboardMode(id uint, mode layershell.KeyboardMode) error {
+	window, err := GetWebview(id)
+	if err != nil {
+		return err
+	}
+	layer := layershell.NewWindow(unsafe.Pointer(window.GtkWindow))
+	application.InvokeSync(func() {
+		layer.SetKeyboardMode(mode)
+	})
+	return nil
+}
+
 func (l *Layer) ResetAnchor(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -148,7 +162,7 @@ func (l *Layer) ResetAnchor(id uint) error {
 }
 
 func (l *Layer) SetMargin(id uint, edge layershell.EdgeFlags, margin int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -160,7 +174,7 @@ func (l *Layer) SetMargin(id uint, edge layershell.EdgeFlags, margin int) error 
 }
 
 func (l *Layer) SetNamespace(id uint, namespace string) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -172,7 +186,7 @@ func (l *Layer) SetNamespace(id uint, namespace string) error {
 }
 
 func (l *Layer) Size(id uint) (int, int, error) {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -186,7 +200,7 @@ func (l *Layer) Size(id uint) (int, int, error) {
 }
 
 func (l *Layer) SetExclusiveZone(id uint, zone int) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -198,7 +212,7 @@ func (l *Layer) SetExclusiveZone(id uint, zone int) error {
 }
 
 func (l *Layer) AutoExclusiveZoneEnable(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -210,16 +224,11 @@ func (l *Layer) AutoExclusiveZoneEnable(id uint) error {
 }
 
 func (l *Layer) Close(id uint) error {
-	window, err := GetWindow(id)
-	if err != nil {
-		return err
-	}
-	window.WebviewWindow.Close()
-	return nil
+	return CloseWebview(id)
 }
 
 func (l *Layer) Hide(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -228,7 +237,7 @@ func (l *Layer) Hide(id uint) error {
 }
 
 func (l *Layer) Show(id uint) error {
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}

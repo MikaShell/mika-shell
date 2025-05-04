@@ -23,6 +23,10 @@ export async function Init(options: Options = new Options()) {
     if (id === 0) await WaitReady();
     return bindings.Window.Init(id, options);
 }
+export async function OpenDevTools() {
+    if (id === 0) await WaitReady();
+    return bindings.Mikami.OpenDevTools(id);
+}
 export function Show() {
     return bindings.Window.Show(id);
 }

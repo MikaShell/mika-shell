@@ -29,6 +29,9 @@ type HyprlandEventHandlerPayload struct {
 }
 
 func (h *HyprlandEventHandler) Add(window *application.WebviewWindow, event hyprEvent.EventType) error {
+	if window == nil {
+		return nil
+	}
 	if h.c == nil {
 		sock, err := helpers.GetSocket(helpers.EventSocket)
 		if err != nil {
@@ -231,7 +234,7 @@ func (h *Hyprland) Subscribe(id uint, event hyprEvent.EventType) error {
 	if h.e == nil {
 		h.e = &HyprlandEventHandler{}
 	}
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
@@ -242,7 +245,7 @@ func (h *Hyprland) Unsubscribe(id uint, event hyprEvent.EventType) error {
 	if h.e == nil {
 		return nil
 	}
-	window, err := GetWindow(id)
+	window, err := GetWebview(id)
 	if err != nil {
 		return err
 	}
