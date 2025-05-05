@@ -1,0 +1,56 @@
+name: Publish New Version
+
+on:
+    push:
+        tags: ["v*"]
+
+jobs:
+    build-and-release:
+        runs-on: ubuntu-22.04
+        permissions:
+            contents: write
+            id-token: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: awalsh128/cache-apt-pkgs-action@latest
+              with:
+                  packages: libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config
+                  version: 1.0
+
+            - name: Build Project
+              run: |
+                  go build
+
+            - name: Get Version Info
+              id: version
+              run: |
+                  if [[ $GITHUB_REF == refs/tags/* ]]; then
+                    # 提取 tag 并校验格式
+                    TAG_NAME=${GITHUB_REF#refs/tags/}
+                    if [[ $TAG_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.?[0-9]*)?$ ]]; then
+                      echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+                      echo "RELEASE_NAME=$TAG_NAME" >> $GITHUB_ENV
+                    else
+                      echo "::error::Tag format invalid, must be vX.Y.Z or vX.Y.Z-rc.n"
+                      exit 1
+                    fi
+                  fi
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  tag_name: ${{ env.RELEASE_TAG }}
+                  name: ${{ env.RELEASE_NAME }}
+                  body: |
+                      ${{ github.event.head_commit.message }}
+
+                      Commit SHA: ${{ github.sha }}
+                  draft: false
+                  prerelease: ${{ contains(env.RELEASE_TAG, '-') }} # 包含连字符标记为预发布
+                  files: |
+                      aikadm
