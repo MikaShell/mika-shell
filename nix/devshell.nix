@@ -13,6 +13,7 @@ in {
       gtk3
       webkitgtk_4_1
       gtk-layer-shell
+      libwebp
       wails3
       pkg-config
     ];

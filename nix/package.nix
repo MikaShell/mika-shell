@@ -7,6 +7,7 @@
   gsettings-desktop-schemas,
   gtk3,
   webkitgtk_4_1,
+  libwebp,
   gtk-layer-shell,
   debug ? false,
 }:
@@ -20,7 +21,7 @@ buildGoModule {
   nativeBuildInputs = [makeWrapper pkg-config];
   proxyVendor = true;
   allowGoReference = true;
-  buildInputs = [webkitgtk_4_1 gtk-layer-shell];
+  buildInputs = [webkitgtk_4_1 gtk-layer-shell libwebp];
   tags =
     [
       "desktop"
