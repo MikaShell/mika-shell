@@ -1,14 +1,17 @@
 package bundle
 
 import (
+	"debug/elf"
 	"encoding/binary"
 	"errors"
-	"github.com/spf13/afero"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/spf13/afero"
 )
 
 type prop struct {
@@ -149,7 +152,7 @@ func writeBundle(w io.WriteSeeker, filename string, file fs.File) (int64, error)
 	return size, nil
 }
 
-func readBundle(r io.ReadSeeker, src string) fs.FS {
+func readBundle(sectionOffset uint64, r io.ReadSeeker, src string) fs.FS {
 	files := make([]prop, 0)
 	var err error
 	for {
@@ -169,6 +172,7 @@ func readBundle(r io.ReadSeeker, src string) fs.FS {
 		if offset, err = r.Seek(0, io.SeekCurrent); err != nil {
 			break
 		}
+		offset += int64(sectionOffset)
 		r.Seek(int64(dataLength), io.SeekCurrent)
 		files = append(files, prop{
 			name:   string(name),
@@ -197,39 +201,25 @@ type BundleData struct {
 	fs.FS
 }
 
-const magic = "MIKAMI"
-
 func Bundle(assets fs.FS, dist, description string) error {
 	var err error
 	var exe string
-	var exeFile *os.File
-	var distFile *os.File
-	var offset int64
-
+	assetsFile, err := os.CreateTemp(os.TempDir(), "mikami-assets")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(assetsFile.Name())
 	if exe, err = os.Executable(); err != nil {
 		return err
 	}
 
-	if exeFile, err = os.Open(exe); err != nil {
-		return err
-	}
-	defer exeFile.Close()
-
-	if distFile, err = os.OpenFile(dist, os.O_RDWR|os.O_CREATE, 0666); err != nil {
-		return err
-	}
-	defer distFile.Close()
-	if offset, err = io.Copy(distFile, exeFile); err != nil {
-		return err
-	}
-	binary.Write(distFile, binary.LittleEndian, []byte(magic))
-	binary.Write(distFile, binary.LittleEndian, time.Now().Unix())
-	binary.Write(distFile, binary.LittleEndian, int64(0))
-	binary.Write(distFile, binary.LittleEndian, uint32(len(description)))
-	binary.Write(distFile, binary.LittleEndian, []byte(description))
-	distFile.Sync()
+	binary.Write(assetsFile, binary.LittleEndian, time.Now().Unix())
+	binary.Write(assetsFile, binary.LittleEndian, int64(0)) // assets size
+	binary.Write(assetsFile, binary.LittleEndian, uint32(len(description)))
+	binary.Write(assetsFile, binary.LittleEndian, []byte(description))
+	assetsFile.Sync()
 	var size int64
-	fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -241,51 +231,57 @@ func Bundle(assets fs.FS, dist, description string) error {
 			return err
 		}
 		defer file.Close()
-		n, err := writeBundle(distFile, path, file)
+		n, err := writeBundle(assetsFile, path, file)
 		size += n
 		if err != nil {
 			return err
 		}
 		return nil
 	})
+	if err != nil {
+		assetsFile.Close()
+		return err
+	}
+	assetsFile.Seek(8, io.SeekStart)
+	binary.Write(assetsFile, binary.LittleEndian, size)
+	assetsFile.Sync()
+	assetsFile.Close()
 
-	binary.Write(distFile, binary.LittleEndian, uint32(offset))
-	distFile.Seek(offset+8+int64(len(magic)), io.SeekStart)
-	binary.Write(distFile, binary.LittleEndian, size)
-	distFile.Sync()
+	cmd := exec.Command("objcopy", "--add-section", ".mikami-assets="+assetsFile.Name(), exe, dist, "--set-section-flags", "assets=readonly", "--strip-all")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func SUnBundle(filename string) (*BundleData, error) {
 	var err error
-	var exeFile *os.File
-
-	if exeFile, err = os.Open(filename); err != nil {
+	exeELF, err := elf.Open(filename)
+	if err != nil {
 		return nil, err
 	}
-	defer exeFile.Close()
-	var offset uint32
-	exeFile.Seek(-4, io.SeekEnd)
-	binary.Read(exeFile, binary.LittleEndian, &offset)
-	exeFile.Seek(int64(offset), io.SeekStart)
-	if !hasBundle(exeFile) {
+	defer exeELF.Close()
+	section := exeELF.Section(".mikami-assets")
+	if section == nil {
 		return nil, errors.New("invalid bundle file")
 	}
+	assetsReader := section.Open()
+
 	var header BundleHeader
 	var createTime int64
 	var size int64
 	var descriptionLength uint32
-	binary.Read(exeFile, binary.LittleEndian, &createTime)
-	binary.Read(exeFile, binary.LittleEndian, &size)
-	binary.Read(exeFile, binary.LittleEndian, &descriptionLength)
+	binary.Read(assetsReader, binary.LittleEndian, &createTime)
+	binary.Read(assetsReader, binary.LittleEndian, &size)
+	binary.Read(assetsReader, binary.LittleEndian, &descriptionLength)
 	description := make([]byte, descriptionLength)
-	binary.Read(exeFile, binary.LittleEndian, &description)
+	binary.Read(assetsReader, binary.LittleEndian, &description)
 	header.CreateTime = time.Unix(createTime, 0)
 	header.Size = size
 	header.Description = string(description)
 	return &BundleData{
 		BundleHeader: header,
-		FS:           readBundle(exeFile, filename),
+		FS:           readBundle(section.Offset, assetsReader, filename),
 	}, nil
 }
 
@@ -294,18 +290,16 @@ func UnBundle() (*BundleData, error) {
 	return SUnBundle(exe)
 }
 
-func hasBundle(r io.Reader) bool {
-	var magic_ [len(magic)]byte
-	binary.Read(r, binary.LittleEndian, &magic_)
-	return string(magic_[:]) == magic
+func hasBundle(filename string) bool {
+	exeELF, err := elf.Open(filename)
+	if err != nil {
+		return false
+	}
+	defer exeELF.Close()
+	section := exeELF.Section(".mikami-assets")
+	return section != nil
 }
 func HasBundle() bool {
 	exe, _ := os.Executable()
-	exeFile, _ := os.Open(exe)
-	defer exeFile.Close()
-	var offset uint32
-	exeFile.Seek(-4, io.SeekEnd)
-	binary.Read(exeFile, binary.LittleEndian, &offset)
-	exeFile.Seek(int64(offset), io.SeekStart)
-	return hasBundle(exeFile)
+	return hasBundle(exe)
 }
