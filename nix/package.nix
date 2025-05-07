@@ -17,7 +17,7 @@ buildGoModule {
 
   src = ./..;
 
-  vendorHash = "sha256-v4qrk1TKXVKdzdG9ZT6KDh8LbrqlmqtMzSM/cRnxULE=";
+  vendorHash = "sha256-llc4U53wr/5erDBIPpbZhlQkQVGcHr/vlfEQkzOWe44=";
   nativeBuildInputs = [makeWrapper pkg-config];
   proxyVendor = true;
   allowGoReference = true;
