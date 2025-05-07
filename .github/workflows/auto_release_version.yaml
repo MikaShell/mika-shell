@@ -1,4 +1,4 @@
-name: Publish New Version
+name: Auto Release Version
 
 on:
     push:

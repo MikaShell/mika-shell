@@ -1,4 +1,4 @@
-name: Auto Build And Release
+name: Build And Publish Latest Release
 
 on:
     workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
 
             - uses: awalsh128/cache-apt-pkgs-action@latest
               with:
-                  packages: libgtk-3-dev libwebkit2gtk-4.1-dev3 libwebp-dev libgtk-layer-shell-dev build-essential pkg-config
+                  packages: libgtk-3-dev libwebkit2gtk-4.1-dev libwebp-dev libgtk-layer-shell-dev build-essential pkg-config
                   version: 1.0
 
             - name: Build Project
@@ -26,10 +26,10 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  tags=$(gh release list --json tagName --jq '.[].tagName' | grep latest)
+                  tags=$(gh release list --json tagName --jq '.[].tagName' | grep latest || true)
                   echo "$tags" | xargs --no-run-if-empty -I {} gh release delete {} --yes
                   echo "$tags" | xargs --no-run-if-empty -I {} gh api --method DELETE /repos/${{ github.repository }}/git/refs/tags/{}
-
+                  sleep 5
             - name: Get Latest Commit Hash
               id: commit
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
