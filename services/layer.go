@@ -30,6 +30,7 @@ type LayerOptions struct {
 	Width                   int
 	Height                  int
 	KeyboardMode            layershell.KeyboardMode
+	Hidden                  bool
 }
 
 func (l *Layer) Init(id uint, options LayerOptions) error {
@@ -80,6 +81,9 @@ func (l *Layer) Init(id uint, options LayerOptions) error {
 		C.gtk_widget_set_size_request(gtkWidget, C.gint(options.Width), C.gint(options.Height))
 	})
 	window.IsInit = true
+	if !options.Hidden {
+		window.WebviewWindow.Show()
+	}
 	return nil
 }
 

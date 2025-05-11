@@ -20,6 +20,7 @@ type WindowOption struct {
 	MaxHeight int
 	MinWidth  int
 	MinHeight int
+	Hidden    bool
 }
 
 func (w *Window) Init(id uint, options WindowOption) error {
@@ -45,6 +46,9 @@ func (w *Window) Init(id uint, options WindowOption) error {
 		webviewWindow.SetSize(options.Width, options.Height)
 	}
 	win.IsInit = true
+	if !options.Hidden {
+		webviewWindow.Show()
+	}
 	return nil
 }
 

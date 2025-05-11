@@ -31,7 +31,6 @@ func SetupMikami(mikami application.Service, app *application.App) {
 	instance := mikami.Instance().(*Mikami)
 	instance.app = app
 	app.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
-		// TODO: 设置webview的storage
 		instance.NewWindow("/")
 	})
 }

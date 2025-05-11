@@ -8,6 +8,7 @@
   gtk3,
   webkitgtk_4_1,
   libwebp,
+  librsvg,
   gtk-layer-shell,
   debug ? false,
 }:
@@ -17,11 +18,11 @@ buildGoModule {
 
   src = ./..;
 
-  vendorHash = "sha256-llc4U53wr/5erDBIPpbZhlQkQVGcHr/vlfEQkzOWe44=";
+  vendorHash = "sha256-Kr1ACeNB2XIzDkkc3vOY4RzOGB4YHzA4oyJkECaM2v0=";
   nativeBuildInputs = [makeWrapper pkg-config];
   proxyVendor = true;
   allowGoReference = true;
-  buildInputs = [webkitgtk_4_1 gtk-layer-shell libwebp];
+  buildInputs = [webkitgtk_4_1 gtk-layer-shell libwebp librsvg];
   tags =
     [
       "desktop"

@@ -7,3 +7,5 @@ export * as Hyprland from "./hyprland";
 export * as Tray from "./tray";
 export * as Notifd from "./notifd";
 export * as OS from "./os";
+export * as App from "./app";
+export * as Theme from "./theme";

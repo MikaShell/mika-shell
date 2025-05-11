@@ -18,8 +18,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-const DEFAULT_ASSETS_DIR = "/usr/share/aikadm"
-
 var SOCK_PATH = filepath.Join(xdg.RuntimeDir, "mikami.sock")
 
 func ConfigDir() (string, error) {
@@ -83,8 +81,7 @@ func CmdMain(ctx *cli.Context) error {
 	var err error
 	configDir, err := ConfigDir()
 	if err != nil {
-		fmt.Println(err)
-		return nil
+		return err
 	}
 	os.MkdirAll(configDir, 0755)
 	assetsPath := ctx.String("dev")
@@ -123,6 +120,8 @@ func CmdMain(ctx *cli.Context) error {
 			services.NewTray(),
 			services.NewNotifd(),
 			services.NewOS(),
+			services.NewApp(),
+			services.NewTheme(),
 			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})

@@ -9,6 +9,7 @@ class Options {
     MaxHeight: number;
     MinWidth: number;
     MinHeight: number;
+    Hidden: boolean;
     constructor(props: Partial<Options> = {}) {
         if (props.Title) this.Title = props.Title;
         if (props.Width) this.Width = props.Width;
@@ -17,11 +18,13 @@ class Options {
         if (props.MaxHeight) this.MaxHeight = props.MaxHeight;
         if (props.MinWidth) this.MinWidth = props.MinWidth;
         if (props.MinHeight) this.MinHeight = props.MinHeight;
+        if (props.Hidden) this.Hidden = props.Hidden;
     }
 }
-export async function Init(options: Options = new Options()) {
+export async function Init(options: Partial<Options> = {}) {
     if (id === 0) await WaitReady();
-    return bindings.Window.Init(id, options);
+    const opt = new Options(options);
+    return bindings.Window.Init(id, opt);
 }
 export async function OpenDevTools() {
     if (id === 0) await WaitReady();

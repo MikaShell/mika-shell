@@ -19,6 +19,7 @@ export class Options {
     Height: number;
     Layer: Layer = "background";
     KeyboardMode: "none" | "exclusive" | "on-demand" = "none";
+    Hidden: boolean = false;
     _toBindings(): bindings.LayerOptions {
         let opt = new bindings.LayerOptions();
         opt.Title = this.Title;
@@ -72,6 +73,7 @@ export class Options {
         if (props.Height) this.Height = props.Height;
         if (props.Layer) this.Layer = props.Layer;
         if (props.KeyboardMode) this.KeyboardMode = props.KeyboardMode;
+        if (props.Hidden) this.Hidden = props.Hidden;
     }
 }
 function ConvertEdge(edges: Edge[]): EdgeFlags[] {
@@ -91,9 +93,10 @@ function ConvertEdge(edges: Edge[]): EdgeFlags[] {
         .filter((v) => v !== undefined);
     return result;
 }
-export async function Init(options: Options = new Options()) {
+export async function Init(options: Partial<Options> = {}) {
     if (id === 0) await WaitReady();
-    return bindings.Layer.Init(id, options._toBindings());
+    const opt = new Options(options);
+    return bindings.Layer.Init(id, opt._toBindings());
 }
 export async function OpenDevTools() {
     if (id === 0) await WaitReady();
