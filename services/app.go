@@ -1,7 +1,10 @@
 package services
 
 import (
+	"bytes"
 	"fmt"
+	"hash"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"net/http"
@@ -32,7 +35,8 @@ type Entry struct {
 type App struct{}
 
 func (a *App) List() ([]Entry, error) {
-	var apps []Entry
+	var apps = make(map[uint32]Entry)
+	crc := crc32.NewIEEE()
 	for _, dir := range xdg.ApplicationDirs {
 		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -42,37 +46,42 @@ func (a *App) List() ([]Entry, error) {
 				return nil
 			}
 			if filepath.Ext(path) == ".desktop" {
-				app, err := a.open(path)
+				app, sum, err := a.open(path, crc)
 				if err != nil {
 					return err
 				}
-				apps = append(apps, *app)
+				apps[sum] = *app
 			}
 			return nil
 		})
 	}
-	return apps, nil
+	appsList := make([]Entry, 0, len(apps))
+	for _, app := range apps {
+		appsList = append(appsList, app)
+	}
+	return appsList, nil
 }
 
-func (a *App) open(filename string) (*Entry, error) {
-	f, err := os.Open(filename)
+func (a *App) open(filename string, crc hash.Hash32) (*Entry, uint32, error) {
+	b, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	defer f.Close()
-	entry, err := desktop.New(f)
+	crc.Reset()
+	crc.Write(b)
+	sum := crc.Sum32()
+	entry, err := desktop.New(bytes.NewReader(b))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	return &Entry{
 		Entry:     *entry,
 		EntryPath: filename,
-	}, nil
+	}, sum, nil
 }
 
 // urls is a list of urls to open
 // if wanted to open a file, use file://<path> as the url
-// FIXME: 在遇到终端程序时，需要正确使用 TERM 终端启动
 func (a *App) Run(entry *Entry, action string, urls []string) error {
 	var err error
 	var command []string
