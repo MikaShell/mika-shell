@@ -8,7 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sync"
+	"syscall"
 
 	"github.com/HumXC/mikami/bundle"
 	"github.com/HumXC/mikami/services"
@@ -18,8 +21,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-var SOCK_PATH = filepath.Join(xdg.RuntimeDir, "mikami.sock")
-
+func SockPath(instance string) string {
+	return filepath.Join(xdg.RuntimeDir, fmt.Sprintf("%s.sock", instance))
+}
 func ConfigDir() (string, error) {
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
@@ -31,10 +35,19 @@ func ConfigDir() (string, error) {
 func NewCli() *cli.App {
 	configDir, err := ConfigDir()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("failed to get config dir: %v", err)
 		return nil
 	}
 	hasBudle := bundle.HasBundle()
+	instanceName := "mikami"
+	if hasBudle {
+		b, err := bundle.UnBundle()
+		if err != nil {
+			fmt.Printf("failed to unbundle: %v", err)
+			return nil
+		}
+		instanceName = b.Name
+	}
 	app := &cli.App{
 		Name:   "mikami",
 		Action: CmdMain,
@@ -44,6 +57,12 @@ func NewCli() *cli.App {
 				Aliases: []string{"a"},
 				Value:   filepath.Join(configDir, "assets"),
 				Usage:   "Set of assets to serve",
+			},
+			&cli.StringFlag{
+				Name:    "instance",
+				Aliases: []string{"i"},
+				Value:   instanceName,
+				Usage:   "Instance name, used in socket file name",
 			},
 		},
 		Commands: []*cli.Command{
@@ -79,11 +98,6 @@ func NewCli() *cli.App {
 
 func CmdMain(ctx *cli.Context) error {
 	var err error
-	configDir, err := ConfigDir()
-	if err != nil {
-		return err
-	}
-	os.MkdirAll(configDir, 0755)
 	assetsPath := ctx.String("dev")
 	isDevMode := true
 	if assetsPath == "" {
@@ -98,6 +112,7 @@ func CmdMain(ctx *cli.Context) error {
 			return err
 		}
 		fmt.Println("Use bundled assets from executable file")
+		fmt.Println("Assets name:", assets.Name)
 		fmt.Println("Assets description:", assets.Description)
 		fmt.Println("Assets create time:", assets.CreateTime)
 		fmt.Println("Assets size:", humanize.Bytes(uint64(assets.Size)))
@@ -126,8 +141,9 @@ func CmdMain(ctx *cli.Context) error {
 		},
 	})
 	services.SetupMikami(mikami, app)
+	wg := sync.WaitGroup{}
 
-	if eventServer, err := NewEventServer(SOCK_PATH); err != nil {
+	if eventServer, err := NewEventServer(SockPath(ctx.String("instance"))); err != nil {
 		return err
 	} else {
 		go func() {
@@ -140,13 +156,26 @@ func CmdMain(ctx *cli.Context) error {
 				app.EmitEvent(name, data)
 			})
 			if err != nil {
+				wg.Add(1)
 				app.Quit()
+				wg.Done()
 			}
 		}()
 	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		wg.Add(1)
+		app.Quit()
+		wg.Done()
+	}()
+
 	if err_ := app.Run(); err_ != nil {
 		return err_
 	}
+	wg.Wait()
 	return err
 }
 
@@ -179,6 +208,7 @@ func CmdUnBundle(ctx *cli.Context) error {
 		return err
 	}
 	fmt.Println("Use bundled assets from executable file")
+	fmt.Println("Assets name:", assets.Name)
 	fmt.Println("Assets description:", assets.Description)
 	fmt.Println("Assets create time:", assets.CreateTime)
 	fmt.Println("Assets size:", humanize.Bytes(uint64(assets.Size)))
@@ -216,5 +246,5 @@ func CmdEvent(ctx *cli.Context) error {
 	}
 	eventName := ctx.Args().Get(0)
 	eventData := ctx.Args().Get(1)
-	return SendEvent(SOCK_PATH, eventName, eventData)
+	return SendEvent(SockPath(ctx.String("instance")), eventName, eventData)
 }

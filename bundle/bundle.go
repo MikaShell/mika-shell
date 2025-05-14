@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -194,6 +195,7 @@ func readBundle(sectionOffset uint64, r io.ReadSeeker, src string) fs.FS {
 type BundleHeader struct {
 	CreateTime  time.Time
 	Size        int64
+	Name        string
 	Description string
 }
 type BundleData struct {
@@ -212,11 +214,14 @@ func Bundle(assets fs.FS, dist, description string) error {
 	if exe, err = os.Executable(); err != nil {
 		return err
 	}
+	name := filepath.Base(dist)
 
-	binary.Write(assetsFile, binary.LittleEndian, time.Now().Unix())
-	binary.Write(assetsFile, binary.LittleEndian, int64(0)) // assets size
+	binary.Write(assetsFile, binary.LittleEndian, time.Now().Unix()) // CreateTime
+	binary.Write(assetsFile, binary.LittleEndian, int64(0))          // Size
 	binary.Write(assetsFile, binary.LittleEndian, uint32(len(description)))
 	binary.Write(assetsFile, binary.LittleEndian, []byte(description))
+	binary.Write(assetsFile, binary.LittleEndian, uint32(len(name)))
+	binary.Write(assetsFile, binary.LittleEndian, []byte(name))
 	assetsFile.Sync()
 	var size int64
 	err = fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
@@ -242,6 +247,7 @@ func Bundle(assets fs.FS, dist, description string) error {
 		assetsFile.Close()
 		return err
 	}
+	// 8 is CreateTime (int64) size
 	assetsFile.Seek(8, io.SeekStart)
 	binary.Write(assetsFile, binary.LittleEndian, size)
 	assetsFile.Sync()
@@ -271,14 +277,24 @@ func SUnBundle(filename string) (*BundleData, error) {
 	var createTime int64
 	var size int64
 	var descriptionLength uint32
+	var nameLength uint32
+
 	binary.Read(assetsReader, binary.LittleEndian, &createTime)
 	binary.Read(assetsReader, binary.LittleEndian, &size)
+
 	binary.Read(assetsReader, binary.LittleEndian, &descriptionLength)
 	description := make([]byte, descriptionLength)
 	binary.Read(assetsReader, binary.LittleEndian, &description)
+
+	binary.Read(assetsReader, binary.LittleEndian, &nameLength)
+	name := make([]byte, nameLength)
+	binary.Read(assetsReader, binary.LittleEndian, &name)
+
 	header.CreateTime = time.Unix(createTime, 0)
 	header.Size = size
 	header.Description = string(description)
+	header.Name = string(name)
+
 	return &BundleData{
 		BundleHeader: header,
 		FS:           readBundle(section.Offset, assetsReader, filename),
