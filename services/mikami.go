@@ -80,6 +80,9 @@ func registerWindow(window *application.WebviewWindow) uint {
 		window.ExecJS(fmt.Sprintf("sessionStorage.setItem(\"mikami_name\", \"%s\");", window.Name()))
 		window.EmitEvent("MikamiReady", nil)
 	})
+	window.OnWindowEvent(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		CloseWebview(id)
+	})
 	impl := reflect.ValueOf(window).Elem().FieldByName("impl").Elem().Elem()
 	windowPtr := unsafe.Pointer(impl.FieldByName("window").Pointer())
 	webviews = append(webviews, &Webview{
@@ -94,8 +97,9 @@ func registerWindow(window *application.WebviewWindow) uint {
 
 func (m *Mikami) NewWindow(path string) uint {
 	window := m.app.NewWebviewWindowWithOptions(application.WebviewWindowOptions{
-		Hidden: true,
-		URL:    path,
+		Hidden:            true,
+		URL:               path,
+		EnableDragAndDrop: false,
 	})
 	impl := reflect.ValueOf(window).Elem().FieldByName("impl").Elem().Elem()
 	windowPtr := (*C.GtkWindow)(unsafe.Pointer(impl.FieldByName("window").Pointer()))
@@ -103,7 +107,7 @@ func (m *Mikami) NewWindow(path string) uint {
 	webviewPtr := (*C.WebKitWebView)(unsafe.Pointer(impl.FieldByName("webview").Pointer()))
 	application.InvokeSync(func() {
 		// 解除 wails 默认的最大最小Size的设置
-		C.gtk_window_set_geometry_hints(windowPtr, nil, nil, C.GDK_HINT_MAX_SIZE|C.GDK_HINT_MIN_SIZE)
+		C.gtk_window_set_geometry_hints(windowPtr, nil, nil, 0)
 		// 设置背景透明
 		rgba := C.GdkRGBA{C.double(0), C.double(0), C.double(0), C.double(0)}
 		C.webkit_web_view_set_background_color(webviewPtr, &rgba)

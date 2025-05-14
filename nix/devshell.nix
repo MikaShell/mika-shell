@@ -26,7 +26,6 @@ in {
       if ! command -v wails3 &> /dev/null; then
         go install github.com/wailsapp/wails/v3/cmd/wails3@latest
       fi
-      echo $GDK_PIXBUF_MODULE_FILE
     '';
   };
 }

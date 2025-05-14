@@ -178,7 +178,7 @@ func New(onNotify func(Notification), onCloseNotification func(uint32)) (*Notify
 
 	reply, err := conn.RequestName("org.freedesktop.Notifications", dbus.NameFlagDoNotQueue)
 	if err != nil || reply != dbus.RequestNameReplyPrimaryOwner {
-		return nil, fmt.Errorf("failed to request name: %v", err)
+		return nil, fmt.Errorf("failed to request name, is there another process registered notifications? err:: %v", err)
 	}
 	notifyd := &Notifyd{conn: conn, onNotify: onNotify, onCloseNotification: onCloseNotification}
 	conn.Export(notifyd, "/org/freedesktop/Notifications", "org.freedesktop.Notifications")

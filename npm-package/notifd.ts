@@ -21,7 +21,7 @@ export async function Subscribe<T extends "notification" | "close-notification">
     if (id === 0) await WaitReady();
     if (name === "notification") {
         if (onNotificationListener.length === 0) {
-            notifd.Subscribe(id);
+            await notifd.Subscribe(id);
             WailsEventOn(`Notifd.Notification`, (e) => {
                 const data = e.data[0];
                 for (const listener of onNotificationListener || []) {
@@ -33,7 +33,7 @@ export async function Subscribe<T extends "notification" | "close-notification">
     }
     if (name === "close-notification") {
         if (onCloseNotificationListener.length === 0) {
-            notifd.Subscribe(id);
+            await notifd.Subscribe(id);
             WailsEventOn(`Notifd.CloseNotification`, (e) => {
                 const data = e.data[0];
                 for (const listener of onCloseNotificationListener || []) {

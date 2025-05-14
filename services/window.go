@@ -28,11 +28,7 @@ func (w *Window) Init(id uint, options WindowOption) error {
 	if err != nil {
 		return err
 	}
-	if win.IsInit {
-		return nil
-	}
 	webviewWindow := win.WebviewWindow
-
 	if options.Title != "" {
 		webviewWindow.SetTitle(options.Title)
 	}
