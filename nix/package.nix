@@ -3,9 +3,6 @@
   makeWrapper,
   pkg-config,
   buildGoModule,
-  glib-networking,
-  gsettings-desktop-schemas,
-  gtk3,
   webkitgtk_4_1,
   libwebp,
   librsvg,
@@ -26,20 +23,24 @@ buildGoModule {
   tags =
     [
       "desktop"
-      "production"
     ]
-    ++ (lib.optional debug ["debug"]);
+    ++ (
+      if debug
+      then ["debug"]
+      else ["production"]
+    );
   ldflags = [
     "-s"
     "-w"
   ];
 
   # https://wails.io/docs/guides/nixos-font/
-  postFixup = ''
-    wrapProgram $out/bin/mikami \
-      --set XDG_DATA_DIRS ${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}:${gtk3}/share/gsettings-schemas/${gtk3.name}:$XDG_DATA_DIRS \
-      --set GIO_MODULE_DIR ${glib-networking}/lib/gio/modules/
-  '';
+  # 应用此 Fixup 会导致 XDG_DATA_DIRS 丢失用户的目录
+  # postFixup = ''
+  #   wrapProgram $out/bin/mikami \
+  #     --set XDG_DATA_DIRS ${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}:${gtk3}/share/gsettings-schemas/${gtk3.name}:$XDG_DATA_DIRS \
+  #     --set GIO_MODULE_DIR ${glib-networking}/lib/gio/modules/
+  # '';
   meta = {
     description = "Build display manager using HTML + CSS + JS";
     homepage = "https://github.com/HumXC/mikami";
