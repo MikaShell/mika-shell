@@ -9,3 +9,4 @@ export * as Notifd from "./notifd";
 export * as OS from "./os";
 export * as App from "./app";
 export * as Theme from "./theme";
+export * as Config from "./config";

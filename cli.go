@@ -53,10 +53,10 @@ func NewCli() *cli.App {
 		Action: CmdMain,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "assets",
-				Aliases: []string{"a"},
-				Value:   filepath.Join(configDir, "assets"),
-				Usage:   "Set of assets to serve",
+				Name:    "config",
+				Aliases: []string{"c"},
+				Value:   configDir,
+				Usage:   "Set config directory path",
 			},
 			&cli.StringFlag{
 				Name:    "instance",
@@ -101,7 +101,8 @@ func CmdMain(ctx *cli.Context) error {
 	assetsPath := ctx.String("dev")
 	isDevMode := true
 	if assetsPath == "" {
-		assetsPath = ctx.String("assets")
+		assetsPath = filepath.Join(ctx.String("config"), "assets")
+		os.Mkdir(assetsPath, 0755)
 		isDevMode = false
 	}
 	var assetsServer http.Handler
@@ -137,6 +138,7 @@ func CmdMain(ctx *cli.Context) error {
 			services.NewOS(),
 			services.NewApp(),
 			services.NewTheme(),
+			services.NewConfig(filepath.Join(ctx.String("config"), "config.json")),
 			application.NewService(application.DefaultLogger(slog.LevelInfo)),
 		},
 	})
