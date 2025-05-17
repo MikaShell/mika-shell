@@ -1,29 +1,30 @@
 {
-  nixpkgs,
-  system,
+  pkgs,
+  mkShell,
+  pkg-config,
+  zig,
+  zls,
+  gtk4,
+  webkitgtk_6_0,
+  gtk4-layer-shell,
+  librsvg,
   ...
 }: let
-  pkgs = import nixpkgs {inherit system;};
-  wails3 = pkgs.callPackage ./wails3.nix {};
-in {
-  default = pkgs.mkShell {
-    buildInputs = with pkgs; [
-      go
-      nodejs
-      gtk3
-      webkitgtk_4_1
-      gtk-layer-shell
-      libwebp
-      wails3
-      typescript
-      librsvg
+  # zig 不支持 -mfpmath=sse 选项
+  custom-pkg-config = pkgs.writeScriptBin "pkg-config" ''
+    #!/usr/bin/env bash
+    exec ${pkgs.pkg-config}/bin/pkg-config "$@" | sed 's/-mfpmath=sse//g'
+  '';
+in
+  mkShell {
+    buildInputs = [
+      custom-pkg-config
       pkg-config
+      zig
+      zls
+      gtk4
+      webkitgtk_6_0
+      gtk4-layer-shell
+      librsvg
     ];
-    CGO_CFLAGS = "-Wno-error=cpp";
-    shellHook = ''
-      if ! command -v wails3 &> /dev/null; then
-        go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-      fi
-    '';
-  };
-}
+  }

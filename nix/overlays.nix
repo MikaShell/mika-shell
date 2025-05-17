@@ -5,6 +5,5 @@
       system = final.system;
     };
   in {
-    mikami.default = packages.default;
   };
 }

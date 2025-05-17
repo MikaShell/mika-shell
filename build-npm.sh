@@ -6,3 +6,4 @@ if [ "$1" = "pack" ]; then
     npm pack ./npm-package/dist
     rm -rf npm-package/dist/*.js npm-package/dist/*.d.ts
 fi
+S

@@ -10,8 +10,13 @@
     ];
   in {
     overlays = import ./nix/overlays.nix {inherit nixpkgs;};
-    packages = forAllSystems (system: import ./nix/pkgs.nix {inherit nixpkgs system;});
-    devShells = forAllSystems (system: import ./nix/devshell.nix {inherit nixpkgs system;});
+    devShells = forAllSystems (
+      system: let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        default = pkgs.callPackage ./nix/devshell.nix {};
+      }
+    );
   };
   nixConfig = {
     # substituers will be appended to the default substituters when fetching packages

@@ -1,12 +1,12 @@
 .direnv
 .envrc
 .vscode
-frontend
 result
-/mikami
 npm-package/bindings
 npm-package/dist/*
 !npm-package/dist/package.json
 npm-package/*.d.ts
 npm-package/*.js
 *.tgz
+zig-out
+.zig-cache
