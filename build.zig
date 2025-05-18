@@ -7,6 +7,34 @@ pub fn build(b: *std.Build) void {
         .preferred_link_mode = .dynamic,
         .search_strategy = .mode_first,
     };
+    var gtk_mod: *std.Build.Module = undefined;
+    var layershell_mod: *std.Build.Module = undefined;
+    var webkit_mod: *std.Build.Module = undefined;
+    // pkgs
+    {
+        gtk_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/gtk.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        layershell_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/layershell.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        webkit_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/webkit.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        // Linking
+        gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+        layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
+        layershell_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+        webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
+        webkit_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+        webkit_mod.addImport("gtk", gtk_mod);
+    }
     // EXE
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -18,31 +46,8 @@ pub fn build(b: *std.Build) void {
         .name = "mikami",
         .root_module = exe_mod,
     });
-    // Module
-    const gtk_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/gtk.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const layershell_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/layershell.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const webkit_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/webkit.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    // Linking
-    gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
-    layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
-    layershell_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
-    webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
-
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
-    exe_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
 
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
