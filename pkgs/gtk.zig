@@ -1,41 +1,54 @@
+usingnamespace @cImport({
+    @cInclude("gtk/gtk.h");
+});
 const c = @cImport({
     @cInclude("gtk/gtk.h");
 });
 const std = @import("std");
-fn on_activate(_: *c.GtkApplication, data: c.gpointer) callconv(.C) void {
-    const app: *Application = @ptrCast(@alignCast(data));
-    if (app.onActivate) |callback| {
-        callback(app);
-    }
-}
-pub const Application = struct {
-    allocator: std.mem.Allocator,
-    gtk_app: *c.GtkApplication,
-    onActivate: ?*const fn (*@This()) void = null,
-    pub fn init(allocator: std.mem.Allocator, id: []const u8) !*@This() {
-        const gtk_app = c.gtk_application_new(@ptrCast(id), c.G_APPLICATION_FLAGS_NONE);
-        const app = try allocator.create(Application);
-        app.* = Application{
-            .allocator = allocator,
-            .gtk_app = gtk_app,
-        };
-        return app;
-    }
-    pub fn deinit(self: *@This()) void {
-        c.g_object_unref(self.gtk_app);
-        self.allocator.destroy(self);
-    }
+extern fn gtk_init() void;
 
-    pub fn run(self: *@This()) i32 {
-        _ = c.g_signal_connect_data(
-            @ptrCast(self.gtk_app),
-            "activate",
-            @ptrCast(&on_activate),
-            self,
-            null,
-            0,
-        );
-        const state = c.g_application_run(@ptrCast(self.gtk_app), 0, null);
-        return state;
+pub fn mainIteration() bool {
+    if (c.g_main_context_iteration(null, 0) == 0) {
+        return false;
     }
+    return true;
+}
+pub const init = gtk_init;
+pub const Widget = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    extern fn gtk_widget_show(widget: *Widget) void;
+    pub fn show(self: *Self) void {
+        gtk_widget_show(self);
+    }
+    extern fn gtk_widget_hide(widget: *Widget) void;
+    pub fn hide(self: *Self) void {
+        c.gtk_widget_hide(self);
+    }
+    pub fn as(self: *Self, comptime T: type) *T {
+        return @ptrCast(self);
+    }
+};
+pub const Window = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    extern fn gtk_window_new() *Widget;
+    pub fn new() *Window {
+        return @ptrCast(gtk_window_new());
+    }
+    pub fn asWidget(self: *Self) *Widget {
+        return @ptrCast(self);
+    }
+    extern fn gtk_window_present(window: *Window) void;
+    pub fn present(self: *Self) void {
+        gtk_window_present(self);
+    }
+    pub fn destroy(self: *Self) void {
+        c.gtk_window_destroy(self);
+    }
+    pub fn close(self: *Self) void {
+        c.gtk_window_close(self);
+    }
+    extern fn gtk_window_set_child(window: *Window, child: *Widget) void;
+    pub const setChild = gtk_window_set_child;
 };
