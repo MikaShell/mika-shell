@@ -8,10 +8,7 @@ const std = @import("std");
 extern fn gtk_init() void;
 
 pub fn mainIteration() bool {
-    if (c.g_main_context_iteration(null, 0) == 0) {
-        return false;
-    }
-    return true;
+    return c.g_main_context_iteration(null, 0) == 1;
 }
 pub const init = gtk_init;
 pub const Widget = extern struct {
