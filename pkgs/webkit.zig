@@ -7,7 +7,20 @@ const gtk = @import("gtk");
 usingnamespace @cImport({
     @cInclude("gtk/gtk.h");
     @cInclude("webkit/webkit.h");
+    @cInclude("jsc/jsc.h");
 });
+const GCallback = ?*const fn () callconv(.c) void;
+pub const GClosureNotify = ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void;
+
+extern fn g_signal_connect_data(
+    instance: ?*anyopaque,
+    detailed_signal: [*:0]const u8,
+    c_handler: GCallback,
+    data: ?*anyopaque,
+    destroy_data: GClosureNotify,
+    connect_flags: c_int,
+) void;
+
 pub const WebView = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
@@ -18,14 +31,96 @@ pub const WebView = extern struct {
     pub fn new() *WebView {
         return @ptrCast(webkit_web_view_new());
     }
-    pub extern fn webkit_web_view_load_uri(*WebView, [*:0]const u8) void;
-    pub const loadUri = webkit_web_view_load_uri;
-    extern fn webkit_web_view_get_settings(*WebView) ?*Settings;
-    pub const getSettings = webkit_web_view_get_settings;
-    extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
-    pub const setSettings = webkit_web_view_set_settings;
+    extern fn webkit_web_view_load_uri(*WebView, [*:0]const u8) void;
     extern fn webkit_web_view_load_html(*WebView, [*:0]u8, [*:0]const u8) void;
-    pub const loadHtml = webkit_web_view_load_html;
+    extern fn webkit_web_view_get_settings(*WebView) ?*Settings;
+    extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
+    extern fn webkit_web_view_get_user_content_manager(*WebView) ?*UserContentManager;
+    pub fn loadUri(self: *Self, uri: [*:0]const u8) void {
+        webkit_web_view_load_uri(self, uri);
+    }
+    pub fn loadHtml(self: *Self, html: []u8, baseUrl: [*:0]const u8) void {
+        webkit_web_view_load_html(self, @ptrCast(html.ptr), baseUrl);
+    }
+    pub const setSettings = webkit_web_view_set_settings;
+    pub const getSettings = webkit_web_view_get_settings;
+    pub const getUserContentManager = webkit_web_view_get_user_content_manager;
+};
+pub const JSCContext = extern struct {
+    const Self = @This();
+    extern fn jsc_value_new_undefined(self: *Self) *JSCValue;
+    extern fn jsc_value_new_null(self: *Self) *JSCValue;
+    extern fn jsc_value_new_boolean(self: *Self, value: c_int) *JSCValue;
+    extern fn jsc_value_new_number(self: *Self, number: f64) *JSCValue;
+    extern fn jsc_value_new_string(self: *Self, string: [*:0]const u8) *JSCValue;
+    extern fn jsc_value_new_from_json(self: *Self, json: [*:0]const u8) *JSCValue;
+    pub const newUndefined = jsc_value_new_undefined;
+    pub const newNull = jsc_value_new_null;
+    pub const newNumber = jsc_value_new_number;
+    pub const newString = jsc_value_new_string;
+    pub const newFromJson = jsc_value_new_from_json;
+    pub fn newBoolean(self: *Self, value: bool) *JSCValue {
+        return jsc_value_new_boolean(self, if (value) 1 else 0);
+    }
+};
+pub const JSCValue = extern struct {
+    const Self = @This();
+    extern fn jsc_value_to_json(value: *JSCValue, indent: c_uint) [*:0]u8;
+    extern fn jsc_value_to_string(self: *Self) [*:0]u8;
+    extern fn jsc_value_get_context(self: *JSCValue) *JSCContext;
+    pub const toJson = jsc_value_to_json;
+    pub const toString = jsc_value_to_string;
+    pub const getContext = jsc_value_get_context;
+};
+pub const ScriptMessageReply = extern struct {
+    const Self = @This();
+    extern fn webkit_script_message_reply_return_value(script_message_reply: ?*ScriptMessageReply, reply_value: ?*JSCValue) void;
+    extern fn webkit_script_message_reply_return_error_message(script_message_reply: ?*ScriptMessageReply, error_message: [*:0]const u8) void;
+    pub fn value(self: *Self, value_: ?*JSCValue) void {
+        webkit_script_message_reply_return_value(self, value_);
+    }
+    pub fn errorMessage(self: *Self, message: [*:0]const u8) void {
+        webkit_script_message_reply_return_error_message(self, message);
+    }
+};
+pub const UserContentManager = extern struct {
+    const Self = @This();
+    pub const Signal = enum {
+        ScriptMessageReceived,
+        ScriptMessageWithReplyReceived,
+    };
+    pub const Callback = struct {
+        pub const ScriptMessageReceived = *const fn (self: *Self, value: *JSCValue, data: ?*anyopaque) callconv(.c) void;
+        pub const ScriptMessageWithReplyReceived = *const fn (self: *Self, value: *JSCValue, reply: *ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int;
+    };
+    parent_instance: *anyopaque,
+    extern fn webkit_user_content_manager_register_script_message_handler_with_reply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) c_int;
+    extern fn webkit_user_content_manager_register_script_message_handler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) c_int;
+    pub fn registerScriptMessageHandler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
+        return webkit_user_content_manager_register_script_message_handler(self, name, world_name) == 1;
+    }
+    pub fn registerScriptMessageHandlerWithReply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
+        return webkit_user_content_manager_register_script_message_handler_with_reply(self, name, world_name) == 1;
+    }
+    pub fn connect(
+        self: *Self,
+        comptime signal: Signal,
+        name: []const u8,
+        callback: switch (signal) {
+            .ScriptMessageReceived => Callback.ScriptMessageReceived,
+            .ScriptMessageWithReplyReceived => Callback.ScriptMessageWithReplyReceived,
+        },
+        data: ?*anyopaque,
+    ) void {
+        const allocator = std.heap.page_allocator;
+        const s = switch (signal) {
+            .ScriptMessageReceived => "script-message-received",
+            .ScriptMessageWithReplyReceived => "script-message-with-reply-received",
+        };
+        const signal_ = std.fmt.allocPrint(allocator, "{s}::{s}", .{ s, name }) catch unreachable;
+        defer allocator.free(signal_);
+        g_signal_connect_data(@ptrCast(self), @ptrCast(signal_), @ptrCast(callback), data, null, 0);
+    }
 };
 pub const HardwareAccelerationPolicy = enum(u8) {
     Always = 0,

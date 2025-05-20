@@ -2,11 +2,17 @@
 <html>
     <head>
         <title>Welcome</title>
-        <script></script>
+        <script>
+            window.webkit.messageHandlers.mikami
+                .postMessage({
+                    data: 12345,
+                    message: "Hello from JavaScript!",
+                })
+                .then((result) => console.log(result));
+        </script>
     </head>
     <body>
         <h1>Welcome</h1>
-        <img src="mikami://image/test" />
         <p>This is a test website for Aikami.</p>
     </body>
 </html>

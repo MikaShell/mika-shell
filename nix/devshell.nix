@@ -1,4 +1,5 @@
 {
+  lib,
   pkgs,
   mkShell,
   pkg-config,
@@ -10,6 +11,7 @@
   zlib,
   glib-networking,
   openssl,
+  devhelp,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -17,6 +19,10 @@
     #!/usr/bin/env bash
     exec ${pkgs.pkg-config}/bin/pkg-config "$@" | sed 's/-mfpmath=sse//g'
   '';
+  docs = lib.makeSearchPathOutput "devdoc" "share" [
+    gtk4
+    webkitgtk_6_0
+  ];
 in
   mkShell {
     buildInputs = [
@@ -30,6 +36,10 @@ in
       glib-networking
       gtk4
       webkitgtk_6_0
+      devhelp
     ];
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
+    shellHook = ''
+      export XDG_DATA_DIRS=${docs}:$XDG_DATA_DIRS
+    '';
   }

@@ -14,13 +14,16 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile("index.html", .{});
     const contents = try file.readToEndAllocOptions(std.heap.page_allocator, std.math.maxInt(usize), null, 1, 0);
 
-    const context = webkit.Context.getDefault();
-    context.?.registerUriScheme("mikami", struct {
-        fn f(req: ?*webkit.URISchemeRequest, _: *anyopaque) callconv(.C) void {
-            std.log.debug("mikami scheme called: {s}", .{req.?.getUri()});
-        }
-    }.f, null, null);
+    const manager = webview.getUserContentManager() orelse return error.FailedToGetUserContentManager;
+    _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
 
+    manager.connect(.ScriptMessageWithReplyReceived, "mikami", &struct {
+        fn f(_: *webkit.UserContentManager, v: *webkit.JSCValue, reply: *webkit.ScriptMessageReply, _: ?*anyopaque) callconv(.c) c_int {
+            std.log.debug("Received message from JS: {s}  ", .{v.toString()});
+            reply.value(v.getContext().newString("Hello from Zig!"));
+            return 0;
+        }
+    }.f, null);
     webview.loadHtml(@ptrCast(contents), "/");
     window.setChild(webview.asWidget());
     window.present();
