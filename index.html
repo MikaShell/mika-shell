@@ -9,6 +9,8 @@
                     message: "Hello from JavaScript!",
                 })
                 .then((result) => console.log(result));
+            localStorage.setItem("test", "123");
+            console.log(localStorage.getItem("test")); // 应该输出 "123"
         </script>
     </head>
     <body>

@@ -4,6 +4,8 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("gtk/gtk.h");
 });
+const assets = @import("assets.zig");
+const app = @import("app.zig");
 pub fn main() !void {
     gtk.init();
     const window = gtk.Window.new();
@@ -11,8 +13,6 @@ pub fn main() !void {
     const settings = webview.getSettings() orelse return error.FailedToGetSettings;
     settings.setHardwareAccelerationPolicy(webkit.HardwareAccelerationPolicy.Never);
     settings.setEnableDeveloperExtras(true);
-    const file = try std.fs.cwd().openFile("index.html", .{});
-    const contents = try file.readToEndAllocOptions(std.heap.page_allocator, std.math.maxInt(usize), null, 1, 0);
 
     const manager = webview.getUserContentManager() orelse return error.FailedToGetUserContentManager;
     _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
@@ -24,9 +24,21 @@ pub fn main() !void {
             return 0;
         }
     }.f, null);
-    webview.loadHtml(@ptrCast(contents), "/");
+    webview.loadUri("http://localhost:6797/");
     window.setChild(webview.asWidget());
     window.present();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    const baseConfigDir = try app.getConfigDir(allocator);
+    std.log.debug("ConfigDir: {s}", .{baseConfigDir});
+    var server = try assets.Server.init(allocator, baseConfigDir);
+    defer {
+        server.stop();
+        server.deinit();
+    }
+
+    _ = try server.start();
     while (true) {
         _ = gtk.mainIteration();
     }

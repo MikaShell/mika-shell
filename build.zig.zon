@@ -7,7 +7,12 @@
 
     .minimum_zig_version = "0.14.0",
 
-    .dependencies = .{},
+    .dependencies = .{
+        .httpz = .{
+            .url = "https://github.com/karlseguin/http.zig/archive/bf66b28690967fec187bc3074ebdd2cf748e172e.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrDm1BgBS1NqfP2uTPocAxDSTjZNJKr41Q_S63cFB",
+        },
+    },
 
     .paths = .{
         "build.zig",

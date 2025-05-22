@@ -48,7 +48,11 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
-
+    const httpz = b.dependency("httpz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);

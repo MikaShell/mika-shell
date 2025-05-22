@@ -21,6 +21,29 @@ extern fn g_signal_connect_data(
     connect_flags: c_int,
 ) void;
 
+pub const WebsiteDataManager = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*:0]const u8;
+    extern fn webkit_website_data_manager_is_ephemeral(self: *Self) c_int;
+    pub fn getBaseDataDirectory(self: *Self) [*:0]const u8 {
+        return webkit_website_data_manager_get_base_data_directory(self);
+    }
+    pub fn isEphemeral(self: *Self) bool {
+        return webkit_website_data_manager_is_ephemeral(self) == 1;
+    }
+};
+pub const NetworkSession = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    extern fn webkit_network_session_is_ephemeral(self: *Self) c_int;
+    extern fn webkit_network_session_get_website_data_manager(self: *Self) ?*WebsiteDataManager;
+    pub fn isEphemeral(self: *Self) bool {
+        return webkit_network_session_is_ephemeral(self) == 1;
+    }
+    pub const getWebsiteDataManager = webkit_network_session_get_website_data_manager;
+};
+
 pub const WebView = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
@@ -36,6 +59,7 @@ pub const WebView = extern struct {
     extern fn webkit_web_view_get_settings(*WebView) ?*Settings;
     extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
     extern fn webkit_web_view_get_user_content_manager(*WebView) ?*UserContentManager;
+    extern fn webkit_web_view_get_network_session(self: *Self) ?*NetworkSession;
     pub fn loadUri(self: *Self, uri: [*:0]const u8) void {
         webkit_web_view_load_uri(self, uri);
     }
@@ -45,6 +69,7 @@ pub const WebView = extern struct {
     pub const setSettings = webkit_web_view_set_settings;
     pub const getSettings = webkit_web_view_get_settings;
     pub const getUserContentManager = webkit_web_view_get_user_content_manager;
+    pub const getNetworkSession = webkit_web_view_get_network_session;
 };
 pub const JSCContext = extern struct {
     const Self = @This();
@@ -130,21 +155,22 @@ pub const Settings = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
     extern fn webkit_settings_get_hardware_acceleration_policy(?*Settings) c.WebKitHardwareAccelerationPolicy;
-    pub fn getHardwareAccelerationPolicy(self: ?*Self) HardwareAccelerationPolicy {
+    extern fn webkit_settings_set_hardware_acceleration_policy(?*Settings, c_uint) void;
+    extern fn webkit_settings_set_enable_developer_extras(?*Settings, c_int) void;
+    extern fn webkit_settings_get_enable_developer_extras(?*Settings) c_int;
+    pub fn getHardwareAccelerationPolicy(self: *Self) HardwareAccelerationPolicy {
         return @enumFromInt(webkit_settings_get_hardware_acceleration_policy(self));
     }
-    extern fn webkit_settings_set_hardware_acceleration_policy(?*Settings, c_uint) void;
-    pub fn setHardwareAccelerationPolicy(self: ?*Self, policy: HardwareAccelerationPolicy) void {
+    pub fn setHardwareAccelerationPolicy(self: *Self, policy: HardwareAccelerationPolicy) void {
         webkit_settings_set_hardware_acceleration_policy(self, @intFromEnum(policy));
     }
-    extern fn webkit_settings_set_enable_developer_extras(?*Settings, c_int) void;
-    pub fn setEnableDeveloperExtras(self: ?*Self, enable: bool) void {
+    pub fn setEnableDeveloperExtras(self: *Self, enable: bool) void {
         webkit_settings_set_enable_developer_extras(self, @intFromBool(enable));
     }
-    extern fn webkit_settings_get_enable_developer_extras(?*Settings) c_int;
-    pub fn getEnableDeveloperExtras(self: ?*Self) bool {
+    pub fn getEnableDeveloperExtras(self: *Self) bool {
         return webkit_settings_get_enable_developer_extras(self) == 1;
     }
+    // webkit_website_data_manager_fetch(manager: ?*WebKitWebsiteDataManager, types: WebKitWebsiteDataTypes, cancellable: [*c]GCancellable, callback: GAsyncReadyCallback, user_data: gpointer)
 };
 extern fn g_object_unref(object: ?*anyopaque) void;
 pub const GCancellable = extern struct {
@@ -233,22 +259,22 @@ pub const URISchemeRequest = extern struct {
         g_object_unref(@ptrCast(self));
     }
     extern fn webkit_uri_scheme_request_get_scheme(request: ?*URISchemeRequest) [*:0]const u8;
-    pub const getScheme = webkit_uri_scheme_request_get_scheme;
     extern fn webkit_uri_scheme_request_get_uri(request: ?*URISchemeRequest) [*:0]const u8;
-    pub const getUri = webkit_uri_scheme_request_get_uri;
     extern fn webkit_uri_scheme_request_get_path(request: ?*URISchemeRequest) [*:0]const u8;
-    pub const getPath = webkit_uri_scheme_request_get_path;
     extern fn webkit_uri_scheme_request_get_web_view(request: ?*URISchemeRequest) *WebView;
-    pub const getWebView = webkit_uri_scheme_request_get_web_view;
     extern fn webkit_uri_scheme_request_get_http_method(request: ?*URISchemeRequest) [*:0]const u8;
-    pub const getHttpMethod = webkit_uri_scheme_request_get_http_method;
     extern fn webkit_uri_scheme_request_get_http_body(request: ?*URISchemeRequest) *GInputStream;
-    pub const getHttpBody = webkit_uri_scheme_request_get_http_body;
     extern fn webkit_uri_scheme_request_finish(request: ?*URISchemeRequest, stream: *GInputStream, stream_length: c_long, content_type: [*:0]const u8) void;
-    pub const finish = webkit_uri_scheme_request_finish;
-    pub extern fn webkit_uri_scheme_request_finish_with_response(request: ?*URISchemeRequest, response: ?*URISchemeResponse) void;
-    pub const finishWithResponse = webkit_uri_scheme_request_finish_with_response;
+    extern fn webkit_uri_scheme_request_finish_with_response(request: ?*URISchemeRequest, response: ?*URISchemeResponse) void;
     extern fn webkit_uri_scheme_request_finish_error(request: ?*URISchemeRequest, @"error": *GError) void;
+    pub const getScheme = webkit_uri_scheme_request_get_scheme;
+    pub const getUri = webkit_uri_scheme_request_get_uri;
+    pub const getPath = webkit_uri_scheme_request_get_path;
+    pub const getWebView = webkit_uri_scheme_request_get_web_view;
+    pub const getHttpMethod = webkit_uri_scheme_request_get_http_method;
+    pub const getHttpBody = webkit_uri_scheme_request_get_http_body;
+    pub const finish = webkit_uri_scheme_request_finish;
+    pub const finishWithResponse = webkit_uri_scheme_request_finish_with_response;
     pub const finishError = webkit_uri_scheme_request_finish_error;
 };
 pub const Context = extern struct {
@@ -258,7 +284,6 @@ pub const Context = extern struct {
         g_object_unref(@ptrCast(self));
     }
     extern fn webkit_web_context_get_default() ?*Context;
-    pub const getDefault = webkit_web_context_get_default;
     extern fn webkit_web_context_register_uri_scheme(
         ?*Context,
         name: [*:0]const u8,
@@ -266,5 +291,6 @@ pub const Context = extern struct {
         data: ?*anyopaque,
         destryCallback: ?*c.GDestroyNotify,
     ) void;
+    pub const getDefault = webkit_web_context_get_default;
     pub const registerUriScheme = webkit_web_context_register_uri_scheme;
 };
