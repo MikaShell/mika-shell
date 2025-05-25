@@ -25,21 +25,21 @@ pub const WebsiteDataManager = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
     extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*:0]const u8;
-    extern fn webkit_website_data_manager_is_ephemeral(self: *Self) c_int;
+    extern fn webkit_website_data_manager_is_ephemeral(self: *Self) gboolean;
     pub fn getBaseDataDirectory(self: *Self) [*:0]const u8 {
         return webkit_website_data_manager_get_base_data_directory(self);
     }
     pub fn isEphemeral(self: *Self) bool {
-        return webkit_website_data_manager_is_ephemeral(self) == 1;
+        return boolFromGboolean(webkit_website_data_manager_is_ephemeral(self));
     }
 };
 pub const NetworkSession = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
-    extern fn webkit_network_session_is_ephemeral(self: *Self) c_int;
+    extern fn webkit_network_session_is_ephemeral(self: *Self) gboolean;
     extern fn webkit_network_session_get_website_data_manager(self: *Self) ?*WebsiteDataManager;
     pub fn isEphemeral(self: *Self) bool {
-        return webkit_network_session_is_ephemeral(self) == 1;
+        return boolFromGboolean(webkit_network_session_is_ephemeral(self));
     }
     pub const getWebsiteDataManager = webkit_network_session_get_website_data_manager;
 };
@@ -54,12 +54,18 @@ pub const WebView = extern struct {
     pub fn new() *WebView {
         return @ptrCast(webkit_web_view_new());
     }
+    pub fn destroy(self: *Self) void {
+        self.asWidget().destroy();
+    }
     extern fn webkit_web_view_load_uri(*WebView, [*:0]const u8) void;
     extern fn webkit_web_view_load_html(*WebView, [*:0]u8, [*:0]const u8) void;
     extern fn webkit_web_view_get_settings(*WebView) ?*Settings;
     extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
     extern fn webkit_web_view_get_user_content_manager(*WebView) ?*UserContentManager;
     extern fn webkit_web_view_get_network_session(self: *Self) ?*NetworkSession;
+    extern fn webkit_web_view_get_page_id(self: *Self) c_ulong;
+    extern fn webkit_web_view_get_title(self: *Self) [*:0]const u8;
+    extern fn webkit_web_view_get_uri(self: *Self) [*:0]const u8;
     pub fn loadUri(self: *Self, uri: [*:0]const u8) void {
         webkit_web_view_load_uri(self, uri);
     }
@@ -70,32 +76,31 @@ pub const WebView = extern struct {
     pub const getSettings = webkit_web_view_get_settings;
     pub const getUserContentManager = webkit_web_view_get_user_content_manager;
     pub const getNetworkSession = webkit_web_view_get_network_session;
+    pub const getPageId = webkit_web_view_get_page_id;
+    pub const getTitle = webkit_web_view_get_title;
+    pub const getUri = webkit_web_view_get_uri;
 };
 pub const JSCContext = extern struct {
     const Self = @This();
+    extern fn jsc_context_new() *JSCContext;
     extern fn jsc_value_new_undefined(self: *Self) *JSCValue;
-    extern fn jsc_value_new_null(self: *Self) *JSCValue;
-    extern fn jsc_value_new_boolean(self: *Self, value: c_int) *JSCValue;
-    extern fn jsc_value_new_number(self: *Self, number: f64) *JSCValue;
-    extern fn jsc_value_new_string(self: *Self, string: [*:0]const u8) *JSCValue;
     extern fn jsc_value_new_from_json(self: *Self, json: [*:0]const u8) *JSCValue;
     pub const newUndefined = jsc_value_new_undefined;
-    pub const newNull = jsc_value_new_null;
-    pub const newNumber = jsc_value_new_number;
-    pub const newString = jsc_value_new_string;
     pub const newFromJson = jsc_value_new_from_json;
-    pub fn newBoolean(self: *Self, value: bool) *JSCValue {
-        return jsc_value_new_boolean(self, if (value) 1 else 0);
-    }
+    pub const new = jsc_context_new;
 };
+pub const gboolean = c_int;
+fn boolFromGboolean(value: gboolean) bool {
+    return value == 1;
+}
 pub const JSCValue = extern struct {
     const Self = @This();
-    extern fn jsc_value_to_json(value: *JSCValue, indent: c_uint) [*:0]u8;
-    extern fn jsc_value_to_string(self: *Self) [*:0]u8;
-    extern fn jsc_value_get_context(self: *JSCValue) *JSCContext;
-    pub const toJson = jsc_value_to_json;
-    pub const toString = jsc_value_to_string;
+    extern fn jsc_value_to_json(value: *Self, indent: c_uint) [*:0]u8;
+    extern fn jsc_value_get_context(self: *Self) *JSCContext;
     pub const getContext = jsc_value_get_context;
+    pub fn toJson(self: *Self, indent: u32) []const u8 {
+        return std.mem.span(jsc_value_to_json(self, indent));
+    }
 };
 pub const ScriptMessageReply = extern struct {
     const Self = @This();
@@ -119,13 +124,13 @@ pub const UserContentManager = extern struct {
         pub const ScriptMessageWithReplyReceived = *const fn (self: *Self, value: *JSCValue, reply: *ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int;
     };
     parent_instance: *anyopaque,
-    extern fn webkit_user_content_manager_register_script_message_handler_with_reply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) c_int;
-    extern fn webkit_user_content_manager_register_script_message_handler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) c_int;
+    extern fn webkit_user_content_manager_register_script_message_handler_with_reply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) gboolean;
+    extern fn webkit_user_content_manager_register_script_message_handler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) gboolean;
     pub fn registerScriptMessageHandler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
-        return webkit_user_content_manager_register_script_message_handler(self, name, world_name) == 1;
+        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler(self, name, world_name));
     }
     pub fn registerScriptMessageHandlerWithReply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
-        return webkit_user_content_manager_register_script_message_handler_with_reply(self, name, world_name) == 1;
+        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler_with_reply(self, name, world_name));
     }
     pub fn connect(
         self: *Self,
@@ -156,8 +161,8 @@ pub const Settings = extern struct {
     parent_instance: *anyopaque,
     extern fn webkit_settings_get_hardware_acceleration_policy(?*Settings) c.WebKitHardwareAccelerationPolicy;
     extern fn webkit_settings_set_hardware_acceleration_policy(?*Settings, c_uint) void;
-    extern fn webkit_settings_set_enable_developer_extras(?*Settings, c_int) void;
-    extern fn webkit_settings_get_enable_developer_extras(?*Settings) c_int;
+    extern fn webkit_settings_set_enable_developer_extras(?*Settings, gboolean) void;
+    extern fn webkit_settings_get_enable_developer_extras(?*Settings) gboolean;
     pub fn getHardwareAccelerationPolicy(self: *Self) HardwareAccelerationPolicy {
         return @enumFromInt(webkit_settings_get_hardware_acceleration_policy(self));
     }
@@ -168,7 +173,7 @@ pub const Settings = extern struct {
         webkit_settings_set_enable_developer_extras(self, @intFromBool(enable));
     }
     pub fn getEnableDeveloperExtras(self: *Self) bool {
-        return webkit_settings_get_enable_developer_extras(self) == 1;
+        return boolFromGboolean(webkit_settings_get_enable_developer_extras(self));
     }
     // webkit_website_data_manager_fetch(manager: ?*WebKitWebsiteDataManager, types: WebKitWebsiteDataTypes, cancellable: [*c]GCancellable, callback: GAsyncReadyCallback, user_data: gpointer)
 };
@@ -184,9 +189,9 @@ pub const GCancellable = extern struct {
     pub fn new() *GCancellable {
         return g_cancellable_new();
     }
-    extern fn g_cancellable_is_cancelled(cancellable: *GCancellable) c_int;
+    extern fn g_cancellable_is_cancelled(cancellable: *GCancellable) gboolean;
     pub fn isCancelled(self: *Self) bool {
-        return g_cancellable_is_cancelled(self) == 1;
+        return boolFromGboolean(g_cancellable_is_cancelled(self));
     }
     // extern fn g_cancellable_set_error_if_cancelled(cancellable: *GCancellable, @"error": **GError) c_int;
     // extern fn g_cancellable_get_fd(cancellable: *GCancellable) c_int;

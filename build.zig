@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("pkgs/webkit.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
         // Linking
         gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
@@ -40,8 +41,14 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
-
+    const modules_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/modules.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    modules_mod.addImport("webkit", webkit_mod);
     const exe = b.addExecutable(.{
         .name = "mikami",
         .root_module = exe_mod,
@@ -56,7 +63,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);
-    exe_mod.link_libc = true;
+    exe_mod.addImport("modules", modules_mod);
 
     b.installArtifact(exe);
     // CMD
@@ -74,9 +81,14 @@ pub fn build(b: *std.Build) void {
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
     });
+    const modules_unit_tests = b.addTest(.{
+        .root_module = modules_mod,
+    });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    const run_modules_unit_tests = b.addRunArtifact(modules_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_modules_unit_tests.step);
 }
