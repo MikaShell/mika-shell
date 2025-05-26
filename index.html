@@ -3,14 +3,21 @@
     <head>
         <title>Welcome</title>
         <script>
+            window.webkit.messageHandlers.mikami.postMessage({
+                method: "mikami.show",
+                args: [-1],
+            });
             window.webkit.messageHandlers.mikami
                 .postMessage({
-                    data: 12345,
-                    message: "Hello from JavaScript!",
+                    method: "mikami.open",
+                    args: ["https://www.google.com"],
                 })
-                .then((result) => console.log(result));
-            localStorage.setItem("test", "123");
-            console.log(localStorage.getItem("test")); // 应该输出 "123"
+                .then((id) => {
+                    window.webkit.messageHandlers.mikami.postMessage({
+                        method: "mikami.show",
+                        args: [id],
+                    });
+                });
         </script>
     </head>
     <body>

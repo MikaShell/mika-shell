@@ -8,11 +8,12 @@ const assets = @import("assets.zig");
 const app = @import("app.zig");
 pub fn main() !void {
     gtk.init();
-    var w = try app.Webview.init();
-    w.show();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+    const app_ = app.App.init(allocator);
+    _ = app_.createWebview("http://localhost:6797/");
+
     const baseConfigDir = try app.getConfigDir(allocator);
     std.log.debug("ConfigDir: {s}", .{baseConfigDir});
     var server = try assets.Server.init(allocator, baseConfigDir);

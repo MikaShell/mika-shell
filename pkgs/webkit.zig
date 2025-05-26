@@ -9,10 +9,10 @@ usingnamespace @cImport({
     @cInclude("webkit/webkit.h");
     @cInclude("jsc/jsc.h");
 });
-const GCallback = ?*const fn () callconv(.c) void;
+pub const GCallback = ?*const fn () callconv(.c) void;
 pub const GClosureNotify = ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void;
 
-extern fn g_signal_connect_data(
+pub extern fn g_signal_connect_data(
     instance: ?*anyopaque,
     detailed_signal: [*:0]const u8,
     c_handler: GCallback,
@@ -46,6 +46,18 @@ pub const NetworkSession = extern struct {
 
 pub const WebView = extern struct {
     const Self = @This();
+    pub const Signal = enum {
+        LoadChanged,
+    };
+    pub const LoadEvent = enum(c_int) {
+        Started,
+        Redirected,
+        Committed,
+        Finished,
+    };
+    pub const Callback = struct {
+        pub const LoadChanged = *const fn (webview: *Self, event: LoadEvent, data: ?*anyopaque) callconv(.C) void;
+    };
     parent_instance: *anyopaque,
     pub fn asWidget(self: *Self) *gtk.Widget {
         return @ptrCast(self);
@@ -63,11 +75,24 @@ pub const WebView = extern struct {
     extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
     extern fn webkit_web_view_get_user_content_manager(*WebView) ?*UserContentManager;
     extern fn webkit_web_view_get_network_session(self: *Self) ?*NetworkSession;
-    extern fn webkit_web_view_get_page_id(self: *Self) c_ulong;
+    extern fn webkit_web_view_get_page_id(self: *Self) u64; // c_ulong
     extern fn webkit_web_view_get_title(self: *Self) [*:0]const u8;
     extern fn webkit_web_view_get_uri(self: *Self) [*:0]const u8;
-    pub fn loadUri(self: *Self, uri: [*:0]const u8) void {
-        webkit_web_view_load_uri(self, uri);
+    extern fn webkit_web_view_evaluate_javascript(
+        web_view: *WebView,
+        script: [*]const u8,
+        length: usize, //c_long
+        world_name: ?[*]const u8,
+        source_uri: ?[*]const u8,
+        cancellable: ?*GCancellable,
+        callback: c.GAsyncReadyCallback,
+        user_data: ?*anyopaque,
+    ) void;
+    pub fn loadUri(self: *Self, uri: []const u8) void {
+        const allocator = std.heap.page_allocator;
+        const uri_ = allocator.dupeZ(u8, uri) catch unreachable;
+        defer allocator.free(uri_);
+        webkit_web_view_load_uri(self, uri_);
     }
     pub fn loadHtml(self: *Self, html: []u8, baseUrl: [*:0]const u8) void {
         webkit_web_view_load_html(self, @ptrCast(html.ptr), baseUrl);
@@ -79,6 +104,22 @@ pub const WebView = extern struct {
     pub const getPageId = webkit_web_view_get_page_id;
     pub const getTitle = webkit_web_view_get_title;
     pub const getUri = webkit_web_view_get_uri;
+    pub fn evaluateJavaScript(self: *Self, script: []const u8) void {
+        webkit_web_view_evaluate_javascript(self, script.ptr, script.len, null, null, null, null, null);
+    }
+    pub fn connect(
+        self: *Self,
+        comptime signal: Signal,
+        callback: switch (signal) {
+            .LoadChanged => Callback.LoadChanged,
+        },
+        data: ?*anyopaque,
+    ) void {
+        const s = switch (signal) {
+            .LoadChanged => "load-changed",
+        };
+        g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
+    }
 };
 pub const JSCContext = extern struct {
     const Self = @This();
@@ -135,20 +176,18 @@ pub const UserContentManager = extern struct {
     pub fn connect(
         self: *Self,
         comptime signal: Signal,
-        name: []const u8,
+        comptime name: []const u8,
         callback: switch (signal) {
             .ScriptMessageReceived => Callback.ScriptMessageReceived,
             .ScriptMessageWithReplyReceived => Callback.ScriptMessageWithReplyReceived,
         },
         data: ?*anyopaque,
     ) void {
-        const allocator = std.heap.page_allocator;
         const s = switch (signal) {
             .ScriptMessageReceived => "script-message-received",
             .ScriptMessageWithReplyReceived => "script-message-with-reply-received",
         };
-        const signal_ = std.fmt.allocPrint(allocator, "{s}::{s}", .{ s, name }) catch unreachable;
-        defer allocator.free(signal_);
+        const signal_ = std.fmt.comptimePrint("{s}::{s}", .{ s, name });
         g_signal_connect_data(@ptrCast(self), @ptrCast(signal_), @ptrCast(callback), data, null, 0);
     }
 };
