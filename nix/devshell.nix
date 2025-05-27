@@ -5,6 +5,7 @@
   pkg-config,
   zig,
   zls,
+  lldb,
   gtk4,
   webkitgtk_6_0,
   gtk4-layer-shell,
@@ -37,6 +38,7 @@ in
       gtk4
       webkitgtk_6_0
       devhelp
+      lldb
     ];
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
     shellHook = ''

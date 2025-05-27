@@ -32,6 +32,7 @@ pub fn build(b: *std.Build) void {
         gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+        layershell_mod.addImport("gtk", gtk_mod);
         webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
         webkit_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         webkit_mod.addImport("gtk", gtk_mod);

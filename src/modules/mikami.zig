@@ -8,23 +8,8 @@ pub const Mikami = struct {
 
     pub fn open(self: *Self, args: modules.Args, result: *modules.Result) !void {
         const uri = try args.string(1);
-        const id = self.app.createWebview(uri);
+        const webview = self.app.createWebview(uri);
+        const id = webview._webview.getPageId();
         try result.commit(id);
-    }
-
-    pub fn show(self: *Self, args: modules.Args, _: *modules.Result) !void {
-        var id: u64 = undefined;
-        const caller = try args.integer(1);
-        if (caller >= 0) {
-            id = @intCast(caller);
-        } else {
-            id = @intCast(try args.integer(0)); // caller id
-        }
-        for (self.app.webviews.items) |webview| {
-            if (webview._webview.getPageId() == id) {
-                webview.show();
-                break;
-            }
-        }
     }
 };

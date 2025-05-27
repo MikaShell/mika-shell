@@ -2,6 +2,7 @@ const std = @import("std");
 const webkit = @import("webkit");
 const gtk = @import("gtk");
 pub const WebviewType = enum {
+    None,
     Window,
     Layer,
 };
@@ -23,10 +24,9 @@ pub const Webview = struct {
             ._webview_container = gtk.Window.new(),
             ._modules = m,
             .options = .{ .window = .{} },
-            .type = .Window,
+            .type = .None,
         };
         const settings = w._webview.getSettings() orelse return error.FailedToGetSettings;
-        settings.setHardwareAccelerationPolicy(webkit.HardwareAccelerationPolicy.Never);
         settings.setEnableDeveloperExtras(true);
         const manager = w._webview.getUserContentManager() orelse return error.FailedToGetUserContentManager;
         _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
@@ -72,14 +72,13 @@ pub const Webview = struct {
                 const value = modules_.Args{
                     .items = args.items,
                 };
+                std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv._webview.getPageId(), v.toJson(0) });
                 wv._modules.call(method.?.string, value, &result) catch |err| {
                     const msg = std.fmt.allocPrint(alc, "Failed to call method {s}: {s}", .{ method.?.string, @errorName(err) }) catch unreachable;
                     defer alc.free(msg);
-                    const msgZ = alc.dupeZ(u8, msg) catch unreachable;
-                    defer alc.free(msgZ);
-                    reply.errorMessage(msgZ);
+                    reply.errorMessage(msg);
+                    return 0;
                 };
-                std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv._webview.getPageId(), v.toJson(0) });
                 reply.value(result.toJSCValue(v.getContext()));
                 return 0;
             }
@@ -100,7 +99,9 @@ pub const Webview = struct {
     }
 };
 const modules_ = @import("modules/modules.zig");
-const mikami = @import("modules/mikami.zig");
+const mikami_ = @import("modules/mikami.zig");
+const layer_ = @import("modules/layer.zig");
+const window_ = @import("modules/window.zig");
 pub const App = struct {
     modules: *modules_.Modules,
     webviews: std.ArrayList(*Webview),
@@ -114,14 +115,34 @@ pub const App = struct {
             .registerModules = std.ArrayList(*anyopaque).init(allocator),
             .allocator = allocator,
         };
-        const mikami_ = allocator.create(mikami.Mikami) catch unreachable;
-        mikami_.* = mikami.Mikami{
-            .app = app,
-        };
+        const mikami = allocator.create(mikami_.Mikami) catch unreachable;
+        const window = allocator.create(window_.Window) catch unreachable;
+        const layer = allocator.create(layer_.Layer) catch unreachable;
 
-        app.modules.register(mikami_, "mikami.open", &mikami.Mikami.open) catch unreachable;
-        app.modules.register(mikami_, "mikami.show", &mikami.Mikami.show) catch unreachable;
-        app.registerModules.append(mikami_) catch unreachable;
+        mikami.* = mikami_.Mikami{ .app = app };
+        window.* = window_.Window{ .app = app };
+        layer.* = layer_.Layer{ .app = app };
+
+        app.modules.register(mikami, "mikami.open", &mikami_.Mikami.open) catch unreachable;
+
+        app.modules.register(window, "window.init", &window_.Window.init) catch unreachable;
+        app.modules.register(window, "window.show", &window_.Window.show) catch unreachable;
+        app.modules.register(window, "window.hide", &window_.Window.hide) catch unreachable;
+
+        app.modules.register(layer, "layer.init", &layer_.Layer.init) catch unreachable;
+        app.modules.register(layer, "layer.show", &layer_.Layer.show) catch unreachable;
+        app.modules.register(layer, "layer.hide", &layer_.Layer.hide) catch unreachable;
+        app.modules.register(layer, "layer.resetAnchor", &layer_.Layer.resetAnchor) catch unreachable;
+        app.modules.register(layer, "layer.setAnchor", &layer_.Layer.setAnchor) catch unreachable;
+        app.modules.register(layer, "layer.setLayer", &layer_.Layer.setLayer) catch unreachable;
+        app.modules.register(layer, "layer.setKeyboardMode", &layer_.Layer.setKeyboardMode) catch unreachable;
+        app.modules.register(layer, "layer.setNamespace", &layer_.Layer.setNamespace) catch unreachable;
+        app.modules.register(layer, "layer.setMargin", &layer_.Layer.setMargin) catch unreachable;
+        app.modules.register(layer, "layer.setExclusiveZone", &layer_.Layer.setExclusiveZone) catch unreachable;
+        app.modules.register(layer, "layer.autoExclusiveZoneEnable", &layer_.Layer.autoExclusiveZoneEnable) catch unreachable;
+
+        app.registerModules.append(mikami) catch unreachable;
+        app.registerModules.append(layer) catch unreachable;
         return app;
     }
     pub fn deinit(self: *App) void {
@@ -135,11 +156,23 @@ pub const App = struct {
             }
         }
     }
-    pub fn createWebview(self: *App, uri: []const u8) u64 {
+    pub fn createWebview(self: *App, uri: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules) catch unreachable;
         webview._webview.loadUri(uri);
         self.webviews.append(webview) catch unreachable;
-        return webview._webview.getPageId();
+        const cssProvider = gtk.CssProvider.new();
+        defer cssProvider.free();
+        cssProvider.loadFromString("window {background-color: transparent;}");
+        webview._webview_container.asWidget().getStyleContext().addCssProvider(cssProvider);
+        return webview;
+    }
+    pub fn getWebview(self: *App, id: u64) ?*Webview {
+        for (self.webviews.items) |webview| {
+            if (webview._webview.getPageId() == id) {
+                return webview;
+            }
+        }
+        return null;
     }
 };
 // 查找 $XDG_CONFIG_HOME/mikami $HOME/.config/mikami

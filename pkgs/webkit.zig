@@ -43,7 +43,7 @@ pub const NetworkSession = extern struct {
     }
     pub const getWebsiteDataManager = webkit_network_session_get_website_data_manager;
 };
-
+pub const GdkRGBA = c.GdkRGBA;
 pub const WebView = extern struct {
     const Self = @This();
     pub const Signal = enum {
@@ -78,6 +78,7 @@ pub const WebView = extern struct {
     extern fn webkit_web_view_get_page_id(self: *Self) u64; // c_ulong
     extern fn webkit_web_view_get_title(self: *Self) [*:0]const u8;
     extern fn webkit_web_view_get_uri(self: *Self) [*:0]const u8;
+    extern fn webkit_web_view_set_background_color(web_view: *WebView, rgba: [*c]const GdkRGBA) void;
     extern fn webkit_web_view_evaluate_javascript(
         web_view: *WebView,
         script: [*]const u8,
@@ -88,6 +89,13 @@ pub const WebView = extern struct {
         callback: c.GAsyncReadyCallback,
         user_data: ?*anyopaque,
     ) void;
+    pub const setSettings = webkit_web_view_set_settings;
+    pub const getSettings = webkit_web_view_get_settings;
+    pub const getUserContentManager = webkit_web_view_get_user_content_manager;
+    pub const getNetworkSession = webkit_web_view_get_network_session;
+    pub const getPageId = webkit_web_view_get_page_id;
+    pub const getTitle = webkit_web_view_get_title;
+    pub const getUri = webkit_web_view_get_uri;
     pub fn loadUri(self: *Self, uri: []const u8) void {
         const allocator = std.heap.page_allocator;
         const uri_ = allocator.dupeZ(u8, uri) catch unreachable;
@@ -97,15 +105,12 @@ pub const WebView = extern struct {
     pub fn loadHtml(self: *Self, html: []u8, baseUrl: [*:0]const u8) void {
         webkit_web_view_load_html(self, @ptrCast(html.ptr), baseUrl);
     }
-    pub const setSettings = webkit_web_view_set_settings;
-    pub const getSettings = webkit_web_view_get_settings;
-    pub const getUserContentManager = webkit_web_view_get_user_content_manager;
-    pub const getNetworkSession = webkit_web_view_get_network_session;
-    pub const getPageId = webkit_web_view_get_page_id;
-    pub const getTitle = webkit_web_view_get_title;
-    pub const getUri = webkit_web_view_get_uri;
+
     pub fn evaluateJavaScript(self: *Self, script: []const u8) void {
         webkit_web_view_evaluate_javascript(self, script.ptr, script.len, null, null, null, null, null);
+    }
+    pub fn setBackgroundColor(self: *Self, rgba: GdkRGBA) void {
+        webkit_web_view_set_background_color(self, &rgba);
     }
     pub fn connect(
         self: *Self,
@@ -146,12 +151,12 @@ pub const JSCValue = extern struct {
 pub const ScriptMessageReply = extern struct {
     const Self = @This();
     extern fn webkit_script_message_reply_return_value(script_message_reply: ?*ScriptMessageReply, reply_value: ?*JSCValue) void;
-    extern fn webkit_script_message_reply_return_error_message(script_message_reply: ?*ScriptMessageReply, error_message: [*:0]const u8) void;
+    extern fn webkit_script_message_reply_return_error_message(script_message_reply: ?*ScriptMessageReply, error_message: [*c]const u8) void;
     pub fn value(self: *Self, value_: ?*JSCValue) void {
         webkit_script_message_reply_return_value(self, value_);
     }
-    pub fn errorMessage(self: *Self, message: [*:0]const u8) void {
-        webkit_script_message_reply_return_error_message(self, message);
+    pub fn errorMessage(self: *Self, message: []const u8) void {
+        webkit_script_message_reply_return_error_message(self, message.ptr);
     }
 };
 pub const UserContentManager = extern struct {

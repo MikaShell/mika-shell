@@ -2,22 +2,45 @@
 <html>
     <head>
         <title>Welcome</title>
+        <style>
+            body {
+                background-color: rgb(57, 57, 57);
+                height: 500px;
+                width: 800px;
+            }
+        </style>
         <script>
-            window.webkit.messageHandlers.mikami.postMessage({
-                method: "mikami.show",
-                args: [-1],
-            });
-            window.webkit.messageHandlers.mikami
-                .postMessage({
-                    method: "mikami.open",
-                    args: ["https://www.google.com"],
-                })
-                .then((id) => {
-                    window.webkit.messageHandlers.mikami.postMessage({
-                        method: "mikami.show",
-                        args: [id],
-                    });
-                });
+            const postMessage = (msg) => {
+                window.webkit.messageHandlers.mikami.postMessage(msg);
+            };
+            const layerInit = {
+                method: "layer.init",
+                args: [
+                    {
+                        anchor: [2],
+                        layer: 2,
+                        keyboardMode: 2,
+                        namespace: "mikami",
+                        margin: [0, 0, 0, 0],
+                        exclusiveZone: 0,
+                        autoExclusiveZone: false,
+                        backgroundTransparent: true,
+                        hidden: false,
+                    },
+                ],
+            };
+            const windowInit = {
+                method: "window.init",
+                args: [
+                    {
+                        title: "Aikami Test",
+                        resizable: false,
+                        backgroundTransparent: true,
+                        hidden: false,
+                    },
+                ],
+            };
+            postMessage(windowInit);
         </script>
     </head>
     <body>

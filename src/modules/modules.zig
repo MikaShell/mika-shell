@@ -4,50 +4,53 @@ pub const Args = struct {
     fn verifyIndex(self: Args, index: usize) !void {
         if (index >= self.items.len) return error.InvalidArgs;
     }
+    pub fn value(self: Args, index: usize) !std.json.Value {
+        try self.verifyIndex(index);
+        return self.items[index];
+    }
     pub fn @"bool"(self: Args, index: usize) !bool {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .bool => |b| return b,
             else => return error.InvalidArgs,
         }
     }
     pub fn integer(self: Args, index: usize) !i64 {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .integer => |i| return i,
             else => return error.InvalidArgs,
         }
     }
+    pub fn uInteger(self: Args, index: usize) !u64 {
+        const i = try self.integer(index);
+        if (i < 0) return error.InvalidArgs;
+        return @intCast(i);
+    }
     pub fn float(self: Args, index: usize) !f64 {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .float => |f| return f,
             else => return error.InvalidArgs,
         }
     }
     pub fn string(self: Args, index: usize) ![]const u8 {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .string => |s| return s,
             else => return error.InvalidArgs,
         }
     }
     pub fn array(self: Args, index: usize) !std.json.Array {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .array => |a| return a,
             else => return error.InvalidArgs,
         }
     }
     pub fn object(self: Args, index: usize) !std.json.ObjectMap {
         try self.verifyIndex(index);
-        const value = self.items[index];
-        switch (value) {
+        switch (self.items[index]) {
             .object => |o| return o,
             else => return error.InvalidArgs,
         }
