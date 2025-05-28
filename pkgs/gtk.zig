@@ -11,6 +11,63 @@ pub fn mainIteration() bool {
     return c.g_main_context_iteration(null, 1) == 1;
 }
 pub const init = gtk_init;
+pub const GError = extern struct {
+    domain: c.GQuark = @import("std").mem.zeroes(c.GQuark),
+    code: c.gint = @import("std").mem.zeroes(c.gint),
+    message: [*c]c.gchar = @import("std").mem.zeroes([*c]c.gchar),
+    pub fn free(self: *GError) void {
+        c.g_error_free(@ptrCast(self));
+    }
+};
+const CallbackPayload = struct {
+    function: ?*anyopaque,
+    data: ?*anyopaque,
+    pub fn init(function: ?*anyopaque, data: ?*anyopaque) *CallbackPayload {
+        const allocator = std.heap.page_allocator;
+        const payload = allocator.create(CallbackPayload) catch unreachable;
+        payload.* = .{
+            .data = data,
+            .function = function,
+        };
+        return payload;
+    }
+    pub fn deinit(self: *CallbackPayload) void {
+        std.heap.page_allocator.destroy(self);
+    }
+};
+pub const GSource = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    pub fn attach(self: *Self) void {
+        _ = c.g_source_attach(@ptrCast(self), null);
+    }
+    pub fn setCallback(
+        self: *Self,
+        callback: *const fn (?*anyopaque, ?*anyopaque, ?*anyopaque) callconv(.c) c_int,
+        data: ?*anyopaque,
+    ) void {
+        _ = c.g_source_set_callback(
+            @ptrCast(self),
+            @ptrCast(callback),
+            @ptrCast(data),
+            null,
+        );
+    }
+    pub fn unref(self: *Self) void {
+        c.g_source_unref(@ptrCast(self));
+    }
+};
+pub const GSocket = extern struct {
+    const Self = @This();
+    parent_instance: *anyopaque,
+    pub fn newFromFd(fd: i32, gerror: **GError) *GSocket {
+        return @ptrCast(c.g_socket_new_from_fd(fd, @ptrCast(gerror)));
+    }
+    pub fn createSource(self: *Self) *GSource {
+        return @ptrCast(c.g_socket_create_source(@ptrCast(self), c.G_IO_IN, null));
+    }
+};
+
 pub const StyleContext = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
@@ -26,9 +83,16 @@ pub const StyleContext = extern struct {
 pub const Widget = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
+    pub const Signal = enum {
+        Destroy,
+    };
+    pub const Callback = struct {
+        pub const Destroy = *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) void;
+    };
     extern fn gtk_widget_show(widget: *Widget) void;
     extern fn gtk_widget_hide(widget: *Widget) void;
     extern fn gtk_widget_get_style_context(widget: *Widget) *StyleContext;
+    extern fn gtk_widget_get_visible(widget: *Widget) c.gboolean;
     pub fn show(self: *Self) void {
         gtk_widget_show(self);
     }
@@ -40,6 +104,22 @@ pub const Widget = extern struct {
     }
     pub fn getStyleContext(self: *Self) *StyleContext {
         return gtk_widget_get_style_context(self);
+    }
+    pub fn getVisible(self: *Self) bool {
+        return gtk_widget_get_visible(self) == 1;
+    }
+    pub fn connect(
+        self: *Self,
+        comptime signal: Signal,
+        callback: switch (signal) {
+            .Destroy => Callback.Destroy,
+        },
+        data: ?*anyopaque,
+    ) void {
+        const s = switch (signal) {
+            .Destroy => "destroy",
+        };
+        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
     }
 };
 pub const CssProvider = extern struct {

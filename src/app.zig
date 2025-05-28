@@ -102,26 +102,35 @@ const modules_ = @import("modules/modules.zig");
 const mikami_ = @import("modules/mikami.zig");
 const layer_ = @import("modules/layer.zig");
 const window_ = @import("modules/window.zig");
+
 pub const App = struct {
     modules: *modules_.Modules,
     webviews: std.ArrayList(*Webview),
-    registerModules: std.ArrayList(*anyopaque),
     allocator: std.mem.Allocator,
+
+    mikami: *mikami_.Mikami,
+    window: *window_.Window,
+    layer: *layer_.Layer,
     pub fn init(allocator: std.mem.Allocator) *App {
         const app = allocator.create(App) catch unreachable;
         app.* = .{
             .modules = modules_.Modules.init(allocator),
             .webviews = std.ArrayList(*Webview).init(allocator),
-            .registerModules = std.ArrayList(*anyopaque).init(allocator),
             .allocator = allocator,
+            .mikami = undefined,
+            .window = undefined,
+            .layer = undefined,
         };
         const mikami = allocator.create(mikami_.Mikami) catch unreachable;
         const window = allocator.create(window_.Window) catch unreachable;
         const layer = allocator.create(layer_.Layer) catch unreachable;
-
         mikami.* = mikami_.Mikami{ .app = app };
         window.* = window_.Window{ .app = app };
         layer.* = layer_.Layer{ .app = app };
+
+        app.mikami = mikami;
+        app.window = window;
+        app.layer = layer;
 
         app.modules.register(mikami, "mikami.open", &mikami_.Mikami.open) catch unreachable;
 
@@ -141,8 +150,6 @@ pub const App = struct {
         app.modules.register(layer, "layer.setExclusiveZone", &layer_.Layer.setExclusiveZone) catch unreachable;
         app.modules.register(layer, "layer.autoExclusiveZoneEnable", &layer_.Layer.autoExclusiveZoneEnable) catch unreachable;
 
-        app.registerModules.append(mikami) catch unreachable;
-        app.registerModules.append(layer) catch unreachable;
         return app;
     }
     pub fn deinit(self: *App) void {
@@ -150,11 +157,12 @@ pub const App = struct {
             webview.destroy();
         }
         self.webviews.deinit();
-        for (self.registerModules) |m| {
-            if (@hasDecl(m, "deinit")) {
-                m.deinit();
-            }
-        }
+        self.modules.deinit();
+
+        self.allocator.destroy(self.mikami);
+        self.allocator.destroy(self.window);
+        self.allocator.destroy(self.layer);
+        self.allocator.destroy(self);
     }
     pub fn createWebview(self: *App, uri: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules) catch unreachable;
@@ -164,6 +172,21 @@ pub const App = struct {
         defer cssProvider.free();
         cssProvider.loadFromString("window {background-color: transparent;}");
         webview._webview_container.asWidget().getStyleContext().addCssProvider(cssProvider);
+
+        webview._webview.asWidget().connect(.Destroy, &struct {
+            fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const target: *webkit.WebView = @ptrCast(widget);
+                const a: *App = @ptrCast(@alignCast(data));
+                const targetID = target.getPageId();
+                for (a.webviews.items, 0..a.webviews.items.len) |w, i| {
+                    if (w._webview.getPageId() == targetID) {
+                        _ = a.webviews.orderedRemove(i);
+                        break;
+                    }
+                }
+            }
+        }.f, self);
+
         return webview;
     }
     pub fn getWebview(self: *App, id: u64) ?*Webview {

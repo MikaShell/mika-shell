@@ -9,17 +9,6 @@ usingnamespace @cImport({
     @cInclude("webkit/webkit.h");
     @cInclude("jsc/jsc.h");
 });
-pub const GCallback = ?*const fn () callconv(.c) void;
-pub const GClosureNotify = ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void;
-
-pub extern fn g_signal_connect_data(
-    instance: ?*anyopaque,
-    detailed_signal: [*:0]const u8,
-    c_handler: GCallback,
-    data: ?*anyopaque,
-    destroy_data: GClosureNotify,
-    connect_flags: c_int,
-) void;
 
 pub const WebsiteDataManager = extern struct {
     const Self = @This();
@@ -65,9 +54,6 @@ pub const WebView = extern struct {
     extern fn webkit_web_view_new() *gtk.Widget;
     pub fn new() *WebView {
         return @ptrCast(webkit_web_view_new());
-    }
-    pub fn destroy(self: *Self) void {
-        self.asWidget().destroy();
     }
     extern fn webkit_web_view_load_uri(*WebView, [*:0]const u8) void;
     extern fn webkit_web_view_load_html(*WebView, [*:0]u8, [*:0]const u8) void;
@@ -123,7 +109,7 @@ pub const WebView = extern struct {
         const s = switch (signal) {
             .LoadChanged => "load-changed",
         };
-        g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
+        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
     }
 };
 pub const JSCContext = extern struct {
@@ -193,7 +179,7 @@ pub const UserContentManager = extern struct {
             .ScriptMessageWithReplyReceived => "script-message-with-reply-received",
         };
         const signal_ = std.fmt.comptimePrint("{s}::{s}", .{ s, name });
-        g_signal_connect_data(@ptrCast(self), @ptrCast(signal_), @ptrCast(callback), data, null, 0);
+        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(signal_), @ptrCast(callback), data, null, 0);
     }
 };
 pub const HardwareAccelerationPolicy = enum(u8) {
@@ -285,10 +271,7 @@ pub const GInputStream = extern struct {
     // extern fn g_input_stream_set_pending(stream: *GInputStream, @"error": **GError) c_int;
     // extern fn g_input_stream_clear_pending(stream: *GInputStream) void;
 };
-pub const GError = extern struct {
-    extern fn g_error_free(@"error": *GError) void;
-    pub const free = g_error_free;
-};
+const GError = gtk.GError;
 pub const URISchemeResponse = extern struct {
     const Self = @This();
     pub fn free(self: *Self) void {

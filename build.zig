@@ -44,12 +44,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    const modules_mod = b.createModule(.{
-        .root_source_file = b.path("src/modules/modules.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    modules_mod.addImport("webkit", webkit_mod);
+
     const exe = b.addExecutable(.{
         .name = "mikami",
         .root_module = exe_mod,
@@ -60,11 +55,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const zigcli = b.dependency("zig-cli", .{ .target = target });
+
     exe_mod.addImport("httpz", httpz.module("httpz"));
+    exe_mod.addImport("zig-cli", zigcli.module("zig-cli"));
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);
-    exe_mod.addImport("modules", modules_mod);
 
     b.installArtifact(exe);
     // CMD
@@ -82,6 +79,12 @@ pub fn build(b: *std.Build) void {
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
     });
+    const modules_mod = b.createModule(.{
+        .root_source_file = b.path("src/modules/modules.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    modules_mod.addImport("webkit", webkit_mod);
     const modules_unit_tests = b.addTest(.{
         .root_module = modules_mod,
     });
