@@ -10,6 +10,9 @@
             }
         </style>
         <script>
+            window.addEventListener("list-update", (data) => {
+                console.log(data.detail);
+            });
             const postMessage = (msg) => {
                 window.webkit.messageHandlers.mikami.postMessage(msg);
             };

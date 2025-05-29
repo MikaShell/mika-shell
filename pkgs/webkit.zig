@@ -290,15 +290,15 @@ pub const URISchemeRequest = extern struct {
     pub fn free(self: *Self) void {
         g_object_unref(@ptrCast(self));
     }
-    extern fn webkit_uri_scheme_request_get_scheme(request: ?*URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_uri(request: ?*URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_path(request: ?*URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_web_view(request: ?*URISchemeRequest) *WebView;
-    extern fn webkit_uri_scheme_request_get_http_method(request: ?*URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_http_body(request: ?*URISchemeRequest) *GInputStream;
-    extern fn webkit_uri_scheme_request_finish(request: ?*URISchemeRequest, stream: *GInputStream, stream_length: c_long, content_type: [*:0]const u8) void;
-    extern fn webkit_uri_scheme_request_finish_with_response(request: ?*URISchemeRequest, response: ?*URISchemeResponse) void;
-    extern fn webkit_uri_scheme_request_finish_error(request: ?*URISchemeRequest, @"error": *GError) void;
+    extern fn webkit_uri_scheme_request_get_scheme(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_uri(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_path(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_web_view(request: *URISchemeRequest) *WebView;
+    extern fn webkit_uri_scheme_request_get_http_method(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_http_body(request: *URISchemeRequest) *GInputStream;
+    extern fn webkit_uri_scheme_request_finish(request: *URISchemeRequest, stream: *GInputStream, stream_length: c_long, content_type: [*:0]const u8) void;
+    extern fn webkit_uri_scheme_request_finish_with_response(request: *URISchemeRequest, response: *URISchemeResponse) void;
+    extern fn webkit_uri_scheme_request_finish_error(request: *URISchemeRequest, @"error": *GError) void;
     pub const getScheme = webkit_uri_scheme_request_get_scheme;
     pub const getUri = webkit_uri_scheme_request_get_uri;
     pub const getPath = webkit_uri_scheme_request_get_path;
@@ -315,11 +315,11 @@ pub const Context = extern struct {
     pub fn free(self: *Self) void {
         g_object_unref(@ptrCast(self));
     }
-    extern fn webkit_web_context_get_default() ?*Context;
+    extern fn webkit_web_context_get_default() *Context;
     extern fn webkit_web_context_register_uri_scheme(
-        ?*Context,
+        *Context,
         name: [*:0]const u8,
-        callback: ?*const fn (request: ?*URISchemeRequest, data: *anyopaque) callconv(.C) void,
+        callback: ?*const fn (request: *URISchemeRequest, data: *anyopaque) callconv(.C) void,
         data: ?*anyopaque,
         destryCallback: ?*c.GDestroyNotify,
     ) void;

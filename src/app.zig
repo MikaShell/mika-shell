@@ -86,6 +86,14 @@ pub const Webview = struct {
         w._webview_container.setChild(w._webview.asWidget());
         return w;
     }
+    pub fn emitEvent(self: *Webview, name: []const u8, data: anytype) void {
+        const alc = std.heap.page_allocator;
+        const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
+        defer alc.free(dataJson);
+        const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('{s}', {{ detail: {s} }}));", .{ name, dataJson }) catch unreachable;
+        defer alc.free(js);
+        self._webview.evaluateJavaScript(js);
+    }
     // pub fn makeWindow(self: *Webview, options: WindowOptions) void {}
     // pub fn makeLayer(self: *Webview, options: LayerOptions) void {}
     pub fn show(self: *Webview) void {

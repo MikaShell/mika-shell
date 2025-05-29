@@ -15,6 +15,9 @@ var config = struct {
     hide: struct {
         id: u64 = undefined,
     } = undefined,
+    close: struct {
+        id: u64 = undefined,
+    } = undefined,
 }{};
 fn cmdDaemon(_: *cli.AppRunner) !cli.Command {
     return cli.Command{
@@ -108,6 +111,28 @@ fn cmdHide(r: *cli.AppRunner) !cli.Command {
         },
     };
 }
+fn cmdClose(r: *cli.AppRunner) !cli.Command {
+    return cli.Command{
+        .name = "close",
+        .description = .{
+            .one_line = "close the webview",
+        },
+        .target = .{
+            .action = .{
+                .exec = close,
+                .positional_args = cli.PositionalArgs{
+                    .required = try r.allocPositionalArgs(&.{
+                        .{
+                            .name = "ID",
+                            .help = "ID of the webview to close",
+                            .value_ref = r.mkRef(&config.close.id),
+                        },
+                    }),
+                },
+            },
+        },
+    };
+}
 pub fn run() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -127,6 +152,7 @@ pub fn run() !void {
                     try cmdList(r),
                     try cmdShow(r),
                     try cmdHide(r),
+                    try cmdClose(r),
                 }),
             },
         },
@@ -186,5 +212,11 @@ fn hide() !void {
     try ipc.request(.{
         .type = "hide",
         .id = config.hide.id,
+    });
+}
+fn close() !void {
+    try ipc.request(.{
+        .type = "close",
+        .id = config.close.id,
     });
 }

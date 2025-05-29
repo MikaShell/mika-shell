@@ -63,7 +63,7 @@ fn isType(a: []const u8, b: []const u8) bool {
 
 pub const Request = struct {
     type: []const u8,
-    uri: []const u8 = undefined,
+    uri: []const u8 = "",
     id: u64 = undefined,
     force: bool = false,
 };
@@ -99,33 +99,42 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (isType(r.type, "show")) {
-        for (app.webviews.items) |w| {
-            if (w._webview.getPageId() == r.id) {
-                switch (w.type) {
-                    .None => {
-                        if (r.force) {
-                            w._webview_container.present();
-                        } else {
-                            try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
-                            try out.print("If you want to show this webview, please use `force` option.\n", .{});
-                        }
-                    },
-                    .Layer => {
-                        w._webview_container.asWidget().show();
-                    },
-                    .Window => {
+        const webview = app.getWebview(r.id);
+        if (webview) |w| {
+            switch (w.type) {
+                .None => {
+                    if (r.force) {
                         w._webview_container.present();
-                    },
-                }
-                break;
+                    } else {
+                        try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
+                        try out.print("If you want to show this webview, please use `force` option.\n", .{});
+                    }
+                },
+                .Layer => {
+                    w._webview_container.asWidget().show();
+                },
+                .Window => {
+                    w._webview_container.present();
+                },
             }
+        } else {
+            try out.print("Can`t find webview with id: {d}\n", .{r.id});
         }
     }
     if (isType(r.type, "hide")) {
-        for (app.webviews.items) |w| {
-            if (w._webview.getPageId() == r.id) {
-                w.hide();
-            }
+        const webview = app.getWebview(r.id);
+        if (webview) |w| {
+            w.hide();
+        } else {
+            try out.print("Can`t find webview with id: {d}\n", .{r.id});
+        }
+    }
+    if (isType(r.type, "close")) {
+        const webview = app.getWebview(r.id);
+        if (webview) |w| {
+            w.destroy();
+        } else {
+            try out.print("Can`t find webview with id: {d}\n", .{r.id});
         }
     }
 }
