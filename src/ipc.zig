@@ -63,25 +63,25 @@ fn isType(a: []const u8, b: []const u8) bool {
 
 pub const Request = struct {
     type: []const u8,
-    uri: []const u8 = "",
-    id: u64 = undefined,
-    force: bool = false,
+    uri: ?[]const u8 = null,
+    id: ?u64 = null,
+    force: ?bool = null,
 };
 
 const app_ = @import("app.zig");
 fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
     std.log.debug("IPC: Received request: {s}", .{r.type});
     if (isType(r.type, "open")) {
-        _ = app.createWebview(r.uri);
+        _ = app.createWebview(r.uri.?);
     }
     const out = s.writer();
     if (isType(r.type, "list")) {
         var isFirstLine = true;
         for (app.webviews.items) |w| {
-            const title = w._webview.getTitle();
-            const id = w._webview.getPageId();
-            const uri = w._webview.getUri();
-            const visible = w._webview_container.asWidget().getVisible();
+            const title = w.impl.getTitle();
+            const id = w.impl.getPageId();
+            const uri = w.impl.getUri();
+            const visible = w.container.asWidget().getVisible();
             const t = switch (w.type) {
                 .None => "none",
                 .Layer => "layer",
@@ -99,49 +99,49 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (isType(r.type, "show")) {
-        const webview = app.getWebview(r.id);
+        const webview = app.getWebview(r.id.?);
         if (webview) |w| {
             switch (w.type) {
                 .None => {
-                    if (r.force) {
-                        w._webview_container.present();
+                    if (r.force.?) {
+                        w.container.present();
                     } else {
                         try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
                         try out.print("If you want to show this webview, please use `force` option.\n", .{});
                     }
                 },
                 .Layer => {
-                    w._webview_container.asWidget().show();
+                    w.container.asWidget().show();
                 },
                 .Window => {
-                    w._webview_container.present();
+                    w.container.present();
                 },
             }
         } else {
-            try out.print("Can`t find webview with id: {d}\n", .{r.id});
+            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
         }
     }
     if (isType(r.type, "hide")) {
-        const webview = app.getWebview(r.id);
+        const webview = app.getWebview(r.id.?);
         if (webview) |w| {
             w.hide();
         } else {
-            try out.print("Can`t find webview with id: {d}\n", .{r.id});
+            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
         }
     }
     if (isType(r.type, "close")) {
-        const webview = app.getWebview(r.id);
+        const webview = app.getWebview(r.id.?);
         if (webview) |w| {
             w.destroy();
         } else {
-            try out.print("Can`t find webview with id: {d}\n", .{r.id});
+            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
         }
     }
 }
 pub fn request(req: Request) !void {
     const c = try std.net.connectUnixSocket(SOCKET_PATH);
     const alc = std.heap.page_allocator;
-    const reqJSON = try std.json.stringifyAlloc(alc, req, .{});
+    const reqJSON = try std.json.stringifyAlloc(alc, req, .{ .emit_null_optional_fields = false });
     defer alc.free(reqJSON);
     _ = try c.writer().writeInt(usize, reqJSON.len, .little);
     _ = try c.writer().writeAll(reqJSON);
@@ -151,4 +151,14 @@ pub fn request(req: Request) !void {
     defer fifo.deinit();
     const stdout = std.io.getStdOut();
     try fifo.pump(c.reader(), stdout.writer());
+}
+
+test "stringify and Request" {
+    const req = Request{
+        .type = "open",
+    };
+    const alc = std.heap.page_allocator;
+    const reqJSON = try std.json.stringifyAlloc(alc, req, .{ .emit_null_optional_fields = false });
+    defer alc.free(reqJSON);
+    std.debug.print("Request JSON: {s}\n", .{reqJSON});
 }

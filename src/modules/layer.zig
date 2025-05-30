@@ -25,7 +25,7 @@ pub const Layer = struct {
         if (w.type != .Layer) {
             return error.WebviewIsNotALayer;
         }
-        const layer = layershell.Layer.init(w._webview_container);
+        const layer = layershell.Layer.init(w.container);
         return layer;
     }
     pub fn init(self: *Self, args: modules.Args, _: *modules.Result) !void {
@@ -39,7 +39,7 @@ pub const Layer = struct {
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
-        const layer = layershell.Layer.init(w._webview_container);
+        const layer = layershell.Layer.init(w.container);
         w.type = .Layer;
         layer.resetAnchor();
         for (opt.anchor) |a| {
@@ -58,13 +58,13 @@ pub const Layer = struct {
             layer.autoExclusiveZoneEnable();
         }
         if (opt.backgroundTransparent) {
-            w._webview.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 0 });
+            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 0 });
         } else {
-            w._webview.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
+            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
         }
         if (!opt.hidden) {
             // 使用 w._webview_container.present(); 会导致窗口大小异常
-            w._webview_container.asWidget().show();
+            w.container.asWidget().show();
         }
     }
     pub fn show(self: *Self, args: modules.Args, _: *modules.Result) !void {

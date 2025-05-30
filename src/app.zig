@@ -14,21 +14,21 @@ pub const Webview = struct {
         window: WindowOptions,
         layer: LayerOptions,
     },
-    _webview: *webkit.WebView,
-    _webview_container: *gtk.Window,
+    impl: *webkit.WebView,
+    container: *gtk.Window,
     _modules: *modules_.Modules,
     pub fn init(allocator: std.mem.Allocator, m: *modules_.Modules) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
-            ._webview = webkit.WebView.new(),
-            ._webview_container = gtk.Window.new(),
+            .impl = webkit.WebView.new(),
+            .container = gtk.Window.new(),
             ._modules = m,
             .options = .{ .window = .{} },
             .type = .None,
         };
-        const settings = w._webview.getSettings() orelse return error.FailedToGetSettings;
+        const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
         settings.setEnableDeveloperExtras(true);
-        const manager = w._webview.getUserContentManager() orelse return error.FailedToGetUserContentManager;
+        const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
         _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
 
         manager.connect(.ScriptMessageWithReplyReceived, "mikami", &struct {
@@ -67,12 +67,12 @@ pub const Webview = struct {
                 }
                 var args = std.ArrayList(std.json.Value).init(alc);
                 defer args.deinit();
-                args.append(std.json.Value{ .integer = @intCast(wv._webview.getPageId()) }) catch unreachable;
+                args.append(std.json.Value{ .integer = @intCast(wv.impl.getPageId()) }) catch unreachable;
                 args.appendSlice(origin_args.?.array.items) catch unreachable;
                 const value = modules_.Args{
                     .items = args.items,
                 };
-                std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv._webview.getPageId(), v.toJson(0) });
+                std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv.impl.getPageId(), v.toJson(0) });
                 wv._modules.call(method.?.string, value, &result) catch |err| {
                     const msg = std.fmt.allocPrint(alc, "Failed to call method {s}: {s}", .{ method.?.string, @errorName(err) }) catch unreachable;
                     defer alc.free(msg);
@@ -83,7 +83,7 @@ pub const Webview = struct {
                 return 0;
             }
         }.f, w);
-        w._webview_container.setChild(w._webview.asWidget());
+        w.container.setChild(w.impl.asWidget());
         return w;
     }
     pub fn emitEvent(self: *Webview, name: []const u8, data: anytype) void {
@@ -92,18 +92,18 @@ pub const Webview = struct {
         defer alc.free(dataJson);
         const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('{s}', {{ detail: {s} }}));", .{ name, dataJson }) catch unreachable;
         defer alc.free(js);
-        self._webview.evaluateJavaScript(js);
+        self.impl.evaluateJavaScript(js);
     }
     // pub fn makeWindow(self: *Webview, options: WindowOptions) void {}
     // pub fn makeLayer(self: *Webview, options: LayerOptions) void {}
     pub fn show(self: *Webview) void {
-        self._webview_container.present();
+        self.container.present();
     }
     pub fn hide(self: *Webview) void {
-        self._webview_container.asWidget().hide();
+        self.container.asWidget().hide();
     }
     pub fn destroy(self: *Webview) void {
-        self._webview_container.destroy();
+        self.container.destroy();
     }
 };
 const modules_ = @import("modules/modules.zig");
@@ -174,20 +174,20 @@ pub const App = struct {
     }
     pub fn createWebview(self: *App, uri: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules) catch unreachable;
-        webview._webview.loadUri(uri);
+        webview.impl.loadUri(uri);
         self.webviews.append(webview) catch unreachable;
         const cssProvider = gtk.CssProvider.new();
         defer cssProvider.free();
         cssProvider.loadFromString("window {background-color: transparent;}");
-        webview._webview_container.asWidget().getStyleContext().addCssProvider(cssProvider);
+        webview.container.asWidget().getStyleContext().addCssProvider(cssProvider);
 
-        webview._webview.asWidget().connect(.Destroy, &struct {
+        webview.impl.asWidget().connect(.Destroy, &struct {
             fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const target: *webkit.WebView = @ptrCast(widget);
                 const a: *App = @ptrCast(@alignCast(data));
                 const targetID = target.getPageId();
                 for (a.webviews.items, 0..a.webviews.items.len) |w, i| {
-                    if (w._webview.getPageId() == targetID) {
+                    if (w.impl.getPageId() == targetID) {
                         _ = a.webviews.orderedRemove(i);
                         break;
                     }
@@ -199,7 +199,7 @@ pub const App = struct {
     }
     pub fn getWebview(self: *App, id: u64) ?*Webview {
         for (self.webviews.items) |webview| {
-            if (webview._webview.getPageId() == id) {
+            if (webview.impl.getPageId() == id) {
                 return webview;
             }
         }
