@@ -72,7 +72,7 @@ const app_ = @import("app.zig");
 fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
     std.log.debug("IPC: Received request: {s}", .{r.type});
     if (isType(r.type, "open")) {
-        _ = app.createWebview(r.uri.?);
+        _ = app.open(r.uri.?);
     }
     const out = s.writer();
     if (isType(r.type, "list")) {
@@ -104,17 +104,14 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
             switch (w.type) {
                 .None => {
                     if (r.force.?) {
-                        w.container.present();
+                        try app.show(r.id.?);
                     } else {
                         try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
                         try out.print("If you want to show this webview, please use `force` option.\n", .{});
                     }
                 },
-                .Layer => {
-                    w.container.asWidget().show();
-                },
-                .Window => {
-                    w.container.present();
+                else => {
+                    try app.show(r.id.?);
                 },
             }
         } else {
@@ -122,20 +119,22 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (isType(r.type, "hide")) {
-        const webview = app.getWebview(r.id.?);
-        if (webview) |w| {
-            w.hide();
-        } else {
-            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
-        }
+        app.hide(r.id.?) catch |err| {
+            if (err == app_.Error.WebviewNotExists) {
+                try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
+            } else {
+                return err;
+            }
+        };
     }
     if (isType(r.type, "close")) {
-        const webview = app.getWebview(r.id.?);
-        if (webview) |w| {
-            w.destroy();
-        } else {
-            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
-        }
+        app.close(r.id.?) catch |err| {
+            if (err == app_.Error.WebviewNotExists) {
+                try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
+            } else {
+                return err;
+            }
+        };
     }
 }
 pub fn request(req: Request) !void {

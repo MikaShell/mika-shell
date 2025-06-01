@@ -170,7 +170,7 @@ pub fn daemon() !void {
     const app_ = app.App.init(allocator);
     defer app_.deinit();
 
-    _ = app_.createWebview("http://localhost:6797/");
+    _ = app_.open("http://localhost:6797/");
 
     const baseConfigDir = try app.getConfigDir(allocator);
     std.log.debug("ConfigDir: {s}", .{baseConfigDir});

@@ -15,8 +15,8 @@ pub const WebsiteDataManager = extern struct {
     parent_instance: *anyopaque,
     extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*:0]const u8;
     extern fn webkit_website_data_manager_is_ephemeral(self: *Self) gboolean;
-    pub fn getBaseDataDirectory(self: *Self) [*:0]const u8 {
-        return webkit_website_data_manager_get_base_data_directory(self);
+    pub fn getBaseDataDirectory(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_website_data_manager_get_base_data_directory(self), 0);
     }
     pub fn isEphemeral(self: *Self) bool {
         return boolFromGboolean(webkit_website_data_manager_is_ephemeral(self));
@@ -80,8 +80,12 @@ pub const WebView = extern struct {
     pub const getUserContentManager = webkit_web_view_get_user_content_manager;
     pub const getNetworkSession = webkit_web_view_get_network_session;
     pub const getPageId = webkit_web_view_get_page_id;
-    pub const getTitle = webkit_web_view_get_title;
-    pub const getUri = webkit_web_view_get_uri;
+    pub fn getTitle(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_web_view_get_title(self), 0);
+    }
+    pub fn getUri(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_web_view_get_uri(self), 0);
+    }
     pub fn loadUri(self: *Self, uri: []const u8) void {
         const allocator = std.heap.page_allocator;
         const uri_ = allocator.dupeZ(u8, uri) catch unreachable;

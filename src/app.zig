@@ -1,6 +1,7 @@
 const std = @import("std");
 const webkit = @import("webkit");
 const gtk = @import("gtk");
+const events = @import("events.zig");
 pub const WebviewType = enum {
     None,
     Window,
@@ -9,6 +10,11 @@ pub const WebviewType = enum {
 pub const WindowOptions = struct {};
 pub const LayerOptions = struct {};
 pub const Webview = struct {
+    const Info = struct {
+        type: []const u8,
+        id: u64,
+        uri: []const u8,
+    };
     type: WebviewType,
     options: union {
         window: WindowOptions,
@@ -96,13 +102,24 @@ pub const Webview = struct {
     }
     // pub fn makeWindow(self: *Webview, options: WindowOptions) void {}
     // pub fn makeLayer(self: *Webview, options: LayerOptions) void {}
+    pub fn getInfo(self: *Webview) Info {
+        return Info{
+            .type = switch (self.type) {
+                .None => "none",
+                .Window => "window",
+                .Layer => "layer",
+            },
+            .id = self.impl.getPageId(),
+            .uri = self.impl.getUri(),
+        };
+    }
     pub fn show(self: *Webview) void {
         self.container.present();
     }
     pub fn hide(self: *Webview) void {
         self.container.asWidget().hide();
     }
-    pub fn destroy(self: *Webview) void {
+    pub fn close(self: *Webview) void {
         self.container.destroy();
     }
 };
@@ -110,7 +127,9 @@ const modules_ = @import("modules/modules.zig");
 const mikami_ = @import("modules/mikami.zig");
 const layer_ = @import("modules/layer.zig");
 const window_ = @import("modules/window.zig");
-
+pub const Error = error{
+    WebviewNotExists,
+};
 pub const App = struct {
     modules: *modules_.Modules,
     webviews: std.ArrayList(*Webview),
@@ -162,7 +181,7 @@ pub const App = struct {
     }
     pub fn deinit(self: *App) void {
         for (self.webviews.items) |webview| {
-            webview.destroy();
+            webview.close();
         }
         self.webviews.deinit();
         self.modules.deinit();
@@ -172,7 +191,7 @@ pub const App = struct {
         self.allocator.destroy(self.layer);
         self.allocator.destroy(self);
     }
-    pub fn createWebview(self: *App, uri: []const u8) *Webview {
+    pub fn open(self: *App, uri: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules) catch unreachable;
         webview.impl.loadUri(uri);
         self.webviews.append(webview) catch unreachable;
@@ -194,7 +213,8 @@ pub const App = struct {
                 }
             }
         }.f, self);
-
+        const info = webview.getInfo();
+        self.emitEventIgnore(info.id, events.Mikami.Open, info);
         return webview;
     }
     pub fn getWebview(self: *App, id: u64) ?*Webview {
@@ -204,6 +224,32 @@ pub const App = struct {
             }
         }
         return null;
+    }
+    fn emitEventIgnore(self: *App, ignore: u64, name: []const u8, data: anytype) void {
+        for (self.webviews.items) |webview| {
+            if (webview.impl.getPageId() == ignore) {
+                continue;
+            }
+            webview.emitEvent(name, data);
+        }
+    }
+    pub fn show(self: *App, id: u64) !void {
+        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
+        webview.show();
+        const info = webview.getInfo();
+        self.emitEventIgnore(id, events.Mikami.Show, info);
+    }
+    pub fn hide(self: *App, id: u64) !void {
+        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
+        webview.hide();
+        const info = webview.getInfo();
+        self.emitEventIgnore(id, events.Mikami.Hide, info);
+    }
+    pub fn close(self: *App, id: u64) !void {
+        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
+        webview.close();
+        const info = webview.getInfo();
+        self.emitEventIgnore(id, events.Mikami.Close, info);
     }
 };
 // 查找 $XDG_CONFIG_HOME/mikami $HOME/.config/mikami

@@ -8,7 +8,7 @@ pub const Mikami = struct {
 
     pub fn open(self: *Self, args: modules.Args, result: *modules.Result) !void {
         const uri = try args.string(1);
-        const webview = self.app.createWebview(uri);
+        const webview = self.app.open(uri);
         const id = webview.impl.getPageId();
         try result.commit(id);
     }
