@@ -9,11 +9,11 @@
 
     .dependencies = .{
         .httpz = .{
-            .url = "https://github.com/karlseguin/http.zig/archive/bf66b28690967fec187bc3074ebdd2cf748e172e.tar.gz",
+            .url = "git+https://github.com/karlseguin/http.zig#bf66b28690967fec187bc3074ebdd2cf748e172e",
             .hash = "httpz-0.0.0-PNVzrDm1BgBS1NqfP2uTPocAxDSTjZNJKr41Q_S63cFB",
         },
         .@"zig-cli" = .{
-            .url = "https://github.com/sam701/zig-cli/archive/9fca749122a321fd4af4fecafba0062b3e36db98.tar.gz",
+            .url = "git+https://github.com/sam701/zig-cli#9fca749122a321fd4af4fecafba0062b3e36db98",
             .hash = "cli-0.9.0-2eKe_zP5AAD96LcpU9Gdo7vRHvHIKjYnyR9ME6si527r",
         },
     },

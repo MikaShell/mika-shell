@@ -10,3 +10,4 @@ npm-package/*.js
 *.tgz
 zig-out
 .zig-cache
+zigfetch
