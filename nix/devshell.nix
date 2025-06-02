@@ -13,6 +13,8 @@
   glib-networking,
   openssl,
   devhelp,
+  dbus,
+  d-spy,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -39,6 +41,8 @@ in
       webkitgtk_6_0
       devhelp
       lldb
+      dbus
+      d-spy
     ];
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
     shellHook = ''

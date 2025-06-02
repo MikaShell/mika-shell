@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     var gtk_mod: *std.Build.Module = undefined;
     var layershell_mod: *std.Build.Module = undefined;
     var webkit_mod: *std.Build.Module = undefined;
+    var dbus_mod: *std.Build.Module = undefined;
     // pkgs
     {
         gtk_mod = b.createModule(.{
@@ -28,6 +29,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
         });
+        dbus_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/dbus.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
         // Linking
         gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
@@ -36,6 +43,11 @@ pub fn build(b: *std.Build) void {
         webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
         webkit_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         webkit_mod.addImport("gtk", gtk_mod);
+        dbus_mod.linkSystemLibrary("dbus-1", dynamic_link_opts);
+        dbus_mod.addCSourceFile(.{
+            .file = b.path("pkgs/dbus.c"),
+        });
+        dbus_mod.addIncludePath(b.path("pkgs"));
     }
     // EXE
     const exe_mod = b.createModule(.{
@@ -79,20 +91,27 @@ pub fn build(b: *std.Build) void {
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
     });
+
     const modules_mod = b.createModule(.{
         .root_source_file = b.path("src/modules/modules.zig"),
         .target = target,
         .optimize = optimize,
     });
     modules_mod.addImport("webkit", webkit_mod);
+
     const modules_unit_tests = b.addTest(.{
         .root_module = modules_mod,
+    });
+    const dbus_unit_tests = b.addTest(.{
+        .root_module = dbus_mod,
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const run_modules_unit_tests = b.addRunArtifact(modules_unit_tests);
+    const run_dbus_unit_tests = b.addRunArtifact(dbus_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
     test_step.dependOn(&run_modules_unit_tests.step);
+    test_step.dependOn(&run_dbus_unit_tests.step);
 }
