@@ -15,6 +15,9 @@
   devhelp,
   dbus,
   d-spy,
+  python3,
+  gobject-introspection,
+  glib,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -43,6 +46,14 @@ in
       lldb
       dbus
       d-spy
+      # DBus test scripts require dbus-python and pygobject3
+      glib
+      gobject-introspection
+      (python3.withPackages (ps:
+        with ps; [
+          dbus-python
+          pygobject3
+        ]))
     ];
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
     shellHook = ''
