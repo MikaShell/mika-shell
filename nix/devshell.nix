@@ -51,7 +51,7 @@ in
       gobject-introspection
       (python3.withPackages (ps:
         with ps; [
-          dbus-python
+          pydbus
           pygobject3
         ]))
     ];
