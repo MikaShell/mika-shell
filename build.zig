@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     var layershell_mod: *std.Build.Module = undefined;
     var webkit_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
+    var glib_mod: *std.Build.Module = undefined;
     // pkgs
     {
         gtk_mod = b.createModule(.{
@@ -35,6 +36,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
         });
+        glib_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/glib.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
         // Linking
         gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
@@ -48,6 +55,9 @@ pub fn build(b: *std.Build) void {
             .file = b.path("pkgs/dbus/dbus.c"),
         });
         dbus_mod.addIncludePath(b.path("pkgs/dbus"));
+        dbus_mod.addImport("glib", glib_mod);
+        glib_mod.linkSystemLibrary("glib-2.0", dynamic_link_opts);
+        glib_mod.linkSystemLibrary("gio-2.0", dynamic_link_opts);
     }
     // EXE
     const exe_mod = b.createModule(.{
@@ -74,6 +84,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);
+    exe_mod.addImport("glib", glib_mod);
 
     b.installArtifact(exe);
     // CMD

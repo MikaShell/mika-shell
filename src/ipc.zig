@@ -1,21 +1,25 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const SOCKET_PATH = "/tmp/mikami.sock";
+const glib = @import("glib");
 pub const Server = struct {
     allocator: std.mem.Allocator,
     s: std.net.Server,
     app: *app_.App,
+    watcher: glib.FdWatcher(Server),
     pub fn init(allocator: std.mem.Allocator, app: *app_.App) !*Server {
         const self = try allocator.create(Server);
         self.* = .{
             .allocator = allocator,
             .s = undefined,
             .app = app,
+            .watcher = undefined,
         };
         return self;
     }
     pub fn deinit(self: *Server) void {
         self.s.deinit();
+        self.watcher.deinit();
         self.allocator.destroy(self);
     }
 
@@ -38,23 +42,14 @@ pub const Server = struct {
         const addr = try std.net.Address.initUnix(SOCKET_PATH);
         const server = try addr.listen(.{});
         self.s = server;
-        var gerr: ?*gtk.GError = null;
-        const gSocket = gtk.GSocket.newFromFd(server.stream.handle, @ptrCast(&gerr));
-        if (gerr) |e| {
-            e.free();
-        }
-        const source = gSocket.createSource();
-        defer source.unref();
-        source.setCallback(&struct {
-            fn f(_: ?*anyopaque, _: ?*anyopaque, s_: ?*anyopaque) callconv(.c) c_int {
-                const ss: *Server = @ptrCast(@alignCast(s_.?));
-                ss.handleConnection() catch |err| {
+        self.watcher = try glib.FdWatcher(Server).add(server.stream.handle, &struct {
+            fn f(s: *Server) bool {
+                s.handleConnection() catch |err| {
                     std.debug.print("Can not handle message, error: {s}", .{@errorName(err)});
                 };
-                return 1;
+                return true;
             }
-        }.f, @ptrCast(self));
-        source.attach();
+        }.f, self);
     }
 };
 fn isType(a: []const u8, b: []const u8) bool {
