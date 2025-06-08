@@ -48,6 +48,9 @@ class TestServices(object):
                     <method name="GetArrayString">
                             <arg direction="out" type="as"/>
                     </method>
+                    <method name="GetArrayVariant">
+                            <arg direction="out" type="av"/>
+                    </method>
                     <method name="GetStruct">
                             <arg direction="out" type="(xb)"/>
                     </method>
@@ -82,6 +85,9 @@ class TestServices(object):
                     <method name="CallWithStruct">
                             <arg direction="in" type="(sib)"/>
                             <arg direction="out" type="b"/>
+                    </method>
+                    <method name="GetDict3">
+                            <arg direction="out" type="a{sv}"/>
                     </method>
                     <property name="Byte" type="y" access="read"/>
                     <property name="Boolean" type="b" access="write"/>
@@ -129,6 +135,9 @@ class TestServices(object):
     def GetArrayString(self):
         return ["foo", "bar", "baz"]
 
+    def GetArrayVariant(self):
+        return [Variant("s", "foo"), Variant("i", 123), Variant("b", True)]
+
     def GetStruct(self):
         return (-1234567890, True)
 
@@ -143,6 +152,9 @@ class TestServices(object):
 
     def GetDict2(self):
         return {1: 1, 2: 2, 3: 3}
+
+    def GetDict3(self):
+        return {"name": Variant("s", "foo"), "home": Variant("i", 489)}
 
     def CallAdd(self, a, b):
         return a + b
