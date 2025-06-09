@@ -74,7 +74,7 @@ pub const Result = struct {
     }
     pub fn toJSCValue(self: *Result, ctx: *webkit.JSCContext) *webkit.JSCValue {
         if (self.buffer.items.len == 0) return ctx.newUndefined();
-        const str = self.allocator.dupeZ(u8, self.buffer.items) catch unreachable;
+        const str = self.allocator.dupeZ(u8, self.buffer.items) catch @panic("OOM");
         defer self.allocator.free(str);
         return ctx.newFromJson(str);
     }

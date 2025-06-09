@@ -139,9 +139,7 @@ pub fn run() !void {
     const allocator = gpa.allocator();
     var rr = try cli.AppRunner.init(allocator);
     const r = &rr;
-    defer {
-        allocator.free(config.open.uri);
-    }
+    defer allocator.free(config.open.uri);
     const cliApp = cli.App{
         .command = .{
             .name = "mikami",

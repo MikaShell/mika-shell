@@ -6,7 +6,7 @@ pub const Server = struct {
     allocator: std.mem.Allocator,
     s: std.net.Server,
     app: *app_.App,
-    watcher: glib.FdWatcher(Server),
+    watcher: glib.FdWatch(Server),
     pub fn init(allocator: std.mem.Allocator, app: *app_.App) !*Server {
         const self = try allocator.create(Server);
         self.* = .{
@@ -42,7 +42,7 @@ pub const Server = struct {
         const addr = try std.net.Address.initUnix(SOCKET_PATH);
         const server = try addr.listen(.{});
         self.s = server;
-        self.watcher = try glib.FdWatcher(Server).add(server.stream.handle, &struct {
+        self.watcher = try glib.FdWatch(Server).add(server.stream.handle, &struct {
             fn f(s: *Server) bool {
                 s.handleConnection() catch |err| {
                     std.debug.print("Can not handle message, error: {s}", .{@errorName(err)});

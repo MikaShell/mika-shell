@@ -17,6 +17,7 @@ pub const Server = struct {
         errdefer arena.deinit();
 
         const server = try allocator.create(Server);
+        errdefer allocator.destroy(server);
         server.arena = arena.allocator();
         server.allocator = allocator;
 

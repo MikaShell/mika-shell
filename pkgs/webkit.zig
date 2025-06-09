@@ -13,7 +13,7 @@ usingnamespace @cImport({
 pub const WebsiteDataManager = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
-    extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*:0]const u8;
+    extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*c]const u8;
     extern fn webkit_website_data_manager_is_ephemeral(self: *Self) gboolean;
     pub fn getBaseDataDirectory(self: *Self) []const u8 {
         return std.mem.sliceTo(webkit_website_data_manager_get_base_data_directory(self), 0);
@@ -55,15 +55,15 @@ pub const WebView = extern struct {
     pub fn new() *WebView {
         return @ptrCast(webkit_web_view_new());
     }
-    extern fn webkit_web_view_load_uri(*WebView, [*:0]const u8) void;
-    extern fn webkit_web_view_load_html(*WebView, [*:0]u8, [*:0]const u8) void;
+    extern fn webkit_web_view_load_uri(*WebView, [*c]const u8) void;
+    extern fn webkit_web_view_load_html(*WebView, [*c]const u8, [*c]const u8) void;
     extern fn webkit_web_view_get_settings(*WebView) ?*Settings;
     extern fn webkit_web_view_set_settings(*WebView, ?*Settings) void;
     extern fn webkit_web_view_get_user_content_manager(*WebView) ?*UserContentManager;
     extern fn webkit_web_view_get_network_session(self: *Self) ?*NetworkSession;
     extern fn webkit_web_view_get_page_id(self: *Self) u64; // c_ulong
-    extern fn webkit_web_view_get_title(self: *Self) [*:0]const u8;
-    extern fn webkit_web_view_get_uri(self: *Self) [*:0]const u8;
+    extern fn webkit_web_view_get_title(self: *Self) [*c]const u8;
+    extern fn webkit_web_view_get_uri(self: *Self) [*c]const u8;
     extern fn webkit_web_view_set_background_color(web_view: *WebView, rgba: [*c]const GdkRGBA) void;
     extern fn webkit_web_view_evaluate_javascript(
         web_view: *WebView,
@@ -87,13 +87,10 @@ pub const WebView = extern struct {
         return std.mem.sliceTo(webkit_web_view_get_uri(self), 0);
     }
     pub fn loadUri(self: *Self, uri: []const u8) void {
-        const allocator = std.heap.page_allocator;
-        const uri_ = allocator.dupeZ(u8, uri) catch unreachable;
-        defer allocator.free(uri_);
-        webkit_web_view_load_uri(self, uri_);
+        webkit_web_view_load_uri(self, uri.ptr);
     }
-    pub fn loadHtml(self: *Self, html: []u8, baseUrl: [*:0]const u8) void {
-        webkit_web_view_load_html(self, @ptrCast(html.ptr), baseUrl);
+    pub fn loadHtml(self: *Self, html: []u8, baseUrl: []const u8) void {
+        webkit_web_view_load_html(self, html.ptr, baseUrl.ptr);
     }
 
     pub fn evaluateJavaScript(self: *Self, script: []const u8) void {
@@ -120,9 +117,11 @@ pub const JSCContext = extern struct {
     const Self = @This();
     extern fn jsc_context_new() *JSCContext;
     extern fn jsc_value_new_undefined(self: *Self) *JSCValue;
-    extern fn jsc_value_new_from_json(self: *Self, json: [*:0]const u8) *JSCValue;
+    extern fn jsc_value_new_from_json(self: *Self, json: [*c]const u8) *JSCValue;
     pub const newUndefined = jsc_value_new_undefined;
-    pub const newFromJson = jsc_value_new_from_json;
+    pub fn newFromJson(self: *Self, json: []const u8) *JSCValue {
+        return jsc_value_new_from_json(self, json.ptr);
+    }
     pub const new = jsc_context_new;
 };
 pub const gboolean = c_int;
@@ -131,11 +130,11 @@ fn boolFromGboolean(value: gboolean) bool {
 }
 pub const JSCValue = extern struct {
     const Self = @This();
-    extern fn jsc_value_to_json(value: *Self, indent: c_uint) [*:0]u8;
+    extern fn jsc_value_to_json(value: *Self, indent: c_uint) [*c]const u8;
     extern fn jsc_value_get_context(self: *Self) *JSCContext;
     pub const getContext = jsc_value_get_context;
     pub fn toJson(self: *Self, indent: u32) []const u8 {
-        return std.mem.span(jsc_value_to_json(self, indent));
+        return std.mem.sliceTo(jsc_value_to_json(self, indent), 0);
     }
 };
 pub const ScriptMessageReply = extern struct {
@@ -160,13 +159,13 @@ pub const UserContentManager = extern struct {
         pub const ScriptMessageWithReplyReceived = *const fn (self: *Self, value: *JSCValue, reply: *ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int;
     };
     parent_instance: *anyopaque,
-    extern fn webkit_user_content_manager_register_script_message_handler_with_reply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) gboolean;
-    extern fn webkit_user_content_manager_register_script_message_handler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) gboolean;
-    pub fn registerScriptMessageHandler(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
-        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler(self, name, world_name));
+    extern fn webkit_user_content_manager_register_script_message_handler_with_reply(self: *Self, name: [*c]const u8, world_name: [*c]const u8) gboolean;
+    extern fn webkit_user_content_manager_register_script_message_handler(self: *Self, name: [*c]const u8, world_name: [*c]const u8) gboolean;
+    pub fn registerScriptMessageHandler(self: *Self, name: []const u8, world_name: ?[]const u8) bool {
+        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler(self, name.ptr, if (world_name == null) null else world_name.?.ptr));
     }
-    pub fn registerScriptMessageHandlerWithReply(self: *Self, name: [*:0]const u8, world_name: ?[*:0]const u8) bool {
-        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler_with_reply(self, name, world_name));
+    pub fn registerScriptMessageHandlerWithReply(self: *Self, name: []const u8, world_name: ?[]const u8) bool {
+        return boolFromGboolean(webkit_user_content_manager_register_script_message_handler_with_reply(self, name.ptr, if (world_name == null) null else world_name.?.ptr));
     }
     pub fn connect(
         self: *Self,
@@ -278,15 +277,19 @@ pub const GInputStream = extern struct {
 const GError = gtk.GError;
 pub const URISchemeResponse = extern struct {
     const Self = @This();
+    extern fn webkit_uri_scheme_response_new(input_stream: *GInputStream, stream_length: c_long) ?*URISchemeResponse;
+    extern fn webkit_uri_scheme_response_set_status(response: ?*URISchemeResponse, status_code: c_uint, reason_phrase: [*c]const u8) void;
+    extern fn webkit_uri_scheme_response_set_content_type(response: ?*URISchemeResponse, content_type: [*c]const u8) void;
     pub fn free(self: *Self) void {
         g_object_unref(@ptrCast(self));
     }
-    extern fn webkit_uri_scheme_response_new(input_stream: *GInputStream, stream_length: c_long) ?*URISchemeResponse;
     pub const new = webkit_uri_scheme_response_new;
-    extern fn webkit_uri_scheme_response_set_status(response: ?*URISchemeResponse, status_code: c_uint, reason_phrase: [*:0]const u8) void;
-    pub const setStatus = webkit_uri_scheme_response_set_status;
-    extern fn webkit_uri_scheme_response_set_content_type(response: ?*URISchemeResponse, content_type: [*:0]const u8) void;
-    pub const setContentType = webkit_uri_scheme_response_set_content_type;
+    pub fn setStatus(self: *Self, status_code: u32, reason_phrase: []const u8) void {
+        webkit_uri_scheme_response_set_status(self, status_code, reason_phrase.ptr);
+    }
+    pub fn setContentType(self: *Self, content_type: []const u8) void {
+        webkit_uri_scheme_response_set_content_type(self, content_type.ptr);
+    }
     // extern fn webkit_uri_scheme_response_set_http_headers(response: ?*URISchemeResponse, headers: ?*SoupMessageHeaders) void;
 };
 pub const URISchemeRequest = extern struct {
@@ -294,24 +297,34 @@ pub const URISchemeRequest = extern struct {
     pub fn free(self: *Self) void {
         g_object_unref(@ptrCast(self));
     }
-    extern fn webkit_uri_scheme_request_get_scheme(request: *URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_uri(request: *URISchemeRequest) [*:0]const u8;
-    extern fn webkit_uri_scheme_request_get_path(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_scheme(request: *URISchemeRequest) [*c]const u8;
+    extern fn webkit_uri_scheme_request_get_uri(request: *URISchemeRequest) [*c]const u8;
+    extern fn webkit_uri_scheme_request_get_path(request: *URISchemeRequest) [*c]const u8;
     extern fn webkit_uri_scheme_request_get_web_view(request: *URISchemeRequest) *WebView;
-    extern fn webkit_uri_scheme_request_get_http_method(request: *URISchemeRequest) [*:0]const u8;
+    extern fn webkit_uri_scheme_request_get_http_method(request: *URISchemeRequest) [*c]const u8;
     extern fn webkit_uri_scheme_request_get_http_body(request: *URISchemeRequest) *GInputStream;
-    extern fn webkit_uri_scheme_request_finish(request: *URISchemeRequest, stream: *GInputStream, stream_length: c_long, content_type: [*:0]const u8) void;
+    extern fn webkit_uri_scheme_request_finish(request: *URISchemeRequest, stream: *GInputStream, stream_length: c_long, content_type: [*c]const u8) void;
     extern fn webkit_uri_scheme_request_finish_with_response(request: *URISchemeRequest, response: *URISchemeResponse) void;
     extern fn webkit_uri_scheme_request_finish_error(request: *URISchemeRequest, @"error": *GError) void;
-    pub const getScheme = webkit_uri_scheme_request_get_scheme;
-    pub const getUri = webkit_uri_scheme_request_get_uri;
-    pub const getPath = webkit_uri_scheme_request_get_path;
     pub const getWebView = webkit_uri_scheme_request_get_web_view;
-    pub const getHttpMethod = webkit_uri_scheme_request_get_http_method;
     pub const getHttpBody = webkit_uri_scheme_request_get_http_body;
-    pub const finish = webkit_uri_scheme_request_finish;
     pub const finishWithResponse = webkit_uri_scheme_request_finish_with_response;
     pub const finishError = webkit_uri_scheme_request_finish_error;
+    pub fn getSchema(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_uri_scheme_request_get_scheme(self), 0);
+    }
+    pub fn getUri(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_uri_scheme_request_get_uri(self), 0);
+    }
+    pub fn getPath(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_uri_scheme_request_get_path(self), 0);
+    }
+    pub fn getHttpMethod(self: *Self) []const u8 {
+        return std.mem.sliceTo(webkit_uri_scheme_request_get_http_method(self), 0);
+    }
+    pub fn finish(self: *Self, stream: *GInputStream, stream_length: c_long, content_type: []const u8) void {
+        webkit_uri_scheme_request_finish(self, stream, stream_length, content_type.ptr);
+    }
 };
 pub const Context = extern struct {
     const Self = @This();
@@ -322,11 +335,29 @@ pub const Context = extern struct {
     extern fn webkit_web_context_get_default() *Context;
     extern fn webkit_web_context_register_uri_scheme(
         *Context,
-        name: [*:0]const u8,
-        callback: ?*const fn (request: *URISchemeRequest, data: *anyopaque) callconv(.C) void,
+        name: [*c]const u8,
+        callback: c.WebKitURISchemeRequestCallback,
         data: ?*anyopaque,
-        destryCallback: ?*c.GDestroyNotify,
+        destryCallback: c.GDestroyNotify,
     ) void;
     pub const getDefault = webkit_web_context_get_default;
-    pub const registerUriScheme = webkit_web_context_register_uri_scheme;
+    // pub const registerUriScheme = webkit_web_context_register_uri_scheme;
+    pub fn registerUriScheme(
+        self: *Self,
+        name: []const u8,
+        callback: ?fn (request: *URISchemeRequest, data: *anyopaque) callconv(.C) void,
+        data: ?*anyopaque,
+        destryCallback: ?fn (data: *anyopaque) callconv(.C) void,
+    ) void {
+        webkit_web_context_register_uri_scheme(
+            self,
+            name.ptr,
+            @ptrCast(callback),
+            data,
+            @ptrCast(destryCallback),
+        );
+    }
 };
+test "webkit" {
+    _ = std.testing.refAllDecls(@This());
+}
