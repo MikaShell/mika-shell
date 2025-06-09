@@ -101,30 +101,57 @@ pub fn build(b: *std.Build) void {
     // TEST
     const test_step = b.step("test", "Run unit tests");
     {
-        const exe_unit_tests = b.addTest(.{
-            .root_module = exe_mod,
-        });
+        // MAIN
+        {
+            const exe_unit_tests = b.addTest(.{
+                .root_module = exe_mod,
+            });
+            const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+            test_step.dependOn(&run_exe_unit_tests.step);
+        }
+        // MODULES
+        {
+            const modules_mod = b.createModule(.{
+                .root_source_file = b.path("src/modules/modules.zig"),
+                .target = target,
+                .optimize = optimize,
+            });
+            modules_mod.addImport("webkit", webkit_mod);
 
-        const modules_mod = b.createModule(.{
-            .root_source_file = b.path("src/modules/modules.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-        modules_mod.addImport("webkit", webkit_mod);
+            const modules_unit_tests = b.addTest(.{
+                .root_module = modules_mod,
+            });
 
-        const modules_unit_tests = b.addTest(.{
-            .root_module = modules_mod,
-        });
-        const dbus_unit_tests = b.addTest(.{
-            .root_module = dbus_mod,
-        });
+            const run_modules_unit_tests = b.addRunArtifact(modules_unit_tests);
 
-        const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-        const run_modules_unit_tests = b.addRunArtifact(modules_unit_tests);
-        const run_dbus_unit_tests = b.addRunArtifact(dbus_unit_tests);
+            test_step.dependOn(&run_modules_unit_tests.step);
+        }
+        // PKGS/DBUS
+        {
+            const dbus_unit_tests = b.addTest(.{
+                .root_module = dbus_mod,
+            });
+            const run_dbus_unit_tests = b.addRunArtifact(dbus_unit_tests);
+            const check_dbus_service = b.addSystemCommand(&[_][]const u8{
+                "bash",
+                "-c",
+                "[ ! -f ./dbus_service.pid ] || (kill $(cat ./dbus_service.pid) && rm ./dbus_service.pid)",
+            });
+            const run_dbus_service = b.addSystemCommand(&[_][]const u8{
+                "bash",
+                "-c",
+                "./pkgs/dbus/dbus_test_service.py & echo $! > ./dbus_service.pid && sleep 0.1",
+            });
+            const kill_dbus_service = b.addSystemCommand(&[_][]const u8{
+                "bash",
+                "-c",
+                "kill $(cat ./dbus_service.pid) && rm ./dbus_service.pid",
+            });
 
-        test_step.dependOn(&run_exe_unit_tests.step);
-        test_step.dependOn(&run_modules_unit_tests.step);
-        test_step.dependOn(&run_dbus_unit_tests.step);
+            run_dbus_service.step.dependOn(&check_dbus_service.step);
+            run_dbus_unit_tests.step.dependOn(&run_dbus_service.step);
+            kill_dbus_service.step.dependOn(&run_dbus_unit_tests.step);
+            test_step.dependOn(&kill_dbus_service.step);
+        }
     }
 }

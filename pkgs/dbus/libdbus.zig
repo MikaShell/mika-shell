@@ -8,6 +8,15 @@ usingnamespace @cImport({
 });
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+/// `Error` 是一个 `DBusError` 的容器，内部包含一个指向 `c.DBusError` 的指针。
+/// 该结构体可以安全地被复制，但是只能被使用一次。
+/// 每当错误被设置 (`Error.isSet() == true`), 你必须调用 `Error.reset()` 才能使 `Error` 再次可用。
+/// 不再使用时必须调用 `Error.deinit()` 释放内存。
+///
+/// English:
+/// `Error` is a container of `DBusError` pointer. It can be safely copied, but can only be used once.
+/// When an error is set (`Error.isSet() == true`), you must call `Error.reset()` to make `Error` available again.
+/// When no longer needed, you must call `Error.deinit()` to release memory.
 pub const Error = extern struct {
     ptr: *c.DBusError,
     extern fn dbus_error_is_set(@"error": *const c.DBusError) c.dbus_bool_t;
@@ -20,6 +29,10 @@ pub const Error = extern struct {
     }
     pub fn deinit(err: Error) void {
         dbus_error_destroy(err.ptr);
+    }
+    pub fn reset(err: *Error) void {
+        err.deinit();
+        err.ptr = dbus_error_new();
     }
     pub fn name(err: Error) ?[]const u8 {
         const name_ = dbus_error_get_name(err.ptr);
@@ -59,8 +72,6 @@ pub const Connection = extern struct {
     pub const Rule = struct {};
     extern fn dbus_bus_get(@"type": BusType, @"error": ?*c.DBusError) *Connection;
     extern fn dbus_connection_send_with_reply_and_block(connection: *Connection, message: *Message, timeout_milliseconds: c_int, @"error": ?*c.DBusError) ?*Message;
-    // extern fn dbus_connection_send(connection:  * Connection, message:  * Message, client_serial: [*c]dbus_uint32_t) dbus_bool_t;
-    // extern fn dbus_connection_send_with_reply(connection:  * Connection, message:  * Message, pending_return: [*c]?*DBusPendingCall, timeout_milliseconds: c_int) dbus_bool_t;
     extern fn dbus_bus_add_match(connection: *Connection, rule: [*c]const u8, @"error": ?*c.DBusError) void;
     extern fn dbus_bus_remove_match(connection: *Connection, rule: [*c]const u8, @"error": ?*c.DBusError) void;
     extern fn dbus_connection_flush(connection: *Connection) void;
@@ -70,15 +81,25 @@ pub const Connection = extern struct {
     extern fn dbus_connection_add_filter(connection: *Connection, function: c.DBusHandleMessageFunction, user_data: ?*anyopaque, free_data_function: c.DBusFreeFunction) c.dbus_bool_t;
     extern fn dbus_connection_remove_filter(connection: *Connection, function: c.DBusHandleMessageFunction, user_data: ?*anyopaque) void;
     extern fn dbus_connection_dispatch(connection: *Connection) c.DBusDispatchStatus;
+    extern fn dbus_connection_get_unix_fd(connection: *Connection, fd: [*c]c_int) c.dbus_bool_t;
+    extern fn dbus_bus_get_unique_name(connection: *Connection) [*c]const u8;
+    extern fn dbus_connection_unref(connection: *Connection) void;
+    extern fn dbus_connection_send(connection: *Connection, message: ?*Message, client_serial: ?*c_uint) c.dbus_bool_t;
     pub fn get(bus_type: BusType, err: Error) !*Connection {
         const conn = dbus_bus_get(bus_type, err.ptr);
         if (err.isSet()) return error.HasError;
         return conn;
     }
+    pub fn unref(self: *Self) void {
+        dbus_connection_unref(self);
+    }
     pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: Error) !*Message {
         const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err.ptr);
         if (err.isSet()) return error.HasError;
         return reply.?;
+    }
+    pub fn send(self: *Self, message: *Message, client_serial: ?*c_uint) bool {
+        return dbus_connection_send(self, message, client_serial) != 0;
     }
     pub fn addMatch(self: *Self, rule: []const u8, err: Error) !void {
         dbus_bus_add_match(self, rule.ptr, err.ptr);
@@ -102,6 +123,14 @@ pub const Connection = extern struct {
     }
     pub fn dispatch(self: *Self) DispatchStatus {
         return @enumFromInt(dbus_connection_dispatch(self));
+    }
+    pub fn getUnixFd(self: *Self) !i32 {
+        var fd: i32 = undefined;
+        if (dbus_connection_get_unix_fd(self, @ptrCast(&fd)) == 0) return error.FieldToGetUnixFd;
+        return fd;
+    }
+    pub fn getUniqueName(self: *Self) []const u8 {
+        return std.mem.sliceTo(dbus_bus_get_unique_name(self), 0);
     }
 };
 
@@ -155,7 +184,7 @@ pub const Message = extern struct {
     pub fn deinit(message: *Message) void {
         dbus_message_unref(message);
     }
-    pub fn getType(message: *Message) Type {
+    pub fn getType(message: *Message) MType {
         return @enumFromInt(dbus_message_get_type(message));
     }
     pub fn getPath(message: *Message) []const u8 {
@@ -173,9 +202,9 @@ pub const Message = extern struct {
         if (member == null) unreachable;
         return std.mem.sliceTo(member, 0);
     }
-    pub fn getDestination(message: *Message) []const u8 {
+    pub fn getDestination(message: *Message) ?[]const u8 {
         const dest = dbus_message_get_destination(message);
-        if (dest == null) unreachable;
+        if (dest == null) return null;
         return std.mem.sliceTo(dest, 0);
     }
     pub fn getSender(message: *Message) []const u8 {
@@ -486,8 +515,10 @@ pub const MessageIter = struct {
 
     pub fn init(allocator: Allocator) !*Self {
         const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
         const arena = try allocator.create(std.heap.ArenaAllocator);
         errdefer allocator.destroy(arena);
+
         arena.* = std.heap.ArenaAllocator.init(allocator);
         errdefer arena.deinit();
         self.* = Self{
@@ -497,9 +528,13 @@ pub const MessageIter = struct {
         dbus_message_iter_init_closed(&self.wrapper);
         return self;
     }
-    pub fn fromResult(self: *Self, message: *Message) bool {
+    pub fn reset(self: *Self) void {
         const arena: *std.heap.ArenaAllocator = @ptrCast(@alignCast(self.arena.ptr));
         _ = arena.reset(.free_all);
+        dbus_message_iter_init_closed(&self.wrapper);
+    }
+    pub fn fromResult(self: *Self, message: *Message) bool {
+        self.reset();
         if (dbus_message_iter_init(message, &self.wrapper) == 0) {
             return false;
         }
@@ -608,6 +643,7 @@ pub const MessageIter = struct {
                     const val = value.dict.items[i + 1];
                     const item = try sub.openContainer(.dict, null);
                     defer item.deinit();
+                    errdefer _ = sub.closeContainer(item) catch {};
                     try item.append(key);
                     try item.append(val);
                     try sub.closeContainer(item);
@@ -729,6 +765,7 @@ pub const MessageIter = struct {
                 };
                 if (isDict) {
                     var sub = try MessageIter.init(self.arena);
+                    errdefer sub.deinit();
                     dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                     const array = try self.arena.alloc(Value, self.getElementCount() * 2);
                     var i: usize = 0;
@@ -740,6 +777,7 @@ pub const MessageIter = struct {
                     value = Value{ .dict = Dict{ .items = array, .signature = self.getSignature()[2..] } };
                 } else {
                     var sub = try MessageIter.init(self.arena);
+                    errdefer sub.deinit();
                     dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                     const array = try self.arena.alloc(Value, self.getElementCount());
                     for (array) |*item| {
@@ -753,6 +791,7 @@ pub const MessageIter = struct {
             },
             .@"struct" => {
                 var sub = try MessageIter.init(self.arena);
+                errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 var stuList = std.ArrayList(Value).init(self.arena);
                 defer stuList.deinit();
@@ -763,6 +802,7 @@ pub const MessageIter = struct {
             },
             .variant => {
                 var sub = try MessageIter.init(self.arena);
+                errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 const result = try self.arena.create(Value);
                 result.* = (try sub.next()).?;
@@ -770,6 +810,7 @@ pub const MessageIter = struct {
             },
             .dict => {
                 var sub = try MessageIter.init(self.arena);
+                errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 const array = try self.arena.alloc(Value, 2);
                 array[0] = (try sub.next()).?;
@@ -822,7 +863,7 @@ fn test_method_call(name: []const u8) *Message {
     );
 }
 test "method-call-result" {
-    const err = Error.init();
+    var err = Error.init();
     defer err.deinit();
     const conn = Connection.get(.Session, err) catch {
         std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
@@ -1011,6 +1052,15 @@ test "method-call-result" {
         try result.dict.dump(.string, .variant, &map);
         try testing.expectEqual(489, map.get("home").?.int32);
         try testing.expectEqualStrings("foo", map.get("name").?.string);
+    }
+    // GetError
+    {
+        request = test_method_call("GetError");
+        defer request.deinit();
+        _ = conn.sendWithReplyAndBlock(request, -1, err) catch {};
+        defer err.reset();
+        try testing.expectEqualStrings("ATestError", err.message().?);
+        try testing.expectEqual(true, conn.send(request, null));
     }
 }
 test "method-call-with-args" {

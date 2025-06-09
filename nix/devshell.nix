@@ -54,6 +54,7 @@ in
         with ps; [
           pydbus
           pygobject3
+          dbus-python
         ]))
     ];
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";

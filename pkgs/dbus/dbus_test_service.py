@@ -2,7 +2,11 @@
 
 from pydbus import SessionBus, Variant  # type: ignore
 from gi.repository import GLib  # type: ignore
+from dbus import DBusException
 from pydbus.generic import signal
+import logging
+
+logging.disable()
 
 
 class TestServices(object):
@@ -57,8 +61,8 @@ class TestServices(object):
                         <method name="GetVariant">
                             <arg direction="out" type="v"/>
                     </method>
-                    <method name="GetNothing">
-                    </method>
+                    <method name="GetNothing"></method>
+                    <method name="GetError"></method>
                     <method name="GetDict1">
                             <arg direction="out" type="a{si}"/>
                     </method>
@@ -89,12 +93,24 @@ class TestServices(object):
                     <method name="GetDict3">
                             <arg direction="out" type="a{sv}"/>
                     </method>
+                    <signal name="Signal1">
+                            <arg type="s"/>
+                            <arg type="i"/>
+                    </signal>
                     <property name="Byte" type="y" access="read"/>
                     <property name="Boolean" type="b" access="write"/>
                     <property name="Int16" type="n" access="readwrite"/>
             </interface>
     </node>
     """
+
+    def __init__(self) -> None:
+        super().__init__()
+        GLib.timeout_add(100, self._emit_signal1)
+
+    def _emit_signal1(self):
+        self.Signal1.emit("TestSignal", 78787)
+        return True
 
     def GetByte(self):
         return 123
@@ -156,6 +172,9 @@ class TestServices(object):
     def GetDict3(self):
         return {"name": Variant("s", "foo"), "home": Variant("i", 489)}
 
+    def GetError(self):
+        raise DBusException("ATestError")
+
     def CallAdd(self, a, b):
         return a + b
 
@@ -198,12 +217,14 @@ class TestServices(object):
         self.property_int16 = value
 
     PropertiesChanged = signal()
+    Signal1 = signal()
 
 
 if __name__ == "__main__":
     # 设置主循环
     bus = SessionBus()
     bus.publish("com.example.MikaShell", TestServices())
+
     loop = GLib.MainLoop()
     try:
         loop.run()

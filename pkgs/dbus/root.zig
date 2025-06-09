@@ -1,29 +1,109 @@
 const libdbus = @import("libdbus.zig");
 const std = @import("std");
+const glib = @import("glib");
 const Allocator = std.mem.Allocator;
 const Value = libdbus.Value;
 const Error = libdbus.Error;
 const Type = libdbus.Type;
+const Message = libdbus.Message;
 pub const Bus = struct {
     const Self = @This();
     conn: *libdbus.Connection,
+    names: std.StringHashMap([]const u8),
+    uniqueName: []const u8,
     err: Error,
-    pub fn init(bus_type: libdbus.BusType) !Bus {
+    allocator: Allocator,
+    dbus: *Object,
+    objects: std.ArrayList(*Object),
+    pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
         const err = Error.init();
-        return Bus{ .conn = try libdbus.Connection.get(bus_type, err), .err = err };
+        const conn = try libdbus.Connection.get(bus_type, err);
+        const bus = try allocator.create(Self);
+        errdefer allocator.destroy(bus);
+        errdefer err.deinit();
+        errdefer conn.unref();
+        bus.* = Bus{
+            .conn = conn,
+            .uniqueName = conn.getUniqueName(),
+            .err = err,
+            .names = std.StringHashMap([]const u8).init(allocator),
+            .allocator = allocator,
+            .dbus = undefined,
+            .objects = std.ArrayList(*Object).init(allocator),
+        };
+        bus.dbus = try bus.object("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus");
+        try bus.dbus.connect("NameOwnerChanged", struct {
+            fn f(e: Event, data: ?*anyopaque) void {
+                const bus_: *Self = @ptrCast(@alignCast(data));
+                const values = e.values.?;
+                const oldOwner = values[1].string;
+                const newOwner = values[2].string;
+                const isNewService = std.mem.eql(u8, oldOwner, "");
+
+                for (bus_.objects.items) |obj| {
+                    if (std.mem.eql(u8, obj.uniqueName, "")) {
+                        if (isNewService) {
+                            const req = bus_.dbus.call("GetNameOwner", &[_]Value{Value{ .string = obj.name }}) catch {
+                                bus_.dbus.err.reset();
+                                continue;
+                            };
+                            defer req.deinit();
+                            const owner = req.first() catch unreachable;
+                            const owner_ = obj.allocator.dupe(u8, owner.string) catch @panic("OOM");
+                            if (std.mem.eql(u8, owner_, newOwner)) {
+                                obj.uniqueName = owner_;
+                                break;
+                            } else {
+                                obj.allocator.free(owner_);
+                            }
+                        }
+                    } else if (std.mem.eql(u8, obj.uniqueName, oldOwner)) {
+                        const old = obj.uniqueName;
+                        obj.uniqueName = obj.allocator.dupe(u8, newOwner) catch @panic("OOM");
+                        obj.allocator.free(old);
+                    }
+                }
+            }
+        }.f, bus);
+        return bus;
     }
-    pub fn deinit(self: Self) void {
+    pub fn deinit(self: *Self) void {
+        self.conn.unref();
         self.err.deinit();
+        for (0..self.objects.items.len - 1) |i| {
+            self.objects.items[i].deinit();
+        }
+        self.dbus.deinit();
+        self.objects.deinit();
+        self.allocator.destroy(self);
     }
-    pub fn object(self: Self, allocator: Allocator, name: []const u8, path: []const u8, iface: []const u8) Object {
-        return Object{
+    pub fn object(self: *Self, name: []const u8, path: []const u8, iface: []const u8) !*Object {
+        const req = try scall(
+            self.allocator,
+            self.conn,
+            self.err,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            &[_]Value{Value{ .string = name }},
+        );
+        defer req.deinit();
+        const uniqueName = (try req.first()).string;
+        const obj = try self.allocator.create(Object);
+        errdefer self.allocator.destroy(obj);
+        obj.* = Object{
             .name = name,
             .path = path,
             .iface = iface,
-            .conn = self.conn,
-            .allocator = allocator,
+            .bus = self,
+            .allocator = self.allocator,
             .err = Error.init(),
+            .listeners = std.ArrayList(Listener).init(self.allocator),
+            .uniqueName = try self.allocator.dupe(u8, uniqueName),
         };
+        try self.objects.append(obj);
+        return obj;
     }
 };
 pub const Result = struct {
@@ -68,54 +148,112 @@ pub const GetAllResult = struct {
         self.allocator.destroy(self.map);
     }
 };
-pub const Object = struct {
+const Listener = struct {
+    signal: []const u8,
+    handler: *const fn (Event, ?*anyopaque) void,
+    data: ?*anyopaque,
+};
+fn scall(
+    allocator: Allocator,
+    conn: *libdbus.Connection,
+    err: Error,
     name: []const u8,
     path: []const u8,
     iface: []const u8,
-    conn: *libdbus.Connection,
+    method: []const u8,
+    args: ?[]const Value,
+) !Result {
+    const request = libdbus.Message.newMethodCall(name, path, iface, method);
+    defer request.deinit();
+    const iter = try libdbus.MessageIter.init(allocator);
+    defer iter.reset();
+    errdefer iter.deinit();
+    iter.fromAppend(request);
+    if (args != null) {
+        for (args.?) |arg| {
+            try iter.append(arg);
+        }
+    }
+    const response = try conn.sendWithReplyAndBlock(request, -1, err);
+    return Result{
+        .response = response,
+        .iter = iter,
+    };
+}
+pub const Object = struct {
+    const Self = @This();
+    name: []const u8,
+    path: []const u8,
+    iface: []const u8,
+    uniqueName: []const u8,
+    bus: *Bus,
     allocator: Allocator,
     err: Error,
-    fn scall(self: Object, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, args: []const Value) !Result {
-        const request = libdbus.Message.newMethodCall(name, path, iface, method);
+    listeners: std.ArrayList(Listener),
+    watcher: ?glib.FdWatch(Self) = null,
+    pub fn deinit(self: *Self) void {
+        self.err.deinit();
+        self.listeners.deinit();
+        if (self.watcher) |w| w.deinit();
+        self.allocator.free(self.uniqueName);
+        for (self.bus.objects.items, 0..) |obj, i| {
+            if (obj == self) {
+                // FIXME: 考虑线程安全
+                _ = self.bus.objects.swapRemove(i);
+                break;
+            }
+        }
+        self.allocator.destroy(self);
+    }
+    fn sscall(self: *Self, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, args: ?[]const Value) !Result {
+        return scall(self.allocator, self.bus.conn, self.err, name, path, iface, method, args);
+    }
+    pub fn call(self: *Object, name: []const u8, args: ?[]const Value) !Result {
+        return self.sscall(
+            self.name,
+            self.path,
+            self.iface,
+            name,
+            args,
+        );
+    }
+    pub fn callN(self: *Object, name: []const u8, args: ?[]const Value) !void {
+        const request = libdbus.Message.newMethodCall(self.name, self.path, self.iface, name);
         defer request.deinit();
         const iter = try libdbus.MessageIter.init(self.allocator);
         defer iter.deinit();
         iter.fromAppend(request);
-        for (args) |arg| {
-            try iter.append(arg);
+        if (args != null) {
+            for (args.?) |arg| {
+                try iter.append(arg);
+            }
         }
-
-        const response = try self.conn.sendWithReplyAndBlock(request, -1, self.err);
-        return Result{
-            .response = response,
-            .iter = try libdbus.MessageIter.init(self.allocator),
-        };
+        if (!self.bus.conn.send(request, null)) {
+            return error.SendFailed;
+        }
     }
-    pub fn call(self: Object, name: []const u8, args: []const Value) !Result {
-        return self.scall(self.name, self.path, self.iface, name, args);
-    }
-    pub fn get(self: Object, name: []const u8) !GetResult {
+    pub fn get(self: *Object, name: []const u8) !GetResult {
         const args = [_]Value{
             Value{ .string = self.iface },
             Value{ .string = name },
         };
-        const resp = try self.scall(self.name, self.path, "org.freedesktop.DBus.Properties", "Get", &args);
+        const resp = try self.sscall(self.name, self.path, "org.freedesktop.DBus.Properties", "Get", &args);
         return .{ .result = resp };
     }
-    pub fn set(self: Object, name: []const u8, value: Value) !void {
+    pub fn set(self: *Object, name: []const u8, value: Value) !void {
         const args = [_]Value{
             Value{ .string = self.iface },
             Value{ .string = name },
             Value{ .variant = &value },
         };
-        const resp = try self.scall(self.name, self.path, "org.freedesktop.DBus.Properties", "Set", &args);
+        const resp = try self.sscall(self.name, self.path, "org.freedesktop.DBus.Properties", "Set", &args);
         defer resp.deinit();
     }
-    pub fn getAll(self: Object) !GetAllResult {
+    pub fn getAll(self: *Object) !GetAllResult {
         const args = [_]Value{
             Value{ .string = self.iface },
         };
-        const resp = try self.scall(self.name, self.path, "org.freedesktop.DBus.Properties", "GetAll", &args);
+        const resp = try self.sscall(self.name, self.path, "org.freedesktop.DBus.Properties", "GetAll", &args);
         const HashMap = libdbus.Dict.HashMap(.string, .variant);
         const map = try self.allocator.create(HashMap);
         map.* = HashMap.init(self.allocator);
@@ -129,7 +267,78 @@ pub const Object = struct {
             .result = resp,
         };
     }
+    pub fn connect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void, data: ?*anyopaque) !void {
+        if (self.watcher == null) {
+            try self.bus.conn.addMatch("type='signal'", self.err);
+            self.watcher = try glib.FdWatch(Self).add(try self.bus.conn.getUnixFd(), signalHandler, self);
+        }
+        try self.listeners.append(.{ .signal = signal, .handler = handler, .data = data });
+    }
+    pub fn disconnect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void) !void {
+        for (self.listeners.items, 0..) |listener, i| {
+            if (std.mem.eql(u8, listener.signal, signal) and listener.handler == handler) {
+                _ = self.listeners.swapRemove(i);
+                if (self.listeners.items.len == 0 and self.watcher != null) {
+                    self.watcher.?.deinit();
+                    self.watcher = null;
+                }
+                return;
+            }
+        }
+        return error.SignalOrHandlerNotFound;
+    }
 };
+pub const Event = struct {
+    sender: []const u8,
+    iface: []const u8,
+    path: []const u8,
+    member: []const u8,
+    serial: u32,
+    destination: ?[]const u8,
+    values: ?[]Value,
+};
+fn signalHandler(proxy: *Object) bool {
+    if (!proxy.bus.conn.readWrite(-1)) return false;
+    const msg = proxy.bus.conn.popMessage();
+    if (msg == null) return true;
+    const m = msg.?;
+    const type_ = m.getType();
+    const sender = m.getSender();
+    const iface = m.getInterface();
+    const path = m.getPath();
+    const member = m.getMember();
+    const destination = m.getDestination();
+
+    if (type_ != .Signal) return true;
+    if (destination != null or (destination != null and !std.mem.eql(u8, destination.?, proxy.uniqueName))) return true;
+    if (!std.mem.eql(u8, sender, proxy.name) and !std.mem.eql(u8, sender, proxy.uniqueName)) return true;
+    if (!std.mem.eql(u8, iface, proxy.iface)) return true;
+    if (!std.mem.eql(u8, path, proxy.path)) return true;
+    var event = Event{
+        .sender = sender,
+        .iface = iface,
+        .path = path,
+        .member = member,
+        .serial = m.getSerial(),
+        .destination = destination,
+        .values = null,
+    };
+    var iter: ?*libdbus.MessageIter = null;
+    defer if (iter) |i| i.deinit();
+    for (proxy.listeners.items) |listener| {
+        if (std.mem.eql(u8, listener.signal, member)) {
+            if (iter == null) {
+                iter = libdbus.MessageIter.init(proxy.allocator) catch unreachable;
+                if (iter.?.fromResult(m)) {
+                    event.values = iter.?.getAll() catch unreachable;
+                }
+            }
+            listener.handler(event, listener.data);
+        }
+    }
+    return true;
+}
+
 const testing = std.testing;
 const print = std.debug.print;
 test "libdbus" {
@@ -137,9 +346,10 @@ test "libdbus" {
 }
 test "call" {
     const allocator = testing.allocator;
-    const bus = Bus.init(.Session) catch unreachable;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
     defer bus.deinit();
-    const proxy = bus.object(allocator, "com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
     const resp = try proxy.call("GetArrayString", &.{});
     defer resp.deinit();
     const val = try resp.first();
@@ -151,9 +361,10 @@ test "call" {
 
 test "get" {
     const allocator = testing.allocator;
-    const bus = Bus.init(.Session) catch unreachable;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
     defer bus.deinit();
-    const proxy = bus.object(allocator, "com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
     const resp = proxy.get("Byte") catch unreachable;
     defer resp.deinit();
     const val = try resp.value();
@@ -162,9 +373,10 @@ test "get" {
 
 test "get-all" {
     const allocator = testing.allocator;
-    const bus = Bus.init(.Session) catch unreachable;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
     defer bus.deinit();
-    const proxy = bus.object(allocator, "com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
     const resp = proxy.getAll() catch unreachable;
     defer resp.deinit();
     try testing.expectEqual(123, resp.map.get("Byte").?.byte);
@@ -173,9 +385,78 @@ test "get-all" {
 
 test "set" {
     const allocator = testing.allocator;
-    const bus = Bus.init(.Session) catch unreachable;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
     defer bus.deinit();
-    const proxy = bus.object(allocator, "com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
     try proxy.set("Boolean", .{ .boolean = true });
     try proxy.set("Boolean", .{ .boolean = false });
+}
+fn test_on_signal1(event: Event, err_: ?*anyopaque) void {
+    const err: *anyerror = @ptrCast(@alignCast(err_.?));
+    const value = event.values.?;
+    err.* = error.OK;
+    testing.expectEqualStrings("TestSignal", value[0].string) catch |er| {
+        err.* = er;
+        return;
+    };
+    testing.expectEqual(78787, value[1].int32) catch |er| {
+        err.* = er;
+        return;
+    };
+}
+test "signal" {
+    const allocator = testing.allocator;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
+    defer bus.deinit();
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
+    var err: ?anyerror = null;
+    try proxy.connect("Signal1", test_on_signal1, &err);
+    const loop = glib.c.g_main_loop_new(null, 0);
+    _ = glib.c.g_timeout_add(200, &struct {
+        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
+            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
+            glib.c.g_main_loop_quit(loop__);
+            return 0;
+        }
+    }.timeout, loop);
+    glib.c.g_main_loop_run(loop);
+    try testing.expect(err != null);
+    try testing.expect(err.? == error.OK);
+}
+// 用于测试 NameOwnerChanged 信号是否正常工作
+test "signal-owner-changed" {
+    const allocator = testing.allocator;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
+    defer bus.deinit();
+    var proxy = try bus.object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher");
+    defer proxy.deinit();
+    const loop = glib.c.g_main_loop_new(null, 0);
+    _ = glib.c.g_timeout_add(300, &struct {
+        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
+            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
+            glib.c.g_main_loop_quit(loop__);
+            return 0;
+        }
+    }.timeout, loop);
+    glib.c.g_main_loop_run(loop);
+}
+test "signal-disconnect" {
+    const allocator = testing.allocator;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
+    defer bus.deinit();
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
+    try proxy.connect("Signal1", test_on_signal1, null);
+    try proxy.disconnect("Signal1", test_on_signal1);
+    try testing.expectError(error.SignalOrHandlerNotFound, proxy.disconnect("Signal1", test_on_signal1));
+}
+test "get-error" {
+    const allocator = testing.allocator;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
+    defer bus.deinit();
+    var proxy = try bus.object("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
+    try proxy.callN("GetError", null);
 }
