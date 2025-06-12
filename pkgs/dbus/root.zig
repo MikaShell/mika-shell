@@ -9,12 +9,12 @@ const Message = libdbus.Message;
 pub const Bus = struct {
     const Self = @This();
     conn: *libdbus.Connection,
-    names: std.StringHashMap([]const u8),
     uniqueName: []const u8,
     err: Error,
     allocator: Allocator,
     dbus: *Object,
     objects: std.ArrayList(*Object),
+    watch: ?glib.FdWatch(Self) = null,
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
         const err = Error.init();
         const conn = try libdbus.Connection.get(bus_type, err);
@@ -26,7 +26,6 @@ pub const Bus = struct {
             .conn = conn,
             .uniqueName = conn.getUniqueName(),
             .err = err,
-            .names = std.StringHashMap([]const u8).init(allocator),
             .allocator = allocator,
             .dbus = undefined,
             .objects = std.ArrayList(*Object).init(allocator),
@@ -73,6 +72,7 @@ pub const Bus = struct {
         for (0..self.objects.items.len - 1) |i| {
             self.objects.items[i].deinit();
         }
+        if (self.watch) |w| w.deinit();
         self.dbus.deinit();
         self.objects.deinit();
         self.allocator.destroy(self);
@@ -190,11 +190,9 @@ pub const Object = struct {
     allocator: Allocator,
     err: Error,
     listeners: std.ArrayList(Listener),
-    watcher: ?glib.FdWatch(Self) = null,
     pub fn deinit(self: *Self) void {
         self.err.deinit();
         self.listeners.deinit();
-        if (self.watcher) |w| w.deinit();
         self.allocator.free(self.uniqueName);
         for (self.bus.objects.items, 0..) |obj, i| {
             if (obj == self) {
@@ -268,9 +266,9 @@ pub const Object = struct {
         };
     }
     pub fn connect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void, data: ?*anyopaque) !void {
-        if (self.watcher == null) {
+        if (self.bus.watch == null) {
             try self.bus.conn.addMatch("type='signal'", self.err);
-            self.watcher = try glib.FdWatch(Self).add(try self.bus.conn.getUnixFd(), signalHandler, self);
+            self.bus.watch = try glib.FdWatch(Bus).add(try self.bus.conn.getUnixFd(), signalHandler, self.bus);
         }
         try self.listeners.append(.{ .signal = signal, .handler = handler, .data = data });
     }
@@ -278,9 +276,10 @@ pub const Object = struct {
         for (self.listeners.items, 0..) |listener, i| {
             if (std.mem.eql(u8, listener.signal, signal) and listener.handler == handler) {
                 _ = self.listeners.swapRemove(i);
-                if (self.listeners.items.len == 0 and self.watcher != null) {
-                    self.watcher.?.deinit();
-                    self.watcher = null;
+                if (self.listeners.items.len == 0 and self.bus.watch != null) {
+                    try self.bus.conn.removeMatch("type='signal'", self.err);
+                    self.bus.watch.?.deinit();
+                    self.bus.watch = null;
                 }
                 return;
             }
@@ -297,52 +296,63 @@ pub const Event = struct {
     destination: ?[]const u8,
     values: ?[]Value,
 };
-fn signalHandler(proxy: *Object) bool {
-    if (!proxy.bus.conn.readWrite(-1)) return false;
-    const msg = proxy.bus.conn.popMessage();
+fn signalHandler(bus: *Bus) bool {
+    if (!bus.conn.readWrite(-1)) return false;
+    const msg = bus.conn.popMessage();
     if (msg == null) return true;
     const m = msg.?;
+    defer m.deinit();
     const type_ = m.getType();
     const sender = m.getSender();
     const iface = m.getInterface();
     const path = m.getPath();
     const member = m.getMember();
     const destination = m.getDestination();
-
     if (type_ != .Signal) return true;
-    if (destination != null or (destination != null and !std.mem.eql(u8, destination.?, proxy.uniqueName))) return true;
-    if (!std.mem.eql(u8, sender, proxy.name) and !std.mem.eql(u8, sender, proxy.uniqueName)) return true;
-    if (!std.mem.eql(u8, iface, proxy.iface)) return true;
-    if (!std.mem.eql(u8, path, proxy.path)) return true;
-    var event = Event{
-        .sender = sender,
-        .iface = iface,
-        .path = path,
-        .member = member,
-        .serial = m.getSerial(),
-        .destination = destination,
-        .values = null,
-    };
-    var iter: ?*libdbus.MessageIter = null;
-    defer if (iter) |i| i.deinit();
-    for (proxy.listeners.items) |listener| {
-        if (std.mem.eql(u8, listener.signal, member)) {
-            if (iter == null) {
-                iter = libdbus.MessageIter.init(proxy.allocator) catch unreachable;
-                if (iter.?.fromResult(m)) {
-                    event.values = iter.?.getAll() catch unreachable;
+    for (bus.objects.items) |proxy| {
+        if (destination != null or (destination != null and !std.mem.eql(u8, destination.?, proxy.uniqueName))) continue;
+        if (!std.mem.eql(u8, sender, proxy.name) and !std.mem.eql(u8, sender, proxy.uniqueName)) continue;
+        if (!std.mem.eql(u8, iface, proxy.iface)) continue;
+        if (!std.mem.eql(u8, path, proxy.path)) continue;
+        var event = Event{
+            .sender = sender,
+            .iface = iface,
+            .path = path,
+            .member = member,
+            .serial = m.getSerial(),
+            .destination = destination,
+            .values = null,
+        };
+        var iter: ?*libdbus.MessageIter = null;
+        defer if (iter) |i| i.deinit();
+        for (proxy.listeners.items) |listener| {
+            if (std.mem.eql(u8, listener.signal, member)) {
+                if (iter == null) {
+                    iter = libdbus.MessageIter.init(proxy.allocator) catch unreachable;
+                    if (iter.?.fromResult(m)) {
+                        event.values = iter.?.getAll() catch unreachable;
+                    }
                 }
+                listener.handler(event, listener.data);
             }
-            listener.handler(event, listener.data);
         }
     }
+
     return true;
 }
 
 const testing = std.testing;
 const print = std.debug.print;
-test "libdbus" {
-    _ = libdbus;
+fn test_main_loop(timeout_ms: u32) void {
+    const loop = glib.c.g_main_loop_new(null, 0);
+    _ = glib.c.g_timeout_add(timeout_ms, &struct {
+        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
+            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
+            glib.c.g_main_loop_quit(loop__);
+            return 0;
+        }
+    }.timeout, loop);
+    glib.c.g_main_loop_run(loop);
 }
 test "call" {
     const allocator = testing.allocator;
@@ -413,35 +423,19 @@ test "signal" {
     defer proxy.deinit();
     var err: ?anyerror = null;
     try proxy.connect("Signal1", test_on_signal1, &err);
-    const loop = glib.c.g_main_loop_new(null, 0);
-    _ = glib.c.g_timeout_add(200, &struct {
-        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
-            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
-            glib.c.g_main_loop_quit(loop__);
-            return 0;
-        }
-    }.timeout, loop);
-    glib.c.g_main_loop_run(loop);
+    test_main_loop(200);
     try testing.expect(err != null);
     try testing.expect(err.? == error.OK);
 }
-// 用于测试 NameOwnerChanged 信号是否正常工作
-test "signal-owner-changed" {
-    const allocator = testing.allocator;
-    const bus = Bus.init(allocator, .Session) catch unreachable;
-    defer bus.deinit();
-    var proxy = try bus.object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher");
-    defer proxy.deinit();
-    const loop = glib.c.g_main_loop_new(null, 0);
-    _ = glib.c.g_timeout_add(300, &struct {
-        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
-            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
-            glib.c.g_main_loop_quit(loop__);
-            return 0;
-        }
-    }.timeout, loop);
-    glib.c.g_main_loop_run(loop);
-}
+// 用于测试 NameOwnerChanged 信号是否正常工作, 需要手动测试
+// test "signal-owner-changed" {
+//     const allocator = testing.allocator;
+//     const bus = Bus.init(allocator, .Session) catch unreachable;
+//     defer bus.deinit();
+//     var proxy = try bus.object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher");
+//     defer proxy.deinit();
+//     test_main_loop(300);
+// }
 test "signal-disconnect" {
     const allocator = testing.allocator;
     const bus = Bus.init(allocator, .Session) catch unreachable;
