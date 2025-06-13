@@ -268,6 +268,7 @@ pub const Object = struct {
     pub fn connect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         if (self.bus.watch == null) {
             try self.bus.conn.addMatch("type='signal'", self.err);
+            errdefer self.bus.conn.removeMatch("type='signal'", self.err) catch self.err.reset();
             self.bus.watch = try glib.FdWatch(Bus).add(try self.bus.conn.getUnixFd(), signalHandler, self.bus);
         }
         try self.listeners.append(.{ .signal = signal, .handler = handler, .data = data });
@@ -298,6 +299,7 @@ pub const Event = struct {
 };
 fn signalHandler(bus: *Bus) bool {
     if (!bus.conn.readWrite(-1)) return false;
+    defer _ = bus.conn.dispatch();
     const msg = bus.conn.popMessage();
     if (msg == null) return true;
     const m = msg.?;

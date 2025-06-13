@@ -65,6 +65,13 @@ pub const DispatchStatus = enum(c_int) {
     NeedMemory = c.DBUS_DISPATCH_NEED_MEMORY,
 };
 
+extern fn dbus_get_local_machine_id() [*c]u8;
+pub fn getLocalMachineId() []const u8 {
+    const id = dbus_get_local_machine_id();
+    if (id == null) return "";
+    return std.mem.sliceTo(id, 0);
+}
+
 pub const MessageHandler = *const fn (*Connection, ?*Message, ?*anyopaque) HandlerResult;
 pub const FreeFunction = *const fn (?*anyopaque) void;
 pub const Connection = extern struct {
@@ -85,9 +92,12 @@ pub const Connection = extern struct {
     extern fn dbus_bus_get_unique_name(connection: *Connection) [*c]const u8;
     extern fn dbus_connection_unref(connection: *Connection) void;
     extern fn dbus_connection_send(connection: *Connection, message: ?*Message, client_serial: ?*c_uint) c.dbus_bool_t;
+    extern fn dbus_bus_request_name(connection: *Connection, name: [*c]const u8, flags: c_uint, @"error": ?*c.DBusError) c_int;
+    extern fn dbus_bus_release_name(connection: *Connection, name: [*c]const u8, @"error": ?*c.DBusError) c_int;
+
     pub fn get(bus_type: BusType, err: Error) !*Connection {
         const conn = dbus_bus_get(bus_type, err.ptr);
-        if (err.isSet()) return error.HasError;
+        if (err.isSet()) return error.DBusError;
         return conn;
     }
     pub fn unref(self: *Self) void {
@@ -95,7 +105,7 @@ pub const Connection = extern struct {
     }
     pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: Error) !*Message {
         const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err.ptr);
-        if (err.isSet()) return error.HasError;
+        if (err.isSet()) return error.DBusError;
         return reply.?;
     }
     pub fn send(self: *Self, message: *Message, client_serial: ?*c_uint) bool {
@@ -103,11 +113,11 @@ pub const Connection = extern struct {
     }
     pub fn addMatch(self: *Self, rule: []const u8, err: Error) !void {
         dbus_bus_add_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return error.HasError;
+        if (err.isSet()) return error.DBusError;
     }
     pub fn removeMatch(self: *Self, rule: []const u8, err: Error) !void {
         dbus_bus_remove_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return error.HasError;
+        if (err.isSet()) return error.DBusError;
     }
     pub fn flush(self: *Self) void {
         dbus_connection_flush(self);
@@ -131,6 +141,32 @@ pub const Connection = extern struct {
     }
     pub fn getUniqueName(self: *Self) []const u8 {
         return std.mem.sliceTo(dbus_bus_get_unique_name(self), 0);
+    }
+    pub const NameFlag = enum(c_int) {
+        AllowReplacement = c.DBUS_NAME_FLAG_ALLOW_REPLACEMENT,
+        ReplaceExisting = c.DBUS_NAME_FLAG_REPLACE_EXISTING,
+        DoNotQueue = c.DBUS_NAME_FLAG_DO_NOT_QUEUE,
+    };
+    pub const RequestNameReply = enum(c_int) {
+        PrimaryOwner = c.DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER,
+        InQueue = c.DBUS_REQUEST_NAME_REPLY_IN_QUEUE,
+        Exists = c.DBUS_REQUEST_NAME_REPLY_EXISTS,
+        AlreadyOwner = c.DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER,
+    };
+    pub const ReleaseNameReply = enum(c_int) {
+        Released = c.DBUS_RELEASE_NAME_REPLY_RELEASED,
+        NonExistent = c.DBUS_RELEASE_NAME_REPLY_NON_EXISTENT,
+        NotOwner = c.DBUS_RELEASE_NAME_REPLY_NOT_OWNER,
+    };
+    pub fn requestName(self: *Self, name: []const u8, flags: NameFlag, err: Error) !RequestNameReply {
+        const r = dbus_bus_request_name(self, name.ptr, @intCast(@intFromEnum(flags)), err.ptr);
+        if (err.isSet()) return error.DBusError;
+        return @enumFromInt(r);
+    }
+    pub fn releaseName(self: *Self, name: []const u8, err: Error) !ReleaseNameReply {
+        const r = dbus_bus_release_name(self, name.ptr, err.ptr);
+        if (err.isSet()) return error.DBusError;
+        return @enumFromInt(r);
     }
 };
 
@@ -229,7 +265,7 @@ pub const Message = extern struct {
 };
 extern fn dbus_message_type_from_string(type_str: [*c]const u8) c_int;
 extern fn dbus_message_type_to_string(@"type": c_int) [*c]const u8;
-pub const Type = enum(c_int) {
+const Type_ = enum(c_int) {
     invalid = c.DBUS_TYPE_INVALID,
     byte = c.DBUS_TYPE_BYTE,
     boolean = c.DBUS_TYPE_BOOLEAN,
@@ -248,10 +284,10 @@ pub const Type = enum(c_int) {
     variant = c.DBUS_TYPE_VARIANT,
     @"struct" = c.DBUS_TYPE_STRUCT,
     dict = c.DBUS_TYPE_DICT_ENTRY,
-    pub fn fromString(type_str: []const u8) Type {
+    pub fn fromString(type_str: []const u8) Type_ {
         return @enumFromInt(dbus_message_type_from_string(type_str.ptr));
     }
-    pub fn asString(t: Type) []const u8 {
+    pub fn asString(t: Type_) []const u8 {
         return switch (t) {
             .invalid => "\x00",
             .byte => "y",
@@ -273,10 +309,10 @@ pub const Type = enum(c_int) {
             .dict => "e",
         };
     }
-    pub fn asInt(t: Type) c_int {
+    pub fn asInt(t: Type_) c_int {
         return @intFromEnum(t);
     }
-    pub fn fromType(t: type) Type {
+    pub fn FromType(t: type) Type_ {
         return switch (t) {
             u8 => .byte,
             bool => .boolean,
@@ -294,6 +330,7 @@ pub const Type = enum(c_int) {
         };
     }
 };
+pub const Type = Type_;
 pub const Value = union(enum) {
     byte: u8,
     boolean: bool,
@@ -309,16 +346,16 @@ pub const Value = union(enum) {
     signature: []const u8,
     unix_fd: i32,
     array: struct {
-        type: Type,
+        type: Type_,
         items: []const Value,
     },
     variant: *const Value,
     @"struct": []const Value,
     dict: Dict,
-    pub fn getType(v: Value) type {
-        return Value.getTypeWithDBusType(v.getDBusType());
+    pub fn Type(v: Value) type {
+        return Value.TypeWithDBusType(v.DBusType());
     }
-    pub fn getDBusType(v: Value) Type {
+    pub fn DBusType(v: Value) Type_ {
         return switch (v) {
             .byte => .byte,
             .boolean => .boolean,
@@ -339,7 +376,7 @@ pub const Value = union(enum) {
             .dict => .dict,
         };
     }
-    pub fn getTypeWithDBusType(t: Type) type {
+    pub fn TypeWithDBusType(t: Type_) type {
         return switch (t) {
             .invalid => @compileError("unsupported type: " ++ @tagName(t)),
             .byte => u8,
@@ -362,9 +399,13 @@ pub const Value = union(enum) {
         };
     }
 };
+
 pub const Dict = struct {
     const Self = @This();
     items: []Value,
+    // TODO
+    key_type: Type = undefined,
+    value_type: Type = undefined,
     signature: []const u8,
     fn KeyTypeOf(comptime t: Type) type {
         return switch (t) {
@@ -380,14 +421,14 @@ pub const Dict = struct {
             .string,
             .object_path,
             .signature,
-            => Value.getTypeWithDBusType(t),
+            => Value.TypeWithDBusType(t),
             else => @compileError("unsupported key type: " ++ @tagName(t)),
         };
     }
     fn ValueTypeOf(comptime t: Type) type {
         return switch (t) {
             .invalid => @compileError("unsupported key type: " ++ @tagName(t)),
-            else => Value.getTypeWithDBusType(t),
+            else => Value.TypeWithDBusType(t),
         };
     }
     pub fn HashMap(comptime key: Type, comptime value: Type) type {
@@ -544,6 +585,7 @@ pub const MessageIter = struct {
     pub fn fromAppend(self: *Self, message: *Message) void {
         dbus_message_iter_init_append(message, &self.wrapper);
     }
+    /// Only dict and array need signature
     pub fn append(self: *Self, value: Value) !void {
         var ok: c_uint = 1;
         switch (value) {
@@ -621,7 +663,7 @@ pub const MessageIter = struct {
                 try self.closeContainer(sub);
             },
             .variant => {
-                const sub = try self.openContainer(.variant, value.variant.getDBusType());
+                const sub = try self.openContainer(.variant, value.variant.DBusType());
                 defer sub.deinit();
                 try sub.append(value.variant.*);
                 try self.closeContainer(sub);
@@ -854,6 +896,9 @@ pub const MessageIter = struct {
 };
 const print = std.debug.print;
 const testing = std.testing;
+comptime {
+    std.testing.refAllDecls(@This());
+}
 fn test_method_call(name: []const u8) *Message {
     return Message.newMethodCall(
         "com.example.MikaShell",

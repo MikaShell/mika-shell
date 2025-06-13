@@ -85,6 +85,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);
     exe_mod.addImport("glib", glib_mod);
+    exe_mod.addImport("dbus", dbus_mod);
 
     b.installArtifact(exe);
     // CMD
