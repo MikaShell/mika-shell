@@ -1,6 +1,7 @@
 const libdbus = @import("libdbus.zig");
 const std = @import("std");
 const glib = @import("glib");
+const common = @import("common.zig");
 const Allocator = std.mem.Allocator;
 const Value = libdbus.Value;
 const Error = libdbus.Error;
@@ -16,7 +17,7 @@ pub const Bus = struct {
     objects: std.ArrayList(*Object),
     watch: ?glib.FdWatch(Self) = null,
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
-        const err = Error.init();
+        var err = Error.init();
         const conn = try libdbus.Connection.get(bus_type, err);
         const bus = try allocator.create(Self);
         errdefer allocator.destroy(bus);
@@ -32,7 +33,7 @@ pub const Bus = struct {
         };
         bus.dbus = try bus.object("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus");
         try bus.dbus.connect("NameOwnerChanged", struct {
-            fn f(e: Event, data: ?*anyopaque) void {
+            fn f(e: common.Event, data: ?*anyopaque) void {
                 const bus_: *Self = @ptrCast(@alignCast(data));
                 const values = e.values.?;
                 const oldOwner = values[1].string;
@@ -64,6 +65,9 @@ pub const Bus = struct {
                 }
             }
         }.f, bus);
+        try bus.conn.addMatch("type='signal'", err);
+        errdefer bus.conn.removeMatch("type='signal'", err) catch err.reset();
+        bus.watch = try glib.FdWatch(Bus).add(try bus.conn.getUnixFd(), signalHandler, bus);
         return bus;
     }
     pub fn deinit(self: *Self) void {
@@ -99,7 +103,7 @@ pub const Bus = struct {
             .bus = self,
             .allocator = self.allocator,
             .err = Error.init(),
-            .listeners = std.ArrayList(Listener).init(self.allocator),
+            .listeners = std.ArrayList(common.Listener).init(self.allocator),
             .uniqueName = try self.allocator.dupe(u8, uniqueName),
         };
         try self.objects.append(obj);
@@ -148,11 +152,6 @@ pub const GetAllResult = struct {
         self.allocator.destroy(self.map);
     }
 };
-const Listener = struct {
-    signal: []const u8,
-    handler: *const fn (Event, ?*anyopaque) void,
-    data: ?*anyopaque,
-};
 fn scall(
     allocator: Allocator,
     conn: *libdbus.Connection,
@@ -189,7 +188,7 @@ pub const Object = struct {
     bus: *Bus,
     allocator: Allocator,
     err: Error,
-    listeners: std.ArrayList(Listener),
+    listeners: std.ArrayList(common.Listener),
     pub fn deinit(self: *Self) void {
         self.err.deinit();
         self.listeners.deinit();
@@ -265,41 +264,23 @@ pub const Object = struct {
             .result = resp,
         };
     }
-    pub fn connect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void, data: ?*anyopaque) !void {
-        if (self.bus.watch == null) {
-            try self.bus.conn.addMatch("type='signal'", self.err);
-            errdefer self.bus.conn.removeMatch("type='signal'", self.err) catch self.err.reset();
-            self.bus.watch = try glib.FdWatch(Bus).add(try self.bus.conn.getUnixFd(), signalHandler, self.bus);
-        }
+    pub fn connect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         try self.listeners.append(.{ .signal = signal, .handler = handler, .data = data });
     }
-    pub fn disconnect(self: *Object, signal: []const u8, handler: fn (Event, ?*anyopaque) void) !void {
+    pub fn disconnect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void) !void {
         for (self.listeners.items, 0..) |listener, i| {
             if (std.mem.eql(u8, listener.signal, signal) and listener.handler == handler) {
                 _ = self.listeners.swapRemove(i);
-                if (self.listeners.items.len == 0 and self.bus.watch != null) {
-                    try self.bus.conn.removeMatch("type='signal'", self.err);
-                    self.bus.watch.?.deinit();
-                    self.bus.watch = null;
-                }
                 return;
             }
         }
         return error.SignalOrHandlerNotFound;
     }
 };
-pub const Event = struct {
-    sender: []const u8,
-    iface: []const u8,
-    path: []const u8,
-    member: []const u8,
-    serial: u32,
-    destination: ?[]const u8,
-    values: ?[]Value,
-};
 fn signalHandler(bus: *Bus) bool {
     if (!bus.conn.readWrite(-1)) return false;
     defer _ = bus.conn.dispatch();
+    if (bus.objects.items.len == 0) return true;
     const msg = bus.conn.popMessage();
     if (msg == null) return true;
     const m = msg.?;
@@ -316,7 +297,7 @@ fn signalHandler(bus: *Bus) bool {
         if (!std.mem.eql(u8, sender, proxy.name) and !std.mem.eql(u8, sender, proxy.uniqueName)) continue;
         if (!std.mem.eql(u8, iface, proxy.iface)) continue;
         if (!std.mem.eql(u8, path, proxy.path)) continue;
-        var event = Event{
+        var event = common.Event{
             .sender = sender,
             .iface = iface,
             .path = path,
@@ -404,7 +385,7 @@ test "set" {
     try proxy.set("Boolean", .{ .boolean = true });
     try proxy.set("Boolean", .{ .boolean = false });
 }
-fn test_on_signal1(event: Event, err_: ?*anyopaque) void {
+fn test_on_signal1(event: common.Event, err_: ?*anyopaque) void {
     const err: *anyerror = @ptrCast(@alignCast(err_.?));
     const value = event.values.?;
     err.* = error.OK;

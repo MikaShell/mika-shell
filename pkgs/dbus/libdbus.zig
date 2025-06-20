@@ -594,11 +594,14 @@ pub const MessageIter = struct {
                 Type.byte.asInt(),
                 &value.byte,
             ),
-            .boolean => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.boolean.asInt(),
-                &value.boolean,
-            ),
+            .boolean => {
+                const v: c_int = @intCast(@intFromBool(value.boolean));
+                ok = dbus_message_iter_append_basic(
+                    &self.wrapper,
+                    Type.boolean.asInt(),
+                    &v,
+                );
+            },
             .int16 => ok = dbus_message_iter_append_basic(
                 &self.wrapper,
                 Type.int16.asInt(),

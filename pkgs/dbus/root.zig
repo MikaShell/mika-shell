@@ -6,5 +6,6 @@ pub const Value = libdbus.Value;
 pub const Error = libdbus.Error;
 pub const Type = libdbus.Type;
 pub const Message = libdbus.Message;
-usingnamespace @import("./service.zig");
-usingnamespace @import("./client.zig");
+pub usingnamespace @import("service.zig");
+pub usingnamespace @import("client.zig");
+pub usingnamespace @import("common.zig");

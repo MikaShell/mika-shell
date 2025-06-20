@@ -6,6 +6,8 @@ const Value = libdbus.Value;
 const Error = libdbus.Error;
 const Type = libdbus.Type;
 const Message = libdbus.Message;
+const common = @import("common.zig");
+
 pub const Service = struct {
     const Self = @This();
     const Interfaces = std.ArrayList(struct {
@@ -20,6 +22,7 @@ pub const Service = struct {
     interfaces: Interfaces,
     watch: glib.FdWatch(Self),
     machineId: []const u8,
+    listeners: std.ArrayList(common.Listener),
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType, flag: libdbus.Connection.NameFlag, name: []const u8) !*Service {
         var err = Error.init();
         const conn = try libdbus.Connection.get(bus_type, err);
@@ -38,6 +41,7 @@ pub const Service = struct {
             .interfaces = Interfaces.init(allocator),
             .watch = try glib.FdWatch(Self).add(try conn.getUnixFd(), serviceHandler, service),
             .machineId = libdbus.getLocalMachineId(),
+            .listeners = std.ArrayList(common.Listener).init(allocator),
         };
         const r = try conn.requestName(name, flag, err);
         switch (r) {
@@ -58,6 +62,7 @@ pub const Service = struct {
         for (self.interfaces.items) |interface| {
             self.allocator.free(interface.iface.method);
         }
+        self.listeners.deinit();
         self.interfaces.deinit();
         self.allocator.destroy(self);
     }
@@ -99,6 +104,19 @@ pub const Service = struct {
         };
         try self.interfaces.append(.{ .path = path, .iface = itface });
     }
+    pub fn connect(self: *Service, signal: []const u8, comptime T: type, handler: *const fn (common.Event, ?*T) void, data: ?*T) !void {
+        try self.listeners.append(.{ .signal = signal, .handler = @ptrCast(handler), .data = @ptrCast(data) });
+    }
+    pub fn disconnect(self: *Service, signal: []const u8, comptime T: type, handler: *const fn (common.Event, ?*T) void) !void {
+        for (self.listeners.items, 0..) |listener, i| {
+            const h: *const fn (common.Event, ?*anyopaque) void = @ptrCast(handler);
+            if (std.mem.eql(u8, listener.signal, signal) and listener.handler == h) {
+                _ = self.listeners.swapRemove(i);
+                return;
+            }
+        }
+        return error.SignalOrHandlerNotFound;
+    }
 };
 // FIXME: 移除此处的 'catch unreachable'
 fn serviceHandler(service: *Service) bool {
@@ -111,6 +129,33 @@ fn serviceHandler(service: *Service) bool {
     const type_ = m.getType();
     switch (type_) {
         .MethodCall => {},
+        .Signal => {
+            const sender = m.getSender();
+            const iface = m.getInterface();
+            const path = m.getPath();
+            const member = m.getMember();
+            const destination = m.getDestination();
+            const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
+            defer iter.deinit();
+            var e = common.Event{
+                .sender = sender,
+                .iface = iface,
+                .path = path,
+                .member = member,
+                .serial = m.getSerial(),
+                .destination = destination,
+                .values = null,
+            };
+            if (iter.fromResult(m)) {
+                e.values = iter.getAll() catch unreachable;
+            }
+            for (service.listeners.items) |listener| {
+                if (std.mem.eql(u8, listener.signal, member)) {
+                    listener.handler(e, listener.data);
+                }
+            }
+            return true;
+        },
         else => return true,
     }
     const iface = m.getInterface();
@@ -312,7 +357,14 @@ fn serviceHandler(service: *Service) bool {
             const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
             defer iter.deinit();
             var in: []const Value = &.{};
-            const out: []const Value = service.allocator.alloc(Value, method.args.len) catch unreachable;
+            const out_len = blk: {
+                var len: usize = 0;
+                for (method.args) |arg| {
+                    if (arg.direction == .out) len += 1;
+                }
+                break :blk len;
+            };
+            const out: []const Value = service.allocator.alloc(Value, out_len) catch unreachable;
             defer service.allocator.free(out);
             if (iter.fromResult(m)) {
                 in = iter.getAll() catch unreachable;
@@ -339,26 +391,28 @@ fn serviceHandler(service: *Service) bool {
     }
     return true;
 }
+pub const MethodArgs = struct {
+    direction: enum { in, out },
+    name: ?[]const u8 = null,
+    type: []const u8,
+    annotations: []const Annotation = &.{},
+};
 pub fn Method(comptime T: anytype) type {
     return struct {
         name: []const u8,
-        args: []const struct {
-            direction: enum { in, out },
-            name: ?[]const u8 = null,
-            type: []const u8,
-            annotations: []const Annotation = &.{},
-        } = &.{},
+        args: []const MethodArgs = &.{},
         func: *const fn (self: *T, allocator: Allocator, in: []const Value, out: []const Value) anyerror!void,
         annotations: []const Annotation = &.{},
     };
 }
+pub const SignalArgs = struct {
+    name: ?[]const u8 = null,
+    type: []const u8,
+    annotations: []const Annotation = &.{},
+};
 pub const Signal = struct {
     name: []const u8,
-    args: []const struct {
-        name: ?[]const u8 = null,
-        type: []const u8,
-        annotations: []const Annotation = &.{},
-    } = &.{},
+    args: []const SignalArgs = &.{},
     annotations: []const Annotation = &.{},
 };
 pub const Emitter = struct {
@@ -368,7 +422,7 @@ pub const Emitter = struct {
     signals: []const Signal,
     instance: *anyopaque,
     getter: ?*const fn (instance: *anyopaque, name: []const u8, allocator: Allocator) Value,
-    fn emit(self: Emitter, name: []const u8, args: ?[]const Value) !void {
+    pub fn emit(self: Emitter, name: []const u8, args: ?[]const Value) !void {
         blk: {
             for (self.signals) |s| {
                 if (std.mem.eql(u8, s.name, name)) break :blk;
@@ -390,7 +444,7 @@ pub const Emitter = struct {
         _ = self.conn.send(msg, null);
         self.conn.flush();
     }
-    fn emitPropertiesChanged(self: Emitter, changed: []const []const u8, invalidated: []const []const u8) !void {
+    pub fn emitPropertiesChanged(self: Emitter, changed: []const []const u8, invalidated: []const []const u8) !void {
         if (self.getter == null) @panic("No getter function provided for PropertiesChanged signal. Please provide a getter function for the interface");
         const msg = libdbus.Message.newSignal(self.path, "org.freedesktop.DBus.Properties", "PropertiesChanged");
         defer msg.deinit();
@@ -428,6 +482,12 @@ pub const Annotation = struct {
     name: []const u8,
     value: []const u8,
 };
+pub const Property = struct {
+    name: []const u8,
+    type: []const u8,
+    annotations: []const Annotation = &.{},
+    access: enum { read, write, readwrite },
+};
 pub fn Interface(comptime T: anytype) type {
     return struct {
         name: []const u8,
@@ -437,12 +497,7 @@ pub fn Interface(comptime T: anytype) type {
         setter: ?*const fn (self: *T, name: []const u8, value: Value) anyerror!void = null,
         method: []const Method(T) = &.{},
         signal: []const Signal = &.{},
-        property: []const struct {
-            name: []const u8,
-            type: []const u8,
-            annotations: []const Annotation = &.{},
-            access: enum { read, write, readwrite },
-        } = &.{},
+        property: []const Property = &.{},
         annotations: []const Annotation = &.{},
     };
 }
