@@ -30,4 +30,3 @@
         <arg type="as" name="invalidated_properties"/>
     </signal>
 </interface>
- 

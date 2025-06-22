@@ -2,11 +2,9 @@ const c = @cImport({
     @cInclude("dbus/dbus.h");
     @cInclude("dbus.h");
 });
-usingnamespace @cImport({
-    @cInclude("dbus.h");
-    @cInclude("dbus/dbus.h");
-});
+
 const std = @import("std");
+pub const Types = @import("types.zig");
 const Allocator = std.mem.Allocator;
 /// `Error` 是一个 `DBusError` 的容器，内部包含一个指向 `c.DBusError` 的指针。
 /// 该结构体可以安全地被复制，但是只能被使用一次。
@@ -265,271 +263,6 @@ pub const Message = extern struct {
 };
 extern fn dbus_message_type_from_string(type_str: [*c]const u8) c_int;
 extern fn dbus_message_type_to_string(@"type": c_int) [*c]const u8;
-const Type_ = enum(c_int) {
-    invalid = c.DBUS_TYPE_INVALID,
-    byte = c.DBUS_TYPE_BYTE,
-    boolean = c.DBUS_TYPE_BOOLEAN,
-    int16 = c.DBUS_TYPE_INT16,
-    uint16 = c.DBUS_TYPE_UINT16,
-    int32 = c.DBUS_TYPE_INT32,
-    uint32 = c.DBUS_TYPE_UINT32,
-    int64 = c.DBUS_TYPE_INT64,
-    uint64 = c.DBUS_TYPE_UINT64,
-    double = c.DBUS_TYPE_DOUBLE,
-    string = c.DBUS_TYPE_STRING,
-    object_path = c.DBUS_TYPE_OBJECT_PATH,
-    signature = c.DBUS_TYPE_SIGNATURE,
-    unix_fd = c.DBUS_TYPE_UNIX_FD,
-    array = c.DBUS_TYPE_ARRAY,
-    variant = c.DBUS_TYPE_VARIANT,
-    @"struct" = c.DBUS_TYPE_STRUCT,
-    dict = c.DBUS_TYPE_DICT_ENTRY,
-    pub fn fromString(type_str: []const u8) Type_ {
-        return @enumFromInt(dbus_message_type_from_string(type_str.ptr));
-    }
-    pub fn asString(t: Type_) []const u8 {
-        return switch (t) {
-            .invalid => "\x00",
-            .byte => "y",
-            .boolean => "b",
-            .int16 => "n",
-            .uint16 => "q",
-            .int32 => "i",
-            .uint32 => "u",
-            .int64 => "x",
-            .uint64 => "t",
-            .double => "d",
-            .string => "s",
-            .object_path => "o",
-            .signature => "g",
-            .unix_fd => "h",
-            .array => "a",
-            .variant => "v",
-            .@"struct" => "r",
-            .dict => "e",
-        };
-    }
-    pub fn asInt(t: Type_) c_int {
-        return @intFromEnum(t);
-    }
-    pub fn FromType(t: type) Type_ {
-        return switch (t) {
-            u8 => .byte,
-            bool => .boolean,
-            i16 => .int16,
-            u16 => .uint16,
-            i32 => .int32,
-            u32 => .uint32,
-            i64 => .int64,
-            u64 => .uint64,
-            f64 => .double,
-            []const u8, []u8 => .string,
-            []const Value, []Value => .array,
-            *const Value, *Value => .variant,
-            else => @compileError("unsupported type: " ++ @typeName(t)),
-        };
-    }
-};
-pub const Type = Type_;
-pub const Value = union(enum) {
-    byte: u8,
-    boolean: bool,
-    int16: i16,
-    uint16: u16,
-    int32: i32,
-    uint32: u32,
-    int64: i64,
-    uint64: u64,
-    double: f64,
-    string: []const u8,
-    object_path: []const u8,
-    signature: []const u8,
-    unix_fd: i32,
-    array: struct {
-        type: Type_,
-        items: []const Value,
-    },
-    variant: *const Value,
-    @"struct": []const Value,
-    dict: Dict,
-    pub fn Type(v: Value) type {
-        return Value.TypeWithDBusType(v.DBusType());
-    }
-    pub fn DBusType(v: Value) Type_ {
-        return switch (v) {
-            .byte => .byte,
-            .boolean => .boolean,
-            .int16 => .int16,
-            .uint16 => .uint16,
-            .int32 => .int32,
-            .uint32 => .uint32,
-            .int64 => .int64,
-            .uint64 => .uint64,
-            .double => .double,
-            .string => .string,
-            .object_path => .object_path,
-            .signature => .signature,
-            .unix_fd => .unix_fd,
-            .array => .array,
-            .variant => .variant,
-            .@"struct" => .@"struct",
-            .dict => .dict,
-        };
-    }
-    pub fn TypeWithDBusType(t: Type_) type {
-        return switch (t) {
-            .invalid => @compileError("unsupported type: " ++ @tagName(t)),
-            .byte => u8,
-            .boolean => bool,
-            .int16 => i16,
-            .uint16 => u16,
-            .int32 => i32,
-            .uint32 => u32,
-            .int64 => i64,
-            .uint64 => u64,
-            .double => f64,
-            .string => []const u8,
-            .object_path => []const u8,
-            .signature => []const u8,
-            .unix_fd => i32,
-            .array => []const Value,
-            .variant => *const Value,
-            .@"struct" => []const Value,
-            .dict => Dict,
-        };
-    }
-};
-
-pub const Dict = struct {
-    const Self = @This();
-    items: []Value,
-    // TODO
-    key_type: Type = undefined,
-    value_type: Type = undefined,
-    signature: []const u8,
-    fn KeyTypeOf(comptime t: Type) type {
-        return switch (t) {
-            .byte,
-            .boolean,
-            .int16,
-            .uint16,
-            .int32,
-            .uint32,
-            .int64,
-            .uint64,
-            .double,
-            .string,
-            .object_path,
-            .signature,
-            => Value.TypeWithDBusType(t),
-            else => @compileError("unsupported key type: " ++ @tagName(t)),
-        };
-    }
-    fn ValueTypeOf(comptime t: Type) type {
-        return switch (t) {
-            .invalid => @compileError("unsupported key type: " ++ @tagName(t)),
-            else => Value.TypeWithDBusType(t),
-        };
-    }
-    pub fn HashMap(comptime key: Type, comptime value: Type) type {
-        if (KeyTypeOf(key) == []const u8) {
-            return std.StringHashMap(ValueTypeOf(value));
-        }
-        return std.AutoHashMap(KeyTypeOf(key), ValueTypeOf(value));
-    }
-    pub fn dump(self: Self, comptime key: Type, comptime value: Type, hashmap: *HashMap(key, value)) !void {
-        const items = self.items;
-        var i: usize = 0;
-        while (i < items.len) {
-            const k = switch (key) {
-                .byte => items[i].byte,
-                .boolean => items[i].boolean,
-                .int16 => items[i].int16,
-                .uint16 => items[i].uint16,
-                .int32 => items[i].int32,
-                .uint32 => items[i].uint32,
-                .int64 => items[i].int64,
-                .uint64 => items[i].uint64,
-                .double => items[i].double,
-                .string => items[i].string,
-                .object_path => items[i].object_path,
-                .signature => items[i].signature,
-                else => unreachable,
-            };
-            const v = switch (value) {
-                .byte => items[i + 1].byte,
-                .boolean => items[i + 1].boolean,
-                .int16 => items[i + 1].int16,
-                .uint16 => items[i + 1].uint16,
-                .int32 => items[i + 1].int32,
-                .uint32 => items[i + 1].uint32,
-                .int64 => items[i + 1].int64,
-                .uint64 => items[i + 1].uint64,
-                .double => items[i + 1].double,
-                .string => items[i + 1].string,
-                .object_path => items[i + 1].object_path,
-                .signature => items[i + 1].signature,
-                .unix_fd => items[i + 1].unix_fd,
-                .array => items[i + 1].array,
-                .variant => items[i + 1].variant,
-                .@"struct" => items[i + 1].@"struct",
-                .dict => items[i + 1].dict,
-                else => unreachable,
-            };
-            try hashmap.put(k, v);
-            i += 2;
-        }
-    }
-    pub fn init(allocator: Allocator, comptime valueType: Type, value: anytype) !Self {
-        var list = std.ArrayList(Value).init(allocator);
-        defer list.deinit();
-        const typeInfo = @typeInfo(@TypeOf(value));
-        if (typeInfo != .@"struct") {
-            @compileError("expected struct argument, found " ++ @typeName(@TypeOf(value)));
-        }
-        if (typeInfo == .@"struct" and typeInfo.@"struct".is_tuple) {
-            @compileError("expected struct argument, found tuple");
-        }
-        inline for (typeInfo.@"struct".fields) |field| {
-            try list.append(.{ .string = field.name });
-            if (@TypeOf(@field(value, field.name)) == Value) {
-                try list.append(@field(value, field.name));
-            } else {
-                const val: Value = switch (valueType) {
-                    .byte => .{ .byte = @field(value, field.name) },
-                    .boolean => .{ .boolean = @field(value, field.name) },
-                    .int16 => .{ .int16 = @field(value, field.name) },
-                    .uint16 => .{ .uint16 = @field(value, field.name) },
-                    .int32 => .{ .int32 = @field(value, field.name) },
-                    .uint32 => .{ .uint32 = @field(value, field.name) },
-                    .int64 => .{ .int64 = @field(value, field.name) },
-                    .uint64 => .{ .uint64 = @field(value, field.name) },
-                    .double => .{ .double = @field(value, field.name) },
-                    .string => .{ .string = @field(value, field.name) },
-                    .object_path => .{ .object_path = @field(value, field.name) },
-                    .signature => .{ .signature = @field(value, field.name) },
-                    .unix_fd => .{ .unix_fd = @field(value, field.name) },
-                    .array => .{ .array = @field(value, field.name) },
-                    .variant => .{ .variant = @field(value, field.name) },
-                    .@"struct" => .{ .@"struct" = @field(value, field.name) },
-                    .dict => .{ .dict = @field(value, field.name) },
-                    else => @compileError("unsupported key type: " ++ @tagName(Value)),
-                };
-                try list.append(val);
-            }
-        }
-        const sig = try std.fmt.allocPrint(allocator, "{{s{s}}}", .{valueType.asString()});
-        return Self{
-            .items = try list.toOwnedSlice(),
-            .signature = sig,
-        };
-    }
-    // 此函数仅在使用 Dict.init 初始化的实例上调用
-    pub fn deinit(dict: Self, allocator: Allocator) void {
-        allocator.free(dict.items);
-        allocator.free(dict.signature);
-    }
-};
 
 // 对于从 MessageIter 中获取的值，无需调用者手动 free, 在调用 MessageIter.deinit() 时自动释放所有资源
 pub const MessageIter = struct {
@@ -585,127 +318,80 @@ pub const MessageIter = struct {
     pub fn fromAppend(self: *Self, message: *Message) void {
         dbus_message_iter_init_append(message, &self.wrapper);
     }
-    /// Only dict and array need signature
-    pub fn append(self: *Self, value: Value) !void {
+    pub fn append(self: *Self, comptime T: type, value: T.Type) !void {
         var ok: c_uint = 1;
-        switch (value) {
-            .byte => ok = dbus_message_iter_append_basic(
+        switch (T.tag) {
+            .byte,
+            .int16,
+            .uint16,
+            .int32,
+            .uint32,
+            .int64,
+            .uint64,
+            .double,
+            .unix_fd,
+            => ok = dbus_message_iter_append_basic(
                 &self.wrapper,
-                Type.byte.asInt(),
-                &value.byte,
+                @intFromEnum(T.tag),
+                &value,
             ),
             .boolean => {
-                const v: c_int = @intCast(@intFromBool(value.boolean));
+                const v: c_int = @intCast(@intFromBool(value));
                 ok = dbus_message_iter_append_basic(
                     &self.wrapper,
-                    Type.boolean.asInt(),
+                    @intFromEnum(T.tag),
                     &v,
                 );
             },
-            .int16 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.int16.asInt(),
-                &value.int16,
-            ),
-            .uint16 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.uint16.asInt(),
-                &value.uint16,
-            ),
-            .int32 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.int32.asInt(),
-                &value.int32,
-            ),
-            .uint32 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.uint32.asInt(),
-                &value.uint32,
-            ),
-            .int64 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.int64.asInt(),
-                &value.int64,
-            ),
-            .uint64 => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.uint64.asInt(),
-                &value.uint64,
-            ),
-            .double => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.double.asInt(),
-                &value.double,
-            ),
-            .string => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.string.asInt(),
-                @ptrCast(&value.string.ptr),
-            ),
-            .object_path => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.object_path.asInt(),
-                @ptrCast(&value.object_path.ptr),
-            ),
-            .signature => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.signature.asInt(),
-                @ptrCast(&value.signature.ptr),
-            ),
-            .unix_fd => ok = dbus_message_iter_append_basic(
-                &self.wrapper,
-                Type.unix_fd.asInt(),
-                &value.unix_fd,
-            ),
+            .string, .signature, .object_path => {
+                ok = dbus_message_iter_append_basic(
+                    &self.wrapper,
+                    @intFromEnum(T.tag),
+                    @ptrCast(&value.ptr),
+                );
+            },
             .array => {
-                const sub = try self.openContainer(.array, value.array.type);
+                const sub = try self.openContainer(.array, @enumFromInt(@intFromEnum(T.ArrayElement.tag)));
                 defer sub.deinit();
-                for (value.array.items) |item| {
-                    try sub.append(item);
+                for (value) |item| {
+                    try sub.append(T.ArrayElement, item);
                 }
                 try self.closeContainer(sub);
             },
             .variant => {
-                const sub = try self.openContainer(.variant, value.variant.DBusType());
-                defer sub.deinit();
-                try sub.append(value.variant.*);
-                try self.closeContainer(sub);
+                try value.store(value, self);
             },
             .@"struct" => {
                 const sub = try self.openContainer(.@"struct", null);
                 defer sub.deinit();
-                for (value.@"struct") |item| {
-                    try sub.append(item);
+                inline for (value, 0..) |item, i| {
+                    try sub.append(T.StructFields[i], item);
                 }
                 try self.closeContainer(sub);
             },
             .dict => {
-                const sub = try self.openContainerS(.array, value.dict.signature);
+                const sub = try self.openContainerS(.array, Types.signature(T)[1..]);
                 defer sub.deinit();
-                var i: usize = 0;
-                while (i < value.dict.items.len) {
-                    const key = value.dict.items[i];
-                    const val = value.dict.items[i + 1];
+                for (value) |v| {
                     const item = try sub.openContainer(.dict, null);
                     defer item.deinit();
                     errdefer _ = sub.closeContainer(item) catch {};
-                    try item.append(key);
-                    try item.append(val);
+                    try item.append(T.DictKey, v.key);
+                    try item.append(T.DictValue, v.value);
                     try sub.closeContainer(item);
-                    i += 2;
                 }
                 try self.closeContainer(sub);
             },
+            else => unreachable,
         }
-
         if (ok == 0) {
             return error.AppendFailed;
         }
     }
-    fn openContainer(self: *Self, t: Type, elementType: ?Type) !*MessageIter {
+    pub fn openContainer(self: *Self, t: Types.Tags, elementType: ?Types.Tags) !*MessageIter {
         return self.openContainerS(t, if (elementType) |et| et.asString() else null);
     }
-    fn openContainerS(self: *Self, t: Type, elementType: ?[]const u8) !*MessageIter {
+    pub fn openContainerS(self: *Self, t: Types.Tags, elementType: ?[]const u8) !*MessageIter {
         const sub = try MessageIter.init(self.allocator);
         const r = dbus_message_iter_open_container(
             &self.wrapper,
@@ -718,7 +404,7 @@ pub const MessageIter = struct {
         }
         return sub;
     }
-    fn closeContainer(self: *Self, sub: *MessageIter) !void {
+    pub fn closeContainer(self: *Self, sub: *MessageIter) !void {
         if (dbus_message_iter_close_container(&self.wrapper, &sub.wrapper) == 0) {
             return error.CloseContainerFailed;
         }
@@ -729,158 +415,117 @@ pub const MessageIter = struct {
         self.allocator.destroy(arena);
         self.allocator.destroy(self);
     }
-    pub fn next(self: *Self) !?Value {
-        var value: Value = undefined;
-        switch (self.getArgType()) {
-            .invalid => {
-                return null;
-            },
-            .byte => {
-                var byte: u8 = undefined;
-                self.getBasic(&byte);
-                value = Value{ .byte = byte };
+    pub fn next(self: *Self, comptime T: type) !T.Type {
+        if (T.tag == .invalid) {
+            @compileError("invalid type is not allowed");
+        }
+        if (self.getArgType() != T.tag) {
+            if (self.getArgType() != .array and T.tag != .dict) {
+                if (self.getArgType() != .dict and T.tag != .@"struct") {
+                    std.log.err("miss match type: {any} {any}\n", .{ self.getArgType(), T.tag });
+                    return error.TypeMismatch;
+                }
+            }
+        }
+        switch (T.tag) {
+            .invalid => unreachable,
+            .byte,
+            .int16,
+            .uint16,
+            .int32,
+            .uint32,
+            .int64,
+            .uint64,
+            .double,
+            .unix_fd,
+            => {
+                var v: T.Type = undefined;
+                self.getBasic(&v);
+                _ = dbus_message_iter_next(&self.wrapper);
+                return v;
             },
             .boolean => {
-                var boolean: bool = undefined;
-                self.getBasic(&boolean);
-                value = Value{ .boolean = boolean };
+                var v: c_int = undefined;
+                self.getBasic(&v);
+                _ = dbus_message_iter_next(&self.wrapper);
+                return v == 1;
             },
-            .int16 => {
-                var int16: i16 = undefined;
-                self.getBasic(&int16);
-                value = Value{ .int16 = int16 };
-            },
-            .uint16 => {
-                var uint16: u16 = undefined;
-                self.getBasic(&uint16);
-                value = Value{ .uint16 = uint16 };
-            },
-            .int32 => {
-                var int32: i32 = undefined;
-                self.getBasic(&int32);
-                value = Value{ .int32 = int32 };
-            },
-            .uint32 => {
-                var uint32: u32 = undefined;
-                self.getBasic(&uint32);
-                value = Value{ .uint32 = uint32 };
-            },
-            .int64 => {
-                var int64: i64 = undefined;
-                self.getBasic(&int64);
-                value = Value{ .int64 = int64 };
-            },
-            .uint64 => {
-                var uint64: u64 = undefined;
-                self.getBasic(&uint64);
-                value = Value{ .uint64 = uint64 };
-            },
-            .double => {
-                var double: f64 = undefined;
-                self.getBasic(&double);
-                value = Value{ .double = double };
-            },
-            .string => {
+            .string,
+            .signature,
+            .object_path,
+            => {
                 var strPtr: [*c]const u8 = undefined;
                 self.getBasic(@ptrCast(&strPtr));
-                const str = std.mem.sliceTo(strPtr, 0);
-                value = Value{ .string = str };
-            },
-            .object_path => {
-                var objPtr: [*c]const u8 = undefined;
-                self.getBasic(@ptrCast(&objPtr));
-                const obj = std.mem.sliceTo(objPtr, 0);
-                value = Value{ .object_path = obj };
-            },
-            .signature => {
-                var sigPtr: [*c]const u8 = undefined;
-                self.getBasic(@ptrCast(&sigPtr));
-                const sig = std.mem.sliceTo(sigPtr, 0);
-                value = Value{ .signature = sig };
-            },
-            .unix_fd => {
-                var fd: i32 = undefined;
-                self.getBasic(&fd);
-                value = Value{ .unix_fd = fd };
-            },
-            .array => {
-                const isDict = blk: {
-                    const sig = self.getSignature();
-                    break :blk std.mem.startsWith(u8, sig, "a{") and std.mem.endsWith(u8, sig, "}");
-                };
-                if (isDict) {
-                    var sub = try MessageIter.init(self.arena);
-                    errdefer sub.deinit();
-                    dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                    const array = try self.arena.alloc(Value, self.getElementCount() * 2);
-                    var i: usize = 0;
-                    while (try sub.next()) |entry| {
-                        array[i] = entry.@"struct"[0];
-                        array[i + 1] = entry.@"struct"[1];
-                        i += 2;
-                    }
-                    value = Value{ .dict = Dict{ .items = array, .signature = self.getSignature()[2..] } };
-                } else {
-                    var sub = try MessageIter.init(self.arena);
-                    errdefer sub.deinit();
-                    dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                    const array = try self.arena.alloc(Value, self.getElementCount());
-                    for (array) |*item| {
-                        item.* = (try sub.next()).?;
-                    }
-                    value = Value{ .array = .{
-                        .type = self.getElementType(),
-                        .items = array,
-                    } };
-                }
-            },
-            .@"struct" => {
-                var sub = try MessageIter.init(self.arena);
-                errdefer sub.deinit();
-                dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                var stuList = std.ArrayList(Value).init(self.arena);
-                defer stuList.deinit();
-                while (try sub.next()) |v| {
-                    try stuList.append(v);
-                }
-                value = Value{ .@"struct" = try stuList.toOwnedSlice() };
+                _ = dbus_message_iter_next(&self.wrapper);
+                return std.mem.sliceTo(strPtr, 0);
             },
             .variant => {
                 var sub = try MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const result = try self.arena.create(Value);
-                result.* = (try sub.next()).?;
-                value = Value{ .variant = result };
+                var result: T.Type = undefined;
+                result.tag = @enumFromInt(@intFromEnum(sub.getArgType()));
+                result.iter = sub;
+                _ = dbus_message_iter_next(&self.wrapper);
+                return result;
+            },
+            .array => {
+                var sub = try MessageIter.init(self.arena);
+                errdefer sub.deinit();
+                dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
+                const array = try self.arena.alloc(T.ArrayElement.Type, self.getElementCount());
+                for (array) |*item| {
+                    item.* = try sub.next(T.ArrayElement);
+                }
+                _ = dbus_message_iter_next(&self.wrapper);
+                return array;
             },
             .dict => {
                 var sub = try MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const array = try self.arena.alloc(Value, 2);
-                array[0] = (try sub.next()).?;
-                array[1] = (try sub.next()).?;
-                value = Value{ .@"struct" = array };
+                const info = @typeInfo(T.Type);
+                const EntryType = info.pointer.child;
+                const entrys = try self.arena.alloc(EntryType, self.getElementCount());
+                for (entrys) |*entry| {
+                    const e = try sub.next(Types.Struct(.{ T.DictKey, T.DictValue }));
+                    entry.* = EntryType{
+                        .key = e[0],
+                        .value = e[1],
+                    };
+                }
+                _ = dbus_message_iter_next(&self.wrapper);
+                return entrys;
+            },
+            .@"struct" => {
+                var sub = try MessageIter.init(self.arena);
+                errdefer sub.deinit();
+                dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
+                var result: T.Type = undefined;
+                inline for (T.StructFields, 0..) |Field, i| {
+                    result[i] = try sub.next(Field);
+                }
+                _ = dbus_message_iter_next(&self.wrapper);
+                return result;
             },
         }
-        _ = dbus_message_iter_next(&self.wrapper);
-        return value;
     }
-    pub fn getAll(self: *Self) ![]Value {
-        var result = std.ArrayList(Value).init(self.arena);
-        defer result.deinit();
-        while (try self.next()) |v| {
-            try result.append(v);
+
+    pub fn getAll(self: *Self, t: anytype) !Types.getTupleTypes(t) {
+        const Result = Types.getTupleTypes(t);
+        var result: Result = undefined;
+        inline for (t, 0..) |T, i| {
+            result[i] = try self.next(T);
         }
-        return result.toOwnedSlice();
+        return result;
     }
-    fn getArgType(self: *Self) Type {
+    pub fn getArgType(self: *Self) Types.Tags {
         return @enumFromInt(dbus_message_iter_get_arg_type(&self.wrapper));
     }
-    fn getElementType(self: *Self) Type {
+    fn getElementType(self: *Self) Types.Tags {
         return @enumFromInt(dbus_message_iter_get_element_type(&self.wrapper));
     }
-    fn getSignature(self: *Self) []const u8 {
+    pub fn getSignature(self: *Self) []const u8 {
         const sig = dbus_message_iter_get_signature(&self.wrapper).?;
         return std.mem.sliceTo(sig, 0);
     }
@@ -910,6 +555,7 @@ fn test_method_call(name: []const u8) *Message {
         name,
     );
 }
+
 test "method-call-result" {
     var err = Error.init();
     defer err.deinit();
@@ -917,200 +563,187 @@ test "method-call-result" {
         std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
         return;
     };
-    const baseCases = [_]struct { name: []const u8, result: Value }{
-        .{
-            .name = "GetByte",
-            .result = Value{ .byte = 123 },
-        },
-        .{
-            .name = "GetBoolean",
-            .result = Value{ .boolean = true },
-        },
-        .{
-            .name = "GetInt16",
-            .result = Value{ .int16 = -32768 },
-        },
-        .{
-            .name = "GetUInt16",
-            .result = Value{ .uint16 = 65535 },
-        },
-        .{
-            .name = "GetInt32",
-            .result = Value{ .int32 = -2147483648 },
-        },
-        .{
-            .name = "GetUInt32",
-            .result = Value{ .uint32 = 4294967295 },
-        },
-        .{
-            .name = "GetInt64",
-            .result = Value{ .int64 = -9223372036854775808 },
-        },
-        .{
-            .name = "GetUInt64",
-            .result = Value{ .uint64 = 18446744073709551615 },
-        },
-        .{
-            .name = "GetDouble",
-            .result = Value{ .double = 3.141592653589793 },
-        },
-    };
-    const strCases = [_]struct { name: []const u8, result: []const u8 }{
-        .{
-            .name = "GetObjectPath",
-            .result = "/com/example/DBusObject",
-        },
-        .{
-            .name = "GetSignature",
-            .result = "as",
-        },
-        .{
-            .name = "GetString",
-            .result = "Hello from DBus Service!",
-        },
-    };
-
-    var request: *Message = undefined;
-    var response: *Message = undefined;
+    defer conn.unref();
     const iter = try MessageIter.init(testing.allocator);
     defer iter.deinit();
-    for (baseCases) |case| {
-        request = test_method_call(case.name);
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = try iter.next();
-        try testing.expectEqual(case.result, result);
-    }
-
-    for (strCases) |case| {
-        request = test_method_call(case.name);
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?;
-        var str: []const u8 = undefined;
-        switch (result) {
-            .object_path => |p| str = p,
-            .signature => |s| str = s,
-            .string => |s| str = s,
-            else => unreachable,
+    var helper = struct {
+        conn: *Connection,
+        iter: *MessageIter,
+        err: Error,
+        req: ?*Message = null,
+        res: ?*Message = null,
+        fn call(self: *@This(), name: []const u8, comptime T: type) T.Type {
+            self.deinit();
+            self.req = test_method_call(name);
+            self.res = self.conn.sendWithReplyAndBlock(self.req.?, -1, self.err) catch unreachable;
+            if (!self.iter.fromResult(self.res.?)) unreachable;
+            return self.iter.next(T) catch unreachable;
         }
-        try testing.expectEqualStrings(case.result, str);
+        fn deinit(self: *@This()) void {
+            if (self.req) |req| req.deinit();
+            if (self.res) |res| res.deinit();
+            self.res = null;
+            self.req = null;
+        }
+    }{
+        .conn = conn,
+        .err = err,
+        .iter = iter,
+    };
+    defer helper.deinit();
+
+    try testing.expectEqual(
+        123,
+        helper.call("GetByte", Types.Byte),
+    );
+    try testing.expectEqual(
+        true,
+        helper.call("GetBoolean", Types.Boolean),
+    );
+    try testing.expectEqual(
+        -32768,
+        helper.call("GetInt16", Types.Int16),
+    );
+    try testing.expectEqual(
+        65535,
+        helper.call("GetUInt16", Types.UInt16),
+    );
+    try testing.expectEqual(
+        -2147483648,
+        helper.call("GetInt32", Types.Int32),
+    );
+    try testing.expectEqual(
+        4294967295,
+        helper.call("GetUInt32", Types.UInt32),
+    );
+    try testing.expectEqual(
+        -9223372036854775808,
+        helper.call("GetInt64", Types.Int64),
+    );
+    try testing.expectEqual(
+        18446744073709551615,
+        helper.call("GetUInt64", Types.UInt64),
+    );
+    try testing.expectEqual(
+        3.141592653589793,
+        helper.call("GetDouble", Types.Double),
+    );
+    try testing.expectEqualStrings(
+        "Hello from DBus Service!",
+        helper.call("GetString", Types.String),
+    );
+    try testing.expectEqualStrings(
+        "/com/example/DBusObject",
+        helper.call("GetObjectPath", Types.ObjectPath),
+    );
+    try testing.expectEqualStrings(
+        "as",
+        helper.call("GetSignature", Types.Signature),
+    );
+    // GetNothing
+    {
+        const req = test_method_call("GetNothing");
+        const res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(false, iter.fromResult(res));
     }
-    var result: Value = undefined;
     // GetArrayString
     {
-        request = test_method_call("GetArrayString");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.next()).?;
-        try testing.expectEqual(Type.string, result.array.type);
-        try testing.expectEqualStrings("foo", result.array.items[0].string);
-        try testing.expectEqualStrings("bar", result.array.items[1].string);
-        try testing.expectEqualStrings("baz", result.array.items[2].string);
-    }
-    // GetArrayVariant
-    {
-        request = test_method_call("GetArrayVariant");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.next()).?;
-        try testing.expectEqual(Type.variant, result.array.type);
-        try testing.expectEqualStrings("foo", result.array.items[0].variant.*.string);
-        try testing.expectEqual(123, result.array.items[1].variant.*.int32);
-        try testing.expectEqual(true, result.array.items[2].variant.*.boolean);
+        const r = helper.call("GetArrayString", Types.Array(Types.String));
+        try testing.expectEqualStrings("foo", r[0]);
+        try testing.expectEqualStrings("bar", r[1]);
+        try testing.expectEqualStrings("baz", r[2]);
     }
     // GetStruct
     {
-        request = test_method_call("GetStruct");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.next()).?;
-        try testing.expectEqual(result.@"struct"[0].int64, -1234567890);
-        try testing.expectEqual(result.@"struct"[1].boolean, true);
+        const r = helper.call("GetStruct", Types.Struct(.{ Types.Int64, Types.Boolean }));
+        try testing.expectEqual(r[0], -1234567890);
+        try testing.expectEqual(r[1], true);
     }
     // GetVariant
     {
-        request = test_method_call("GetVariant");
-        _ = iter.fromResult(request);
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.next()).?.variant.*;
-        try testing.expectEqual(result, Value{ .int32 = 123 });
+        const r = helper.call("GetVariant", Types.Variant);
+        try testing.expectEqual(Types.Tags.int32, r.tag);
+        try testing.expectEqual(123, try r.get(Types.Int32));
     }
-    // GetNothing
+    // GetArrayVariant
     {
-        request = test_method_call("GetNothing");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(false, iter.fromResult(response));
+        const r = helper.call("GetArrayVariant", Types.Array(Types.Variant));
+        try testing.expectEqualStrings("foo", try r[0].get(Types.String));
+        try testing.expectEqual(123, try r[1].get(Types.Int32));
+        try testing.expectEqual(true, try r[2].get(Types.Boolean));
     }
     // GetDict1
     {
-        request = test_method_call("GetDict1");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.next()).?;
-        var map = Dict.HashMap(.string, .int32).init(testing.allocator);
-        defer map.deinit();
-        try result.dict.dump(.string, .int32, &map);
-        try testing.expectEqual(1, map.get("key1"));
-        try testing.expectEqual(2, map.get("key2"));
-        try testing.expectEqual(3, map.get("key3"));
+        const r = helper.call("GetDict1", Types.Dict(Types.String, Types.Int32));
+        try testing.expectEqualStrings("key1", r[0].key);
+        try testing.expectEqualStrings("key2", r[1].key);
+        try testing.expectEqualStrings("key3", r[2].key);
+
+        try testing.expectEqual(2, r[1].value);
+        try testing.expectEqual(1, r[0].value);
+        try testing.expectEqual(2, r[1].value);
+        try testing.expectEqual(3, r[2].value);
     }
+
     // GetDict2
     {
-        request = test_method_call("GetDict2");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.getAll())[0];
-        var map = Dict.HashMap(.int32, .int32).init(testing.allocator);
-        defer map.deinit();
-        try result.dict.dump(.int32, .int32, &map);
-        try testing.expectEqual(1, map.get(1));
-        try testing.expectEqual(2, map.get(2));
-        try testing.expectEqual(3, map.get(3));
+        const r = helper.call("GetDict2", Types.Dict(Types.Int32, Types.Int32));
+        try testing.expectEqual(1, r[0].key);
+        try testing.expectEqual(2, r[1].key);
+        try testing.expectEqual(3, r[2].key);
+        try testing.expectEqual(1, r[0].value);
+        try testing.expectEqual(2, r[1].value);
+        try testing.expectEqual(3, r[2].value);
+    }
+
+    // GetDict2
+    {
+        const r = helper.call("GetDict2", Types.Dict(Types.Int32, Types.Int32));
+        try testing.expectEqual(1, r[0].key);
+        try testing.expectEqual(2, r[1].key);
+        try testing.expectEqual(3, r[2].key);
+        try testing.expectEqual(1, r[0].value);
+        try testing.expectEqual(2, r[1].value);
+        try testing.expectEqual(3, r[2].value);
     }
     // GetDict3
     {
-        request = test_method_call("GetDict3");
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        try testing.expectEqual(true, iter.fromResult(response));
-        defer request.deinit();
-        defer response.deinit();
-        result = (try iter.getAll())[0];
-        var map = Dict.HashMap(.string, .variant).init(testing.allocator);
-        defer map.deinit();
-        try result.dict.dump(.string, .variant, &map);
-        try testing.expectEqual(489, map.get("home").?.int32);
-        try testing.expectEqualStrings("foo", map.get("name").?.string);
+        const r = helper.call("GetDict3", Types.Dict(Types.String, Types.Variant));
+        try testing.expectEqualStrings("name", r[0].key);
+        try testing.expectEqualStrings("home", r[1].key);
+        try testing.expectEqual(Types.Tags.string, r[0].value.tag);
+        try testing.expectEqual(Types.Tags.int32, r[1].value.tag);
+        try testing.expectEqualStrings("foo", try r[0].value.get(Types.String));
+        try testing.expectEqual(489, try r[1].value.get(Types.Int32));
+    }
+    // GetDict3
+    {
+        const req = test_method_call("GetDict3");
+        const res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const r = (try iter.getAll(.{Types.Dict(Types.String, Types.Variant)}))[0];
+        try testing.expectEqualStrings("name", r[0].key);
+        try testing.expectEqualStrings("home", r[1].key);
+        try testing.expectEqual(Types.Tags.string, r[0].value.tag);
+        try testing.expectEqual(Types.Tags.int32, r[1].value.tag);
+        try testing.expectEqualStrings("foo", try r[0].value.get(Types.String));
+        try testing.expectEqual(489, try r[1].value.get(Types.Int32));
     }
     // GetError
     {
-        request = test_method_call("GetError");
-        defer request.deinit();
-        _ = conn.sendWithReplyAndBlock(request, -1, err) catch {};
+        const req = test_method_call("GetError");
+        defer req.deinit();
+        _ = conn.sendWithReplyAndBlock(req, -1, err) catch {};
         defer err.reset();
         try testing.expectEqualStrings("ATestError", err.message().?);
-        try testing.expectEqual(true, conn.send(request, null));
+        try testing.expectEqual(true, conn.send(req, null));
     }
 }
+
 test "method-call-with-args" {
     const err = Error.init();
     defer err.deinit();
@@ -1118,84 +751,79 @@ test "method-call-with-args" {
         std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
         return;
     };
-    var request: *Message = undefined;
-    var response: *Message = undefined;
+    var req: *Message = undefined;
+    var res: *Message = undefined;
     const iter = try MessageIter.init(testing.allocator);
     defer iter.deinit();
     // CallAdd
     {
-        request = test_method_call("CallAdd");
-        iter.fromAppend(request);
-        try iter.append(.{ .int32 = 1 });
-        try iter.append(.{ .int32 = 2 });
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?.int32;
+        req = test_method_call("CallAdd");
+        iter.fromAppend(req);
+        try iter.append(Types.Int32, 1);
+        try iter.append(Types.Int32, 2);
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = try iter.next(Types.Int32);
         try testing.expectEqual(3, result);
     }
     // CallWithStringArray
     {
-        request = test_method_call("CallWithStringArray");
-        iter.fromAppend(request);
-        try iter.append(.{ .array = .{
-            .type = .string,
-            .items = &.{
-                .{ .string = "Hello" },
-                .{ .string = "World" },
-            },
-        } });
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?.string;
+        req = test_method_call("CallWithStringArray");
+        iter.fromAppend(req);
+        try iter.append(Types.Array(Types.String), &.{
+            "Hello",
+            "World",
+        });
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = try iter.next(Types.String);
         try testing.expectEqualStrings("Hello World", result);
     }
     // CallWithVariant
     {
-        request = test_method_call("CallWithVariant");
-        iter.fromAppend(request);
-        try iter.append(.{ .variant = &.{ .int32 = 114514 } });
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?.boolean;
+        req = test_method_call("CallWithVariant");
+        iter.fromAppend(req);
+
+        try iter.append(Types.Variant, Types.Variant.init(Types.Int32, 114514));
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = try iter.next(Types.Boolean);
         try testing.expectEqual(true, result);
     }
     // CallWithStruct
     {
-        request = test_method_call("CallWithStruct");
-        iter.fromAppend(request);
-        try iter.append(.{ .@"struct" = &.{
-            .{ .string = "foo" },
-            .{ .int32 = 123 },
-            .{ .boolean = true },
-        } });
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?.boolean;
+        req = test_method_call("CallWithStruct");
+        iter.fromAppend(req);
+        try iter.append(
+            Types.Struct(.{ Types.String, Types.Int32, Types.Boolean }),
+            .{ "foo", 123, true },
+        );
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = try iter.next(Types.Boolean);
         try testing.expectEqual(true, result);
     }
     // CallWithDict
     {
-        request = test_method_call("CallWithDict");
-        iter.fromAppend(request);
-        const dict = try Dict.init(testing.allocator, .string, .{
-            .name = Value{ .string = "foo" },
-            .home = "bar",
+        req = test_method_call("CallWithDict");
+        iter.fromAppend(req);
+        try iter.append(Types.Dict(Types.String, Types.String), &.{
+            .{ .key = "name", .value = "foo" },
+            .{ .key = "home", .value = "bar" },
         });
-        defer dict.deinit(testing.allocator);
-        try iter.append(.{ .dict = dict });
-        response = conn.sendWithReplyAndBlock(request, -1, err) catch unreachable;
-        defer request.deinit();
-        defer response.deinit();
-        try testing.expectEqual(true, iter.fromResult(response));
-        const result = (try iter.next()).?.boolean;
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = try iter.next(Types.Boolean);
         try testing.expectEqual(true, result);
     }
 }

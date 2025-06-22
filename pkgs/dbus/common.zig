@@ -6,7 +6,7 @@ pub const Event = struct {
     member: []const u8,
     serial: u32,
     destination: ?[]const u8,
-    values: ?[]libdbus.Value,
+    iter: *libdbus.MessageIter,
 };
 pub const Listener = struct {
     signal: []const u8,

@@ -21,43 +21,47 @@ const Watcher = struct {
         self.hosts.deinit();
         self.allocator.destroy(self);
     }
-    pub fn registerItem(self: *Self, _: Allocator, in: []const dbus.Value, _: []const dbus.Value) !void {
-        try self.items.append(in[0].string);
-        try self.emiter.emit("StatusNotifierItemRegistered", &.{in[0]});
+    pub fn registerItem(self: *Self, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
+        const item = try in.next(dbus.String);
+        try self.items.append(item);
+        self.emiter.emit("StatusNotifierItemRegistered", .{dbus.String}, .{item});
     }
-    pub fn registerHost(self: *Self, _: Allocator, in: []const dbus.Value, _: []const dbus.Value) !void {
-        try self.hosts.append(in[0].string);
-        try self.emiter.emit("StatusNotifierHostRegistered", &.{in[0]});
+    pub fn registerHost(self: *Self, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
+        const host = try in.next(dbus.String);
+        try self.hosts.append(host);
+        self.emiter.emit("StatusNotifierHostRegistered", .{}, null);
     }
-    pub fn get(self: *Self, name: []const u8, alloc: Allocator) !dbus.Value {
-        if (std.mem.eql(u8, name, "ProtocolVersion")) return dbus.Value{ .int32 = 0 };
+    fn get(self: *Self, name: []const u8, _: Allocator, out: *dbus.MessageIter, _: *dbus.CallError) !void {
+        if (std.mem.eql(u8, name, "ProtocolVersion")) {
+            try out.append(dbus.Int32, 0);
+            return;
+        }
         if (std.mem.eql(u8, name, "RegisteredStatusNotifierItems")) {
-            var items = try alloc.alloc(dbus.Value, self.items.items.len);
-            for (self.items.items, 0..) |item, i| {
-                items[i] = dbus.Value{ .string = item };
-            }
-            return dbus.Value{ .array = .{ .items = items, .type = dbus.Type.string } };
+            try out.append(dbus.Array(dbus.String), self.items.items);
+            return;
         }
         if (std.mem.eql(u8, name, "IsStatusNotifierHostRegistered")) {
-            return dbus.Value{ .boolean = self.hosts.items.len > 0 };
+            try out.append(dbus.Boolean, self.hosts.items.len > 0);
+            return;
         }
         return error.UnknownProperty;
     }
     fn onNameOwnerChanged(e: dbus.Event, self_: ?*Self) void {
         const self = self_.?;
-        const oldOwner = e.values.?[1].string;
+        _ = e.iter.next(dbus.String) catch unreachable;
+        const oldOwner = e.iter.next(dbus.String) catch unreachable;
         if (std.mem.eql(u8, oldOwner, "")) return;
         for (self.items.items, 0..) |item, i| {
             if (std.mem.eql(u8, oldOwner, item)) {
                 _ = self.items.swapRemove(i);
-                self.emiter.emit("StatusNotifierItemUnregistered", &.{dbus.Value{ .string = item }}) catch {};
+                self.emiter.emit("StatusNotifierItemUnregistered", .{dbus.String}, .{item});
                 return;
             }
         }
         for (self.hosts.items, 0..) |host, i| {
             if (std.mem.eql(u8, oldOwner, host)) {
                 _ = self.hosts.swapRemove(i);
-                self.emiter.emit("StatusNotifierHostUnregistered", null) catch {};
+                self.emiter.emit("StatusNotifierHostUnregistered", .{}, null);
                 return;
             }
         }
@@ -87,46 +91,44 @@ test "tray" {
     defer watcher.deinit();
     try service.publish(Watcher, "/StatusNotifierWatcher", dbus.Interface(Watcher){
         .name = "org.kde.StatusNotifierWatcher",
-        .instance = watcher,
-        .emitter = &watcher.emiter,
         .getter = Watcher.get,
         .method = &.{
             dbus.Method(Watcher){
                 .name = "RegisterStatusNotifierItem",
                 .func = Watcher.registerItem,
-                .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = "s" }},
+                .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
             },
             dbus.Method(Watcher){
                 .name = "RegisterStatusNotifierHost",
                 .func = Watcher.registerHost,
-                .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = "s" }},
+                .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
             },
         },
         .property = &.{
             dbus.Property{
                 .name = "ProtocolVersion",
-                .type = "i",
+                .type = dbus.Int32,
                 .access = .read,
             },
             dbus.Property{
                 .name = "RegisteredStatusNotifierItems",
-                .type = "as",
+                .type = dbus.Array(dbus.String),
                 .access = .read,
             },
             dbus.Property{
                 .name = "IsStatusNotifierHostRegistered",
-                .type = "b",
+                .type = dbus.Boolean,
                 .access = .read,
             },
         },
         .signal = &.{
             dbus.Signal{
                 .name = "StatusNotifierItemRegistered",
-                .args = &.{dbus.SignalArgs{ .name = "service", .type = "s" }},
+                .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
             },
             dbus.Signal{
                 .name = "StatusNotifierItemUnregistered",
-                .args = &.{dbus.SignalArgs{ .name = "service", .type = "s" }},
+                .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
             },
             dbus.Signal{
                 .name = "StatusNotifierHostRegistered",
@@ -135,7 +137,7 @@ test "tray" {
                 .name = "StatusNotifierHostUnregistered",
             },
         },
-    });
+    }, watcher, &watcher.emiter);
     try service.connect("NameOwnerChanged", Watcher, Watcher.onNameOwnerChanged, watcher);
     test_main_loop(200);
 }
