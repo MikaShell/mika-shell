@@ -4,12 +4,6 @@ const c = @cImport({
 });
 const std = @import("std");
 const gtk = @import("gtk");
-usingnamespace @cImport({
-    @cInclude("gtk/gtk.h");
-    @cInclude("webkit/webkit.h");
-    @cInclude("jsc/jsc.h");
-});
-
 pub const WebsiteDataManager = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,

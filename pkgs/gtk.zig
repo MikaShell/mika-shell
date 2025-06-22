@@ -1,6 +1,3 @@
-usingnamespace @cImport({
-    @cInclude("gtk/gtk.h");
-});
 const c = @cImport({
     @cInclude("gtk/gtk.h");
 });
