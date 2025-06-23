@@ -129,6 +129,12 @@ pub const Connection = extern struct {
     pub fn popMessage(self: *Self) ?*Message {
         return dbus_connection_pop_message(self);
     }
+    pub fn addFilter(self: *Self, handler_function: c.DBusHandleMessageFunction, user_data: ?*anyopaque, free_data_function: c.DBusFreeFunction) bool {
+        return dbus_connection_add_filter(self, handler_function, user_data, free_data_function) != 0;
+    }
+    pub fn removeFilter(self: *Self, handler_function: c.DBusHandleMessageFunction, user_data: ?*anyopaque) void {
+        dbus_connection_remove_filter(self, handler_function, user_data);
+    }
     pub fn dispatch(self: *Self) DispatchStatus {
         return @enumFromInt(dbus_connection_dispatch(self));
     }
@@ -170,11 +176,11 @@ pub const Connection = extern struct {
 
 pub const Message = extern struct {
     pub const MType = enum(c_int) {
-        Invalid,
-        MethodCall,
-        MethodReturn,
-        Error,
-        Signal,
+        invalid,
+        method_call,
+        method_return,
+        @"error",
+        signal,
     };
     extern fn dbus_message_new(message_type: c_int) *Message;
     extern fn dbus_message_new_method_call(bus_name: [*c]const u8, path: [*c]const u8, iface: [*c]const u8, method: [*c]const u8) ?*Message;
@@ -221,19 +227,19 @@ pub const Message = extern struct {
     pub fn getType(message: *Message) MType {
         return @enumFromInt(dbus_message_get_type(message));
     }
-    pub fn getPath(message: *Message) []const u8 {
+    pub fn getPath(message: *Message) ?[]const u8 {
         const path = dbus_message_get_path(message);
-        if (path == null) unreachable;
+        if (path == null) return null;
         return std.mem.sliceTo(path, 0);
     }
-    pub fn getInterface(message: *Message) []const u8 {
+    pub fn getInterface(message: *Message) ?[]const u8 {
         const iface = dbus_message_get_interface(message);
-        if (iface == null) unreachable;
+        if (iface == null) return null;
         return std.mem.sliceTo(iface, 0);
     }
-    pub fn getMember(message: *Message) []const u8 {
+    pub fn getMember(message: *Message) ?[]const u8 {
         const member = dbus_message_get_member(message);
-        if (member == null) unreachable;
+        if (member == null) return null;
         return std.mem.sliceTo(member, 0);
     }
     pub fn getDestination(message: *Message) ?[]const u8 {
@@ -414,6 +420,9 @@ pub const MessageIter = struct {
         arena.deinit();
         self.allocator.destroy(arena);
         self.allocator.destroy(self);
+    }
+    pub fn skip(self: *Self) void {
+        _ = dbus_message_iter_next(&self.wrapper);
     }
     pub fn next(self: *Self, comptime T: type) !T.Type {
         if (T.tag == .invalid) {

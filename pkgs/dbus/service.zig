@@ -7,7 +7,7 @@ const Type = libdbus.Types;
 const Message = libdbus.Message;
 const MessageIter = libdbus.MessageIter;
 const common = @import("common.zig");
-
+const Bus = @import("bus.zig").Bus;
 pub const Service = struct {
     const Self = @This();
     const Method_ = struct {
@@ -19,7 +19,7 @@ pub const Service = struct {
         signature: []const u8,
         access: PropertyAccess,
     };
-    const Interfaces = std.ArrayList(struct {
+    pub const Interfaces = std.ArrayList(struct {
         path: []const u8,
         name: []const u8,
         instance: *anyopaque,
@@ -29,64 +29,20 @@ pub const Service = struct {
         method: []const Method_ = &.{},
         property: []const Property_ = &.{},
     });
-    conn: *libdbus.Connection,
+    bus: *Bus,
     uniqueName: []const u8,
     err: Error,
     allocator: Allocator,
     name: []const u8,
     interfaces: Interfaces,
-    watch: glib.FdWatch(Self),
     machineId: []const u8,
-    listeners: std.ArrayList(common.Listener),
-    pub fn init(allocator: Allocator, bus_type: libdbus.BusType, flag: libdbus.Connection.NameFlag, name: []const u8) !*Service {
-        const service = try allocator.create(Self);
-        errdefer allocator.destroy(service);
-        service.* = Self{
-            .allocator = allocator,
-            .name = name,
-            .interfaces = Interfaces.init(allocator),
-            .listeners = std.ArrayList(common.Listener).init(allocator),
-            .watch = undefined,
-            .machineId = undefined,
-            .conn = undefined,
-            .uniqueName = undefined,
-            .err = undefined,
-        };
-        try service.setup(bus_type, flag);
-        return service;
-    }
-    fn setup(self: *Self, bus_type: libdbus.BusType, flag: libdbus.Connection.NameFlag) !void {
-        var err = Error.init();
-        const conn = try libdbus.Connection.get(bus_type, err);
-        errdefer err.deinit();
-        errdefer conn.unref();
-        try conn.addMatch("", err);
-        errdefer conn.removeMatch("", err) catch err.reset();
-        self.conn = conn;
-        self.uniqueName = conn.getUniqueName();
-        self.err = err;
-        self.watch = try glib.FdWatch(Self).add(try conn.getUnixFd(), serviceHandler, self);
-        self.machineId = libdbus.getLocalMachineId();
-
-        const r = try conn.requestName(self.name, flag, err);
-        switch (r) {
-            .PrimaryOwner => {},
-            .InQueue => return error.NameInQueue,
-            .Exists => return error.NameExists,
-            .AlreadyOwner => return error.NameAlreadyOwner,
-        }
-    }
     pub fn deinit(self: *Self) void {
-        self.conn.removeMatch("", self.err) catch self.err.reset();
-        self.watch.deinit();
-        _ = self.conn.releaseName(self.name, self.err) catch {};
-        self.conn.unref();
+        _ = self.bus.conn.releaseName(self.name, self.err) catch {};
         self.err.deinit();
         for (self.interfaces.items) |interface| {
             self.allocator.free(interface.method);
             self.allocator.free(interface.property);
         }
-        self.listeners.deinit();
         self.interfaces.deinit();
         self.allocator.destroy(self);
     }
@@ -122,7 +78,7 @@ pub const Service = struct {
             };
         }
         if (emitter) |e| e.* = .{
-            .conn = self.conn,
+            .conn = self.bus.conn,
             .path = path,
             .iface = interface.name,
             .instance = @ptrCast(instance),
@@ -140,19 +96,14 @@ pub const Service = struct {
             .method = methods,
             .property = properties,
         });
-    }
-    pub fn connect(self: *Service, signal: []const u8, comptime T: type, handler: *const fn (common.Event, ?*T) void, data: ?*T) !void {
-        try self.listeners.append(.{ .signal = signal, .handler = @ptrCast(handler), .data = @ptrCast(data) });
-    }
-    pub fn disconnect(self: *Service, signal: []const u8, comptime T: type, handler: *const fn (common.Event, ?*T) void) !void {
-        for (self.listeners.items, 0..) |listener, i| {
-            const h: *const fn (common.Event, ?*anyopaque) void = @ptrCast(handler);
-            if (std.mem.eql(u8, listener.signal, signal) and listener.handler == h) {
-                _ = self.listeners.swapRemove(i);
-                return;
-            }
+        if (!(try self.bus.addFilter(.{ .type = .method_call }, serviceHandler, self))) {
+            return error.CouldNotAddFilter;
         }
-        return error.SignalOrHandlerNotFound;
+        try self.bus.addMatch(.{
+            .type = .method_call,
+            .interface = interface.name,
+            .path = path,
+        });
     }
 };
 fn returnError(conn: *libdbus.Connection, message: *libdbus.Message, err: CallError) void {
@@ -161,272 +112,202 @@ fn returnError(conn: *libdbus.Connection, message: *libdbus.Message, err: CallEr
     _ = conn.send(e, null);
     conn.flush();
 }
-// FIXME: 移除此处的 'catch unreachable'
-fn serviceHandler(service: *Service) bool {
-    if (!service.conn.readWrite(-1)) return false;
-    defer _ = service.conn.dispatch();
-    const msg = service.conn.popMessage();
-    if (msg == null) return true;
-    const m = msg.?;
-    defer m.deinit();
-    const type_ = m.getType();
-    switch (type_) {
-        .MethodCall => {},
-        .Signal => {
-            const sender = m.getSender();
-            const iface = m.getInterface();
-            const path = m.getPath();
-            const member = m.getMember();
-            const destination = m.getDestination();
-            var e = common.Event{
-                .sender = sender,
-                .iface = iface,
-                .path = path,
-                .member = member,
-                .serial = m.getSerial(),
-                .destination = destination,
-                .iter = libdbus.MessageIter.init(service.allocator) catch unreachable,
-            };
-            defer e.iter.deinit();
-            for (service.listeners.items) |listener| {
-                if (std.mem.eql(u8, listener.signal, member)) {
-                    e.iter.reset();
-                    _ = e.iter.fromResult(m);
-                    listener.handler(e, listener.data);
-                }
-            }
-            return true;
-        },
-        else => return true,
-    }
-    const iface = m.getInterface();
-    const path = m.getPath();
-    const member = m.getMember();
-    const destination = m.getDestination();
-    if (destination != null and !std.mem.eql(u8, destination.?, service.uniqueName)) return true;
-
+// TODO: 实现 ObjectManager 接口
+fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
+    const service: *Service = @ptrCast(@alignCast(data));
+    const iface_ = msg.getInterface();
+    const path_ = msg.getPath();
+    const member_ = msg.getMember();
+    if (iface_ == null) return;
+    if (path_ == null) return;
+    if (member_ == null) return;
+    const iface = iface_.?;
+    const path = path_.?;
+    const member = member_.?;
+    const destination = msg.getDestination();
+    if (destination == null) return;
     const eql = std.mem.eql;
-    // org.freedesktop.DBus.Introspectable/Introspect
-    if (eql(u8, iface, "org.freedesktop.DBus.Introspectable") and eql(u8, member, "Introspect")) {
-        const reply = Message.newMethodReturn(m);
-        defer reply.deinit();
-        const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
-        defer iter.deinit();
-        iter.fromAppend(reply);
-        const alloc = std.heap.page_allocator;
-        var xml = std.ArrayList(u8).initCapacity(alloc, 64) catch unreachable;
-        defer xml.deinit();
-        const writer = xml.writer();
-        writer.writeAll(
-            \\<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"><node>
-        ) catch unreachable;
-        if (eql(u8, path, "/")) {
-            for (service.interfaces.items) |interface| {
-                const node = std.fmt.allocPrint(alloc, "<node name=\"{s}\"/>\n", .{interface.path}) catch unreachable;
-                defer alloc.free(node);
-                writer.writeAll(node) catch unreachable;
-            }
-        } else {
-            for (service.interfaces.items) |interface| {
-                if (!eql(u8, interface.path, path)) continue;
-                writer.writeAll(interface.introspectXML) catch unreachable;
-            }
-        }
-        writer.writeAll("</node>") catch unreachable;
-        iter.append(Type.String, xml.items) catch unreachable;
-        _ = service.conn.send(reply, null);
-        service.conn.flush();
-        return true;
+    if (!(eql(u8, destination.?, service.uniqueName) or eql(u8, destination.?, service.name))) {
+        return;
     }
-    // org.freedesktop.DBus.Peer/Ping
-    if (eql(u8, iface, "org.freedesktop.DBus.Peer") and eql(u8, member, "Ping")) {
-        for (service.interfaces.items) |interface| {
-            if (eql(u8, interface.path, path)) {
-                const reply = Message.newMethodReturn(m);
-                defer reply.deinit();
-                _ = service.conn.send(reply, null);
-                service.conn.flush();
-                return true;
-            }
-        }
-    }
-    // org.freedesktop.DBus.Peer/GetMachineId
-    if (eql(u8, iface, "org.freedesktop.DBus.Peer") and eql(u8, member, "GetMachineId")) {
-        const reply = Message.newMethodReturn(m);
-        defer reply.deinit();
-        const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
-        defer iter.deinit();
-        iter.fromAppend(reply);
-        iter.append(Type.String, service.machineId) catch unreachable;
-        _ = service.conn.send(reply, null);
-        service.conn.flush();
-        return true;
-    }
-    // org.freedesktop.DBus.Properties/Get|Set|GetAll
-    if (eql(u8, iface, "org.freedesktop.DBus.Properties")) {
-        const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
-        defer iter.deinit();
-        _ = iter.fromResult(m);
-        const reply = Message.newMethodReturn(m);
-        defer reply.deinit();
-        const iface_ = iter.next(Type.String) catch unreachable;
-        var arena = std.heap.ArenaAllocator.init(service.allocator);
-        defer arena.deinit();
-        if (eql(u8, member, "GetAll")) {
+    const conn = service.bus.conn;
+    const reply = Message.newMethodReturn(msg);
+    defer reply.deinit();
+    var callError: CallError = undefined;
+    const iter = libdbus.MessageIter.init(service.allocator) catch unreachable;
+    defer iter.deinit();
+    handler: {
+        // org.freedesktop.DBus.Introspectable/Introspect
+        if (eql(u8, iface, "org.freedesktop.DBus.Introspectable") and eql(u8, member, "Introspect")) {
             iter.fromAppend(reply);
-            const Dict = Type.Dict(Type.String, Type.Variant);
-            const array = iter.openContainerS(.array, Type.signature(Dict)[1..]) catch unreachable;
+            const alloc = std.heap.page_allocator;
+            var xml = std.ArrayList(u8).initCapacity(alloc, 64) catch unreachable;
+            defer xml.deinit();
+            const writer = xml.writer();
+            writer.writeAll(
+                \\<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"><node>
+            ) catch unreachable;
+            if (eql(u8, path, "/")) {
+                for (service.interfaces.items) |interface| {
+                    const node = std.fmt.allocPrint(alloc, "<node name=\"{s}\"/>\n", .{interface.path}) catch unreachable;
+                    defer alloc.free(node);
+                    writer.writeAll(node) catch unreachable;
+                }
+            } else {
+                for (service.interfaces.items) |interface| {
+                    if (!eql(u8, interface.path, path)) continue;
+                    writer.writeAll(interface.introspectXML) catch unreachable;
+                }
+            }
+            writer.writeAll("</node>") catch unreachable;
+            iter.append(Type.String, xml.items) catch unreachable;
+            break :handler;
+        }
+        // org.freedesktop.DBus.Peer/Ping
+        if (eql(u8, iface, "org.freedesktop.DBus.Peer") and eql(u8, member, "Ping")) {
             for (service.interfaces.items) |interface| {
-                if (!eql(u8, interface.path, path)) continue;
-                if (!eql(u8, interface.name, iface_)) continue;
-                var callError: CallError = undefined;
-                for (interface.property) |property| {
-                    if (property.access == .read or property.access == .readwrite) {
-                        const entry = array.openContainer(.dict, null) catch unreachable;
-                        defer array.closeContainer(entry) catch unreachable;
-                        defer entry.deinit();
-                        entry.append(Type.String, property.name) catch unreachable;
-                        const getter = interface.getter.?;
-                        const variant = entry.openContainerS(.variant, property.signature) catch unreachable;
-                        defer variant.deinit();
-                        getter(interface.instance, property.name, arena.allocator(), variant, &callError) catch |err| {
-                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {s}", .{ property.name, @errorName(err) }) catch unreachable;
-                            callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
-                        };
-                        entry.closeContainer(variant) catch unreachable;
-                        if (callError.isSet) {
-                            returnError(service.conn, m, callError);
-                            return true;
-                        }
-                    }
+                if (eql(u8, interface.path, path)) {
+                    break;
                 }
             }
-            iter.closeContainer(array) catch unreachable;
-            _ = service.conn.send(reply, null);
-            service.conn.flush();
-            return true;
+            callError.set("org.freedesktop.DBus.Error.NotSupported", "Ping is not supported");
+            break :handler;
         }
-        const name = iter.next(Type.String) catch unreachable;
-        var callError: CallError = undefined;
-        var op: enum { get, set } = undefined;
-        if (eql(u8, member, "Get")) {
-            op = .get;
-        } else if (eql(u8, member, "Set")) {
-            op = .set;
-        } else {
-            callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+        // org.freedesktop.DBus.Peer/GetMachineId
+        if (eql(u8, iface, "org.freedesktop.DBus.Peer") and eql(u8, member, "GetMachineId")) {
+            iter.fromAppend(reply);
+            iter.append(Type.String, service.machineId) catch unreachable;
+            break :handler;
         }
-        if (callError.isSet) {
-            returnError(service.conn, m, callError);
-            return true;
-        }
-
-        for (service.interfaces.items) |interface| {
-            if (!eql(u8, interface.path, path)) continue;
-            if (!eql(u8, interface.name, iface_)) continue;
-            const property_: ?Service.Property_ = blk: {
-                for (interface.property) |property| {
-                    if (std.mem.eql(u8, property.name, name)) {
-                        if (property.access == .readwrite) break;
-                        if ((eql(u8, member, "Get") and property.access != .read) or (eql(u8, member, "Set") and property.access != .write)) {
-                            callError.set("org.freedesktop.DBus.Error.AccessDenied", "Property is not readable");
-                            break :blk null;
-                        }
-                        break :blk property;
-                    }
-                }
-                callError.set("org.freedesktop.DBus.Error.UnknownProperty", "Unknown property");
-                break :blk null;
-            };
-            if (callError.isSet) {
-                returnError(service.conn, m, callError);
-                return true;
-            }
-            const property = property_.?;
-            switch (op) {
-                .get => {
-                    const getter = interface.getter.?;
-                    const out = libdbus.MessageIter.init(service.allocator) catch unreachable;
-                    defer out.deinit();
-                    out.fromAppend(reply);
-                    const variant = out.openContainerS(.variant, property.signature) catch unreachable;
-                    defer variant.deinit();
-                    getter(interface.instance, name, arena.allocator(), variant, &callError) catch |err| {
-                        const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
-                        callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
-                    };
-                    out.closeContainer(variant) catch unreachable;
-                    if (callError.isSet) {
-                        returnError(service.conn, m, callError);
-                        return true;
-                    }
-
-                    _ = service.conn.send(reply, null);
-                    service.conn.flush();
-                    return true;
-                },
-                .set => {
-                    var value = iter.next(Type.Variant) catch unreachable;
-                    if (!eql(u8, property.signature, value.iter.getSignature())) {
-                        callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
-                    }
-                    if (callError.isSet) {
-                        returnError(service.conn, m, callError);
-                        return true;
-                    }
-                    const setter = interface.setter.?;
-                    setter(interface.instance, name, value, &callError) catch |err| {
-                        const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to set property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
-                        callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
-                    };
-                    if (callError.isSet) {
-                        returnError(service.conn, m, callError);
-                        return true;
-                    }
-                    _ = service.conn.send(reply, null);
-                    service.conn.flush();
-                    return true;
-                },
-            }
-        }
-        const e = libdbus.Message.newError(m, "org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
-        defer e.deinit();
-        _ = service.conn.send(e, null);
-        service.conn.flush();
-        return true;
-    }
-    for (service.interfaces.items) |interface| {
-        if (!eql(u8, interface.path, path)) continue;
-        for (interface.method) |method| {
-            if (!eql(u8, method.name, member)) continue;
-            const reply = Message.newMethodReturn(m);
-            defer reply.deinit();
-
-            const in = libdbus.MessageIter.init(service.allocator) catch unreachable;
-            const out = libdbus.MessageIter.init(service.allocator) catch unreachable;
-            defer in.deinit();
-            defer out.deinit();
-            _ = in.fromResult(m);
-            out.fromAppend(reply);
+        // org.freedesktop.DBus.Properties/Get|Set|GetAll
+        if (eql(u8, iface, "org.freedesktop.DBus.Properties")) {
+            _ = iter.fromResult(msg);
+            const iface__ = iter.next(Type.String) catch unreachable;
             var arena = std.heap.ArenaAllocator.init(service.allocator);
             defer arena.deinit();
-            var callError: CallError = undefined;
-            method.func(interface.instance, arena.allocator(), in, out, &callError) catch |e| {
-                callError.set("org.freedesktop.DBus.Error.Failed", @errorName(e));
-            };
-            if (callError.isSet) {
-                const err = libdbus.Message.newError(m, callError.name, callError.message);
-                defer err.deinit();
-                _ = service.conn.send(err, null);
-                service.conn.flush();
-                return true;
+            if (eql(u8, member, "GetAll")) {
+                iter.fromAppend(reply);
+                const Dict = Type.Dict(Type.String, Type.Variant);
+                const array = iter.openContainerS(.array, Type.signature(Dict)[1..]) catch unreachable;
+                for (service.interfaces.items) |interface| {
+                    if (!eql(u8, interface.path, path)) continue;
+                    if (!eql(u8, interface.name, iface__)) continue;
+                    for (interface.property) |property| {
+                        if (property.access == .read or property.access == .readwrite) {
+                            const entry = array.openContainer(.dict, null) catch unreachable;
+                            defer array.closeContainer(entry) catch unreachable;
+                            defer entry.deinit();
+                            entry.append(Type.String, property.name) catch unreachable;
+                            const getter = interface.getter.?;
+                            const variant = entry.openContainerS(.variant, property.signature) catch unreachable;
+                            defer variant.deinit();
+                            getter(interface.instance, property.name, arena.allocator(), variant, &callError) catch |err| {
+                                const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {s}", .{ property.name, @errorName(err) }) catch unreachable;
+                                callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
+                                break :handler;
+                            };
+                            entry.closeContainer(variant) catch unreachable;
+                            if (callError.isSet) {
+                                returnError(conn, msg, callError);
+                                break :handler;
+                            }
+                        }
+                    }
+                }
+                iter.closeContainer(array) catch unreachable;
+                break :handler;
             }
-            _ = service.conn.send(reply, null);
-            service.conn.flush();
-            return true;
+            const name = iter.next(Type.String) catch unreachable;
+            var op: enum { get, set } = undefined;
+            if (eql(u8, member, "Get")) {
+                op = .get;
+            } else if (eql(u8, member, "Set")) {
+                op = .set;
+            } else {
+                callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+                break :handler;
+            }
+
+            for (service.interfaces.items) |interface| {
+                if (!eql(u8, interface.path, path)) continue;
+                if (!eql(u8, interface.name, iface__)) continue;
+                const property_: ?Service.Property_ = blk: {
+                    for (interface.property) |property| {
+                        if (std.mem.eql(u8, property.name, name)) {
+                            if (property.access == .readwrite) break;
+                            if ((eql(u8, member, "Get") and property.access != .read) or (eql(u8, member, "Set") and property.access != .write)) {
+                                callError.set("org.freedesktop.DBus.Error.AccessDenied", "Property is not readable");
+                                break :handler;
+                            }
+                            break :blk property;
+                        }
+                    }
+                    callError.set("org.freedesktop.DBus.Error.UnknownProperty", "Unknown property");
+                    break :handler;
+                };
+                const property = property_.?;
+                switch (op) {
+                    .get => {
+                        const getter = interface.getter.?;
+                        const out = libdbus.MessageIter.init(service.allocator) catch unreachable;
+                        defer out.deinit();
+                        out.fromAppend(reply);
+                        const variant = out.openContainerS(.variant, property.signature) catch unreachable;
+                        defer variant.deinit();
+                        getter(interface.instance, name, arena.allocator(), variant, &callError) catch |err| {
+                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
+                            callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
+                            break :handler;
+                        };
+                        out.closeContainer(variant) catch unreachable;
+                        break :handler;
+                    },
+                    .set => {
+                        var value = iter.next(Type.Variant) catch unreachable;
+                        if (!eql(u8, property.signature, value.iter.getSignature())) {
+                            callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+                            break :handler;
+                        }
+                        const setter = interface.setter.?;
+                        setter(interface.instance, name, value, &callError) catch |err| {
+                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to set property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
+                            callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
+                            break :handler;
+                        };
+                        break :handler;
+                    },
+                }
+            }
+            callError.set("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
+            break :handler;
+        }
+        for (service.interfaces.items) |interface| {
+            if (!eql(u8, interface.path, path)) continue;
+            for (interface.method) |method| {
+                if (!eql(u8, method.name, member)) continue;
+                const in = libdbus.MessageIter.init(service.allocator) catch unreachable;
+                const out = libdbus.MessageIter.init(service.allocator) catch unreachable;
+                defer in.deinit();
+                defer out.deinit();
+                _ = in.fromResult(msg);
+                out.fromAppend(reply);
+                var arena = std.heap.ArenaAllocator.init(service.allocator);
+                defer arena.deinit();
+                method.func(interface.instance, msg.getSender(), arena.allocator(), in, out, &callError) catch |e| {
+                    callError.set("org.freedesktop.DBus.Error.Failed", @errorName(e));
+                    break :handler;
+                };
+                break :handler;
+            }
         }
     }
-    return true;
+    if (callError.isSet) {
+        returnError(conn, msg, callError);
+        return;
+    }
+    _ = conn.send(reply, null);
+    conn.flush();
+    return;
 }
 pub const MethodArgs = struct {
     direction: enum { in, out },
@@ -435,9 +316,8 @@ pub const MethodArgs = struct {
     annotations: []const Annotation = &.{},
 };
 pub fn MethodFunc(T: type) type {
-    return *const fn (self: *T, allocator: Allocator, in: *MessageIter, out: *MessageIter, err: *CallError) anyerror!void;
+    return *const fn (self: *T, sender: []const u8, allocator: Allocator, in: *MessageIter, out: *MessageIter, err: *CallError) anyerror!void;
 }
-
 pub fn Method(T: type) type {
     return struct {
         name: []const u8,
@@ -664,12 +544,12 @@ pub const CallError = struct {
         self.isSet = true;
     }
 };
-
+const withGLibLoop = @import("bus.zig").withGLibLoop;
 // TODO: 编写自动测试用例
 test "service" {
     const TestInterface = struct {
         emitter: Emitter = undefined,
-        fn tests(self: *@This(), allocator: Allocator, in: *MessageIter, _: *MessageIter, err: *CallError) !void {
+        fn tests(self: *@This(), _: []const u8, allocator: Allocator, in: *MessageIter, _: *MessageIter, err: *CallError) !void {
             const str = try std.fmt.allocPrint(allocator, "test method called {s}", .{try in.next(Type.String)});
             self.emitter.emit("TestSignal", .{Type.String}, .{"hello"});
             print("test method called {s}\n", .{str});
@@ -685,7 +565,11 @@ test "service" {
     };
     var testInterface = TestInterface{};
     const allocator = testing.allocator;
-    const service = try Service.init(allocator, .Session, .DoNotQueue, "com.example.MikaShellZ");
+    const bus = try Bus.init(allocator, .Session);
+    defer bus.deinit();
+    const watch = try withGLibLoop(bus);
+    defer watch.deinit();
+    const service = try bus.owner("com.example.MikaShellZ", .DoNotQueue);
     defer service.deinit();
     try service.publish(TestInterface, "/TestService", Interface(TestInterface){
         .name = "com.example.MikaShellZ",
@@ -717,5 +601,5 @@ test "service" {
             },
         },
     }, &testInterface, &testInterface.emitter);
-    test_main_loop(300);
+    test_main_loop(200);
 }
