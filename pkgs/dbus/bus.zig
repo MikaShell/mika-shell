@@ -154,7 +154,7 @@ const FilterWrapper = struct {
         defer if (iter) |i| i.deinit();
         const allocator = std.heap.page_allocator;
         if (rule.arg.len > 0 or rule.arg_path.len > 0) {
-            iter = libdbus.MessageIter.init(allocator) catch unreachable;
+            iter = libdbus.MessageIter.init(allocator);
         }
         for (rule.arg) |a| {
             if (a == null) {
@@ -174,44 +174,20 @@ const FilterWrapper = struct {
                 .uint64,
                 .unix_fd,
                 => {
-                    const d = iter.?.next(Type.Int64) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
-                    str = std.fmt.allocPrint(allocator, "{}", .{d}) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
+                    const d = iter.?.next(Type.Int64) orelse return .NotYetHandled;
+                    str = std.fmt.allocPrint(allocator, "{}", .{d}) catch @panic("OOM");
                 },
                 .double => {
-                    const f = iter.?.next(Type.Double) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
-                    str = std.fmt.allocPrint(allocator, "{}", .{f}) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
+                    const f = iter.?.next(Type.Double) orelse return .NotYetHandled;
+                    str = std.fmt.allocPrint(allocator, "{}", .{f}) catch @panic("OOM");
                 },
                 .boolean => {
-                    const b = iter.?.next(Type.Boolean) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
-                    str = std.fmt.allocPrint(allocator, "{}", .{b}) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
+                    const b = iter.?.next(Type.Boolean) orelse return .NotYetHandled;
+                    str = std.fmt.allocPrint(allocator, "{}", .{b}) catch @panic("OOM");
                 },
                 .string, .object_path, .signature => {
-                    const s = iter.?.next(Type.String) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
-                    str = allocator.dupe(u8, s) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
+                    const s = iter.?.next(Type.String) orelse return .NotYetHandled;
+                    str = allocator.dupe(u8, s) catch @panic("OOM");
                 },
                 else => return .NotYetHandled,
             }
@@ -228,14 +204,8 @@ const FilterWrapper = struct {
             switch (t) {
                 .object_path,
                 => {
-                    const s = iter.?.next(Type.String) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
-                    str = allocator.dupe(u8, s) catch {
-                        m.deinit();
-                        return .NeedMemory;
-                    };
+                    const s = iter.?.next(Type.String) orelse return .NotYetHandled;
+                    str = allocator.dupe(u8, s) catch @panic("OOM");
                 },
                 else => return .NotYetHandled,
             }
@@ -347,7 +317,7 @@ pub const Bus = struct {
             .allocator = allocator,
             .bus = self,
             .name = name,
-            .interfaces = service.Service.Interfaces.init(allocator),
+            .interfaces = std.ArrayList(service.Service.Interface_).init(allocator),
             .machineId = undefined,
             .uniqueName = undefined,
             .err = undefined,

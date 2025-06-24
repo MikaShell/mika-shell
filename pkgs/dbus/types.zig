@@ -107,7 +107,7 @@ pub const Variant = struct {
         value: *anyopaque,
         store: *const fn (Type, *libdbus.MessageIter) anyerror!void,
         pub fn get(self: Type, T: type) !T.Type {
-            return try self.iter.next(T);
+            return self.iter.next(T).?;
         }
     };
 };

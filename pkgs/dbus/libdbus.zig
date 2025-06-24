@@ -270,6 +270,128 @@ pub const Message = extern struct {
 extern fn dbus_message_type_from_string(type_str: [*c]const u8) c_int;
 extern fn dbus_message_type_to_string(@"type": c_int) [*c]const u8;
 
+pub fn ArrayIter(ElementType: type) type {
+    return struct {
+        const Self = @This();
+        parent: *MessageIter,
+        iter: *MessageIter,
+        pub fn init(parent: *MessageIter) !Self {
+            return Self{
+                .parent = parent,
+                .iter = try parent.openContainer(ElementType.tag),
+            };
+        }
+        pub fn append(self: Self, value: ElementType.Type) !void {
+            try self.iter.append(ElementType, value);
+        }
+        pub fn close(self: Self) void {
+            self.parent.closeContainer(self.iter) catch unreachable;
+            self.iter.deinit();
+        }
+    };
+}
+
+pub const StructIter = struct {
+    const Self = @This();
+    parent: *MessageIter,
+    iter: *MessageIter,
+    pub fn init(parent: *MessageIter) !Self {
+        return Self{
+            .parent = parent,
+            .iter = try parent.openContainer(.@"struct", null),
+        };
+    }
+    pub fn append(self: Self, comptime T: type, value: T.Type) !void {
+        try self.iter.append(T, value);
+    }
+    pub fn close(self: Self) void {
+        self.parent.closeContainer(self.iter) catch unreachable;
+        self.iter.deinit();
+    }
+};
+pub fn VariantIter(T: type) type {
+    return struct {
+        const Self = @This();
+        parent: *MessageIter,
+        iter: *MessageIter,
+        pub fn init(parent: *MessageIter) !Self {
+            return Self{
+                .parent = parent,
+                .iter = try parent.openContainer(.variant, Types.signature(T)),
+            };
+        }
+        pub fn store(self: Self, value: T.Type) !void {
+            try self.iter.append(T, value);
+            self.parent.closeContainer(self.iter) catch unreachable;
+            self.iter.deinit();
+        }
+    };
+}
+pub fn DictIter(comptime K: type, comptime V: type) type {
+    return struct {
+        const Self = @This();
+        const Dict = Types.Dict(K, V);
+        parent: *MessageIter,
+        iter: *MessageIter,
+        currentEntry: ?*MessageIter = null,
+        pub fn init(parent: *MessageIter) !Self {
+            return Self{
+                .parent = parent,
+                .iter = try parent.openContainerS(.array, Types.signature(Dict)[1..]),
+            };
+        }
+        pub fn append(self: *Self, key: K.Type, value: V.Type) !void {
+            try self.appendKey(key);
+            try self.appendValue(value);
+        }
+        pub fn appendKey(self: *Self, key: K.Type) !void {
+            if (self.currentEntry != null) @panic("current entry has not appended a value");
+            const entry = try self.iter.openContainer(.dict, null);
+            errdefer entry.deinit();
+            try entry.append(K, key);
+            self.currentEntry = entry;
+        }
+        pub fn appendValue(self: *Self, value: V.Type) !void {
+            self.needAppendKey();
+            const entry = self.currentEntry.?;
+            defer self.closeCurrentEntry();
+            defer entry.deinit();
+            try entry.append(V, value);
+        }
+        fn needAppendKey(self: *Self) void {
+            if (self.currentEntry == null) @panic("current entry need to append a key");
+        }
+        pub fn closeCurrentEntry(self: *Self) void {
+            self.needAppendKey();
+            const entry = self.currentEntry.?;
+            self.iter.closeContainer(entry) catch unreachable;
+            entry.deinit();
+            self.currentEntry = null;
+        }
+        pub fn openDict(self: *Self, Key: type, Value: type) !DictIter(Key, Value) {
+            self.needAppendKey();
+            const dict = try self.currentEntry.?.openDict(Key, Value);
+            return dict;
+        }
+        pub fn openArray(self: *Self, Element: type) !ArrayIter(Element) {
+            self.needAppendKey();
+            return try self.currentEntry.?.openArray(Element);
+        }
+        pub fn openVariant(self: *Self, Value: type) !VariantIter(Value) {
+            self.needAppendKey();
+            return try self.currentEntry.?.openVariant(Value);
+        }
+        pub fn openStruct(self: *Self) !StructIter {
+            self.needAppendKey();
+            return try self.currentEntry.?.openStruct();
+        }
+        pub fn close(self: Self) void {
+            self.parent.closeContainer(self.iter) catch unreachable;
+            self.iter.deinit();
+        }
+    };
+}
+
 // 对于从 MessageIter 中获取的值，无需调用者手动 free, 在调用 MessageIter.deinit() 时自动释放所有资源
 pub const MessageIter = struct {
     const Self = @This();
@@ -293,10 +415,10 @@ pub const MessageIter = struct {
     extern fn dbus_message_iter_open_container(iter: *c.DBusMessageIter, @"type": c_int, contained_signature: [*c]const u8, sub: *c.DBusMessageIter) c.dbus_bool_t;
     extern fn dbus_message_iter_close_container(iter: *c.DBusMessageIter, sub: *c.DBusMessageIter) c.dbus_bool_t;
 
-    pub fn init(allocator: Allocator) !*Self {
-        const self = try allocator.create(Self);
+    pub fn init(allocator: Allocator) *Self {
+        const self = allocator.create(Self) catch @panic("OOM");
         errdefer allocator.destroy(self);
-        const arena = try allocator.create(std.heap.ArenaAllocator);
+        const arena = allocator.create(std.heap.ArenaAllocator) catch @panic("OOM");
         errdefer allocator.destroy(arena);
 
         arena.* = std.heap.ArenaAllocator.init(allocator);
@@ -394,15 +516,39 @@ pub const MessageIter = struct {
             return error.AppendFailed;
         }
     }
+    pub fn openArray(self: *Self, ElementType: type) !ArrayIter(ElementType) {
+        return try ArrayIter(ElementType).init(self);
+    }
+    pub fn openStruct(self: *Self) !StructIter {
+        return try StructIter.init(self);
+    }
+    pub fn openDict(self: *Self, KeyType: type, ValueType: type) !DictIter(KeyType, ValueType) {
+        return try DictIter(KeyType, ValueType).init(self);
+    }
+    pub fn openVariant(self: *Self, comptime T: type) !VariantIter(T) {
+        return try VariantIter(T).init(self);
+    }
+    pub fn appendDictEntry(self: *Self, comptime Key: type, comptime Value: type, key: Key.Type, value: Value.Type) !void {
+        const sub = try self.openContainer(.dict, null);
+        defer sub.deinit();
+        try sub.append(Key, key);
+        try sub.append(Value, value);
+        try self.closeContainer(sub);
+    }
     pub fn openContainer(self: *Self, t: Types.Tags, elementType: ?Types.Tags) !*MessageIter {
         return self.openContainerS(t, if (elementType) |et| et.asString() else null);
     }
     pub fn openContainerS(self: *Self, t: Types.Tags, elementType: ?[]const u8) !*MessageIter {
-        const sub = try MessageIter.init(self.allocator);
+        const sub = MessageIter.init(self.allocator);
+        var sig: ?[:0]const u8 = null;
+        defer if (sig) |s| self.allocator.free(s);
+        if (elementType) |et| {
+            sig = try self.allocator.dupeZ(u8, et);
+        }
         const r = dbus_message_iter_open_container(
             &self.wrapper,
             t.asInt(),
-            if (elementType) |et| et.ptr else null,
+            if (sig) |s| s.ptr else null,
             &sub.wrapper,
         );
         if (r == 0) {
@@ -424,7 +570,7 @@ pub const MessageIter = struct {
     pub fn skip(self: *Self) void {
         _ = dbus_message_iter_next(&self.wrapper);
     }
-    pub fn next(self: *Self, comptime T: type) !T.Type {
+    pub fn next(self: *Self, comptime T: type) ?T.Type {
         if (T.tag == .invalid) {
             @compileError("invalid type is not allowed");
         }
@@ -432,12 +578,12 @@ pub const MessageIter = struct {
             if (self.getArgType() != .array and T.tag != .dict) {
                 if (self.getArgType() != .dict and T.tag != .@"struct") {
                     std.log.err("miss match type: {any} {any}\n", .{ self.getArgType(), T.tag });
-                    return error.TypeMismatch;
+                    @panic("miss match type");
                 }
             }
         }
         switch (T.tag) {
-            .invalid => unreachable,
+            .invalid => return null,
             .byte,
             .int16,
             .uint16,
@@ -469,7 +615,7 @@ pub const MessageIter = struct {
                 return std.mem.sliceTo(strPtr, 0);
             },
             .variant => {
-                var sub = try MessageIter.init(self.arena);
+                var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 var result: T.Type = undefined;
@@ -479,25 +625,25 @@ pub const MessageIter = struct {
                 return result;
             },
             .array => {
-                var sub = try MessageIter.init(self.arena);
+                var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const array = try self.arena.alloc(T.ArrayElement.Type, self.getElementCount());
+                const array = self.arena.alloc(T.ArrayElement.Type, self.getElementCount()) catch @panic("OOM");
                 for (array) |*item| {
-                    item.* = try sub.next(T.ArrayElement);
+                    item.* = sub.next(T.ArrayElement).?;
                 }
                 _ = dbus_message_iter_next(&self.wrapper);
                 return array;
             },
             .dict => {
-                var sub = try MessageIter.init(self.arena);
+                var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 const info = @typeInfo(T.Type);
                 const EntryType = info.pointer.child;
-                const entrys = try self.arena.alloc(EntryType, self.getElementCount());
+                const entrys = self.arena.alloc(EntryType, self.getElementCount()) catch @panic("OOM");
                 for (entrys) |*entry| {
-                    const e = try sub.next(Types.Struct(.{ T.DictKey, T.DictValue }));
+                    const e = sub.next(Types.Struct(.{ T.DictKey, T.DictValue })).?;
                     entry.* = EntryType{
                         .key = e[0],
                         .value = e[1],
@@ -507,12 +653,12 @@ pub const MessageIter = struct {
                 return entrys;
             },
             .@"struct" => {
-                var sub = try MessageIter.init(self.arena);
+                var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
                 var result: T.Type = undefined;
                 inline for (T.StructFields, 0..) |Field, i| {
-                    result[i] = try sub.next(Field);
+                    result[i] = sub.next(Field).?;
                 }
                 _ = dbus_message_iter_next(&self.wrapper);
                 return result;
@@ -524,7 +670,7 @@ pub const MessageIter = struct {
         const Result = Types.getTupleTypes(t);
         var result: Result = undefined;
         inline for (t, 0..) |T, i| {
-            result[i] = try self.next(T);
+            result[i] = self.next(T).?;
         }
         return result;
     }
@@ -573,7 +719,7 @@ test "method-call-result" {
         return;
     };
     defer conn.unref();
-    const iter = try MessageIter.init(testing.allocator);
+    const iter = MessageIter.init(testing.allocator);
     defer iter.deinit();
     var helper = struct {
         conn: *Connection,
@@ -586,7 +732,7 @@ test "method-call-result" {
             self.req = test_method_call(name);
             self.res = self.conn.sendWithReplyAndBlock(self.req.?, -1, self.err) catch unreachable;
             if (!self.iter.fromResult(self.res.?)) unreachable;
-            return self.iter.next(T) catch unreachable;
+            return self.iter.next(T).?;
         }
         fn deinit(self: *@This()) void {
             if (self.req) |req| req.deinit();
@@ -762,7 +908,7 @@ test "method-call-with-args" {
     };
     var req: *Message = undefined;
     var res: *Message = undefined;
-    const iter = try MessageIter.init(testing.allocator);
+    const iter = MessageIter.init(testing.allocator);
     defer iter.deinit();
     // CallAdd
     {
@@ -774,7 +920,7 @@ test "method-call-with-args" {
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const result = try iter.next(Types.Int32);
+        const result = iter.next(Types.Int32).?;
         try testing.expectEqual(3, result);
     }
     // CallWithStringArray
@@ -789,7 +935,7 @@ test "method-call-with-args" {
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const result = try iter.next(Types.String);
+        const result = iter.next(Types.String).?;
         try testing.expectEqualStrings("Hello World", result);
     }
     // CallWithVariant
@@ -802,7 +948,7 @@ test "method-call-with-args" {
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const result = try iter.next(Types.Boolean);
+        const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
     }
     // CallWithStruct
@@ -817,7 +963,7 @@ test "method-call-with-args" {
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const result = try iter.next(Types.Boolean);
+        const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
     }
     // CallWithDict
@@ -832,7 +978,7 @@ test "method-call-with-args" {
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const result = try iter.next(Types.Boolean);
+        const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
     }
 }

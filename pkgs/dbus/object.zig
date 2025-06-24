@@ -60,7 +60,7 @@ pub fn baseCall(
     }
     const request = libdbus.Message.newMethodCall(name, path, iface, method);
     defer request.deinit();
-    const iter = try libdbus.MessageIter.init(allocator);
+    const iter = libdbus.MessageIter.init(allocator);
     errdefer iter.deinit();
     iter.fromAppend(request);
     if (args != null) {
@@ -129,7 +129,7 @@ pub const Object = struct {
     pub fn callN(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType)) !void {
         const request = libdbus.Message.newMethodCall(self.name, self.path, self.iface, name);
         defer request.deinit();
-        const iter = try libdbus.MessageIter.init(self.allocator);
+        const iter = libdbus.MessageIter.init(self.allocator);
         defer iter.deinit();
         iter.fromAppend(request);
         if (args != null) {
@@ -248,7 +248,7 @@ fn signalHandler(data: ?*anyopaque, msg: *Message) void {
         .member = member,
         .serial = msg.getSerial(),
         .destination = destination,
-        .iter = libdbus.MessageIter.init(obj.allocator) catch unreachable,
+        .iter = libdbus.MessageIter.init(obj.allocator),
     };
     defer event.iter.deinit();
     for (obj.listeners.items) |listener| {

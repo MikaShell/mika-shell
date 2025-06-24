@@ -85,7 +85,7 @@ const Watcher = struct {
         try self.service.bus.dbus.connect("NameOwnerChanged", Watcher.onNameOwnerChanged, self);
     }
     fn registerItem(self: *Self, sender: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
-        const service = try in.next(dbus.String);
+        const service = in.next(dbus.String).?;
         var busName: []const u8 = service;
         var path: []const u8 = "/StatusNotifierItem";
         if (service[0] == '/') {
@@ -97,7 +97,7 @@ const Watcher = struct {
         self.emiter.emit("StatusNotifierItemRegistered", .{dbus.String}, .{item});
     }
     fn registerHost(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
-        const host = try in.next(dbus.String);
+        const host = in.next(dbus.String).?;
         try self.hosts.append(try self.allocator.dupe(u8, host));
         self.emiter.emit("StatusNotifierHostRegistered", .{}, null);
     }
@@ -118,8 +118,8 @@ const Watcher = struct {
     }
     fn onNameOwnerChanged(e: dbus.Event, data: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(data));
-        _ = e.iter.next(dbus.String) catch unreachable;
-        const oldOwner = e.iter.next(dbus.String) catch unreachable;
+        _ = e.iter.next(dbus.String).?;
+        const oldOwner = e.iter.next(dbus.String).?;
         if (std.mem.eql(u8, oldOwner, "")) return;
         for (self.items.items, 0..) |item, i| {
             if (std.mem.eql(u8, oldOwner, item)) {
