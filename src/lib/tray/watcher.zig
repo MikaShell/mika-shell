@@ -162,10 +162,10 @@ test "tray-watcher" {
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
     const watcher = Watcher.init(allocator, bus) catch |err| {
-        print("lib/tray-watcher.zig: cannot init watcher: {any}\n", .{err});
+        print("src/lib/tray/watcher.zig: cannot init watcher: {any}\n", .{err});
         return;
     };
     defer watcher.deinit();
     try watcher.publish();
-    test_main_loop(5_000);
+    test_main_loop(200);
 }

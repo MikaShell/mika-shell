@@ -14,6 +14,7 @@
   openssl,
   devhelp,
   dbus,
+  libwebp,
   d-spy,
   python3,
   gobject-introspection,
@@ -47,6 +48,7 @@ in
       lldb
       dbus
       d-spy
+      libwebp
       # DBus test scripts require dbus-python and pygobject3
       glib
       gobject-introspection

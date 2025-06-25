@@ -6,6 +6,7 @@ const c = @cImport({
 const std = @import("std");
 pub const Types = @import("types.zig");
 const Allocator = std.mem.Allocator;
+pub const DBusError = error.DBusError;
 /// `Error` 是一个 `DBusError` 的容器，内部包含一个指向 `c.DBusError` 的指针。
 /// 该结构体可以安全地被复制，但是只能被使用一次。
 /// 每当错误被设置 (`Error.isSet() == true`), 你必须调用 `Error.reset()` 才能使 `Error` 再次可用。
@@ -95,7 +96,7 @@ pub const Connection = extern struct {
 
     pub fn get(bus_type: BusType, err: Error) !*Connection {
         const conn = dbus_bus_get(bus_type, err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
         return conn;
     }
     pub fn unref(self: *Self) void {
@@ -103,7 +104,7 @@ pub const Connection = extern struct {
     }
     pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: Error) !*Message {
         const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
         return reply.?;
     }
     pub fn send(self: *Self, message: *Message, client_serial: ?*c_uint) bool {
@@ -111,11 +112,11 @@ pub const Connection = extern struct {
     }
     pub fn addMatch(self: *Self, rule: []const u8, err: Error) !void {
         dbus_bus_add_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
     }
     pub fn removeMatch(self: *Self, rule: []const u8, err: Error) !void {
         dbus_bus_remove_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
     }
     pub fn flush(self: *Self) void {
         dbus_connection_flush(self);
@@ -164,12 +165,12 @@ pub const Connection = extern struct {
     };
     pub fn requestName(self: *Self, name: []const u8, flags: NameFlag, err: Error) !RequestNameReply {
         const r = dbus_bus_request_name(self, name.ptr, @intCast(@intFromEnum(flags)), err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
         return @enumFromInt(r);
     }
     pub fn releaseName(self: *Self, name: []const u8, err: Error) !ReleaseNameReply {
         const r = dbus_bus_release_name(self, name.ptr, err.ptr);
-        if (err.isSet()) return error.DBusError;
+        if (err.isSet()) return DBusError;
         return @enumFromInt(r);
     }
 };
@@ -414,7 +415,7 @@ pub const MessageIter = struct {
     extern fn dbus_message_iter_append_fixed_array(iter: *c.DBusMessageIter, element_type: c_int, value: ?*const anyopaque, n_elements: c_int) c.dbus_bool_t;
     extern fn dbus_message_iter_open_container(iter: *c.DBusMessageIter, @"type": c_int, contained_signature: [*c]const u8, sub: *c.DBusMessageIter) c.dbus_bool_t;
     extern fn dbus_message_iter_close_container(iter: *c.DBusMessageIter, sub: *c.DBusMessageIter) c.dbus_bool_t;
-
+    extern fn dbus_message_iter_get_fixed_array(iter: *c.DBusMessageIter, value: ?*anyopaque, n_elements: *c_int) void;
     pub fn init(allocator: Allocator) *Self {
         const self = allocator.create(Self) catch @panic("OOM");
         errdefer allocator.destroy(self);
@@ -481,9 +482,14 @@ pub const MessageIter = struct {
             .array => {
                 const sub = try self.openContainer(.array, @enumFromInt(@intFromEnum(T.ArrayElement.tag)));
                 defer sub.deinit();
-                for (value) |item| {
-                    try sub.append(T.ArrayElement, item);
+                if (T.ArrayElement.tag == .byte) {
+                    ok = dbus_message_iter_append_fixed_array(&sub.wrapper, Types.Tags.byte.asInt(), @ptrCast(&value.ptr), @intCast(value.len));
+                } else {
+                    for (value) |item| {
+                        try sub.append(T.ArrayElement, item);
+                    }
                 }
+
                 try self.closeContainer(sub);
             },
             .variant => {
@@ -628,12 +634,20 @@ pub const MessageIter = struct {
                 var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const array = self.arena.alloc(T.ArrayElement.Type, self.getElementCount()) catch @panic("OOM");
-                for (array) |*item| {
-                    item.* = sub.next(T.ArrayElement).?;
+                if (T.ArrayElement.tag == .byte) {
+                    var arr: [*c]const u8 = undefined;
+                    var len: c_int = undefined;
+                    dbus_message_iter_get_fixed_array(&sub.wrapper, @ptrCast(&arr), &len);
+                    _ = dbus_message_iter_next(&self.wrapper);
+                    return arr[0..@intCast(len)];
+                } else {
+                    const array = self.arena.alloc(T.ArrayElement.Type, self.getElementCount()) catch @panic("OOM");
+                    for (array) |*item| {
+                        item.* = sub.next(T.ArrayElement).?;
+                    }
+                    _ = dbus_message_iter_next(&self.wrapper);
+                    return array;
                 }
-                _ = dbus_message_iter_next(&self.wrapper);
-                return array;
             },
             .dict => {
                 var sub = MessageIter.init(self.arena);
@@ -937,6 +951,19 @@ test "method-call-with-args" {
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.String).?;
         try testing.expectEqualStrings("Hello World", result);
+    }
+    // CallWithByteArray
+    {
+        req = test_method_call("CallWithByteArray");
+        iter.fromAppend(req);
+        const bytes: [5160]u8 = [_]u8{'k'} ** 5160;
+        try iter.append(Types.Array(Types.Byte), &bytes);
+        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        defer req.deinit();
+        defer res.deinit();
+        try testing.expectEqual(true, iter.fromResult(res));
+        const result = iter.next(Types.Boolean).?;
+        try testing.expectEqual(true, result);
     }
     // CallWithVariant
     {

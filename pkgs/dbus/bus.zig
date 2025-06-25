@@ -41,52 +41,38 @@ pub const MatchRule = struct {
     fn toString(self: MatchRule, allocator: Allocator) ![]const u8 {
         var str = std.ArrayList(u8).init(allocator);
         defer str.deinit();
+        const writer = str.writer();
+        const format = std.fmt.format;
         if (self.type) |t| {
             try str.appendSlice("type='");
             try str.appendSlice(@tagName(t));
             try str.appendSlice("',");
         }
         if (self.sender) |s| {
-            try str.appendSlice("sender='");
-            try str.appendSlice(s);
-            try str.appendSlice("',");
+            try format(writer, "sender='{s}',", .{s});
         }
         if (self.interface) |i| {
-            try str.appendSlice("interface='");
-            try str.appendSlice(i);
-            try str.appendSlice("',");
+            try format(writer, "interface='{s}',", .{i});
         }
         if (self.destination) |d| {
-            try str.appendSlice("destination='");
-            try str.appendSlice(d);
-            try str.appendSlice("',");
+            try format(writer, "destination='{s}',", .{d});
         }
         if (self.member) |m| {
-            try str.appendSlice("member='");
-            try str.appendSlice(m);
-            try str.appendSlice("',");
+            try format(writer, "member='{s}',", .{m});
         }
         if (self.path) |p| {
-            try str.appendSlice("path='");
-            try str.appendSlice(p);
-            try str.appendSlice("',");
+            try format(writer, "path='{s}',", .{p});
         }
         if (self.path_namespace) |n| {
-            try str.appendSlice("path_namespace='");
-            try str.appendSlice(n);
-            try str.appendSlice("',");
+            try format(writer, "path_namespace='{s}',", .{n});
         }
         for (self.arg, 0..) |a, i| {
             if (a == null) continue;
-            const arg = try std.fmt.allocPrint(allocator, "arg{d}='{s}',", .{ i, a.? });
-            defer allocator.free(arg);
-            try str.appendSlice(arg);
+            try format(writer, "arg{d}='{s}',", .{ i, a.? });
         }
         for (self.arg_path, 0..) |ap, i| {
             if (ap == null) continue;
-            const arg_path = try std.fmt.allocPrint(allocator, "arg{d}_path='{s}',", .{ i, ap.? });
-            defer allocator.free(arg_path);
-            try str.appendSlice(arg_path);
+            try format(writer, "arg{d}_path='{s}',", .{ i, ap.? });
         }
         _ = str.pop();
         try str.append('\x00');
@@ -240,7 +226,7 @@ pub const Bus = struct {
             .objects = std.ArrayList(*object.Object).init(allocator),
             .filters = std.ArrayList(*FilterWrapper).init(allocator),
         };
-        bus.dbus = try bus.proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus");
+        bus.dbus = try common.freedesktopDBus(bus);
         try bus.dbus.connect("NameOwnerChanged", struct {
             fn f(e: common.Event, data: ?*anyopaque) void {
                 const bus_: *Self = @ptrCast(@alignCast(data));
@@ -248,7 +234,6 @@ pub const Bus = struct {
                 const oldOwner = values[1];
                 const newOwner = values[2];
                 const isNewService = std.mem.eql(u8, oldOwner, "");
-
                 for (bus_.objects.items) |obj| {
                     if (std.mem.eql(u8, obj.uniqueName, "")) {
                         if (isNewService) {
@@ -277,8 +262,6 @@ pub const Bus = struct {
         return bus;
     }
     pub fn deinit(self: *Self) void {
-        self.conn.unref();
-        self.err.deinit();
         for (self.objects.items) |item| {
             item.deinit();
         }
@@ -288,23 +271,24 @@ pub const Bus = struct {
         }
         self.filters.deinit();
         self.objects.deinit();
+        self.conn.unref();
+        self.err.deinit();
         self.allocator.destroy(self);
     }
     pub fn proxy(self: *Self, name: []const u8, path: []const u8, iface: []const u8) !*object.Object {
         const req = try object.baseCall(self.allocator, self.conn, self.err, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", .{Type.String}, .{name}, .{Type.String});
         defer req.deinit();
-        const uniqueName = req.values.?[0];
         const obj = try self.allocator.create(object.Object);
         errdefer self.allocator.destroy(obj);
-        obj.* = object.Object{
-            .name = name,
-            .path = path,
-            .iface = iface,
+        obj.* = .{
             .bus = self,
-            .allocator = self.allocator,
+            .name = try self.allocator.dupe(u8, name),
+            .path = try self.allocator.dupe(u8, path),
+            .iface = try self.allocator.dupe(u8, iface),
+            .uniqueName = try self.allocator.dupe(u8, req.values.?[0]),
             .err = Error.init(),
             .listeners = std.ArrayList(common.Listener).init(self.allocator),
-            .uniqueName = try self.allocator.dupe(u8, uniqueName),
+            .allocator = self.allocator,
         };
         try self.objects.append(obj);
         return obj;

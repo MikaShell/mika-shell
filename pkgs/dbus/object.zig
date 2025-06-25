@@ -88,9 +88,18 @@ pub const Object = struct {
     err: Error,
     listeners: std.ArrayList(common.Listener),
     pub fn deinit(self: *Self) void {
+        for (self.listeners.items) |listener| {
+            self.disconnect(listener.signal, listener.handler, listener.data) catch {
+                self.err.reset();
+            };
+        }
         self.err.deinit();
         self.listeners.deinit();
+        self.allocator.free(self.name);
+        self.allocator.free(self.path);
+        self.allocator.free(self.iface);
         self.allocator.free(self.uniqueName);
+
         for (self.bus.objects.items, 0..) |obj, i| {
             if (obj == self) {
                 // FIXME: 考虑线程安全
@@ -188,7 +197,15 @@ pub const Object = struct {
             .result = resp,
         };
     }
-
+    pub fn ping(self: *Object) bool {
+        const r = self.callWithSelf(self.name, self.path, "org.freedesktop.DBus.Peer", "Ping", .{}, null, .{}) catch {
+            self.err.reset();
+            return false;
+        };
+        defer r.deinit();
+        return true;
+    }
+    /// 无需处理 Event 中的 iter, iter 会在回调退出后自动释放
     pub fn connect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         if (self.listeners.items.len == 0) {
             if (!try self.bus.addFilter(.{ .type = .signal }, signalHandler, self)) {
@@ -209,9 +226,9 @@ pub const Object = struct {
             .data = data,
         });
     }
-    pub fn disconnect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void) !void {
+    pub fn disconnect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         for (self.listeners.items, 0..) |listener, i| {
-            if (std.mem.eql(u8, listener.signal, signal) and listener.handler == handler) {
+            if (std.mem.eql(u8, listener.signal, signal) and listener.handler == handler and listener.data == data) {
                 _ = self.listeners.swapRemove(i);
                 if (self.listeners.items.len == 0) {
                     self.bus.removeFilter(.{ .type = .signal }, signalHandler, self);
@@ -221,7 +238,11 @@ pub const Object = struct {
                         return;
                     }
                 }
-                try self.bus.removeMatch(.{ .type = .signal, .sender = self.uniqueName, .interface = self.iface, .member = signal, .path = self.path });
+                self.bus.err.reset();
+                self.bus.removeMatch(.{ .type = .signal, .sender = self.uniqueName, .interface = self.iface, .member = signal, .path = self.path }) catch {
+                    self.bus.err.reset();
+                    return error.RemoveMatchFailed;
+                };
                 return;
             }
         }
@@ -274,6 +295,18 @@ fn test_main_loop(timeout_ms: u32) void {
     }.timeout, loop);
     glib.c.g_main_loop_run(loop);
 }
+
+test "ping" {
+    const allocator = testing.allocator;
+    const bus = Bus.init(allocator, .Session) catch unreachable;
+    defer bus.deinit();
+    const watch = try withGLibLoop(bus);
+    defer watch.deinit();
+    var proxy = try bus.proxy("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
+    defer proxy.deinit();
+    try testing.expect(proxy.ping());
+}
+
 test "call" {
     const allocator = testing.allocator;
     const bus = Bus.init(allocator, .Session) catch unreachable;
@@ -373,8 +406,8 @@ test "signal-disconnect" {
     var proxy = try bus.proxy("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
     defer proxy.deinit();
     try proxy.connect("Signal1", test_on_signal1, null);
-    try proxy.disconnect("Signal1", test_on_signal1);
-    try testing.expectError(error.SignalOrHandlerNotFound, proxy.disconnect("Signal1", test_on_signal1));
+    try proxy.disconnect("Signal1", test_on_signal1, null);
+    try testing.expectError(error.SignalOrHandlerNotFound, proxy.disconnect("Signal1", test_on_signal1, null));
 }
 test "get-error" {
     const allocator = testing.allocator;

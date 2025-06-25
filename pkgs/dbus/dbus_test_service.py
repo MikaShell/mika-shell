@@ -78,6 +78,10 @@ class TestServices(object):
                             <arg direction="in" type="as"/>
                             <arg direction="out" type="s"/>
                     </method>
+                    <method name="CallWithByteArray">
+                            <arg direction="in" type="ay"/>
+                            <arg direction="out" type="b"/>
+                    </method>
                     <method name="CallWithVariant">
                             <arg direction="in" type="v"/>
                             <arg direction="out" type="b"/>
@@ -180,6 +184,9 @@ class TestServices(object):
 
     def CallWithStringArray(self, strings):
         return " ".join(strings)
+
+    def CallWithByteArray(self, data):
+        return len(data) == 5160
 
     def CallWithVariant(self, variant):
         return variant == 114514

@@ -13,3 +13,7 @@ pub const Listener = struct {
     handler: *const fn (Event, ?*anyopaque) void,
     data: ?*anyopaque,
 };
+const object = @import("object.zig");
+pub fn freedesktopDBus(bus: *@import("bus.zig").Bus) !*object.Object {
+    return try bus.proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus");
+}
