@@ -1,6 +1,6 @@
 const dbus = @import("dbus");
 const Allocator = std.mem.Allocator;
-const Watcher = struct {
+pub const Watcher = struct {
     const Self = @This();
     allocator: Allocator,
     emiter: dbus.Emitter,

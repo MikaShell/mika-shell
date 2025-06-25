@@ -6,7 +6,7 @@ pub const ItemState = enum {
     removed,
     changed,
 };
-const Host = struct {
+pub const Host = struct {
     const Self = @This();
     const Listener = struct {
         func: *const fn (host: *Self, state: ItemState, services: []const u8, data: ?*anyopaque) void,
@@ -33,6 +33,9 @@ const Host = struct {
             bus.err.reset();
             return error.FailedToConnectToStatusNotifierWatcher;
         };
+        if (!watcher.ping()) {
+            return error.FailedToPingStatusNotifierWatcher;
+        }
         self.watcher = watcher;
         const registerResult = watcher.call("RegisterStatusNotifierHost", .{dbus.String}, .{bus.uniqueName}, .{}) catch {
             watcher.err.reset();

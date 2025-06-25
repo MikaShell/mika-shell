@@ -4,7 +4,7 @@ const c = @cImport({
     @cInclude("webp/encode.h");
 });
 
-pub fn pixmapToWebp(
+fn pixmapToWebp(
     allocator: std.mem.Allocator,
     width: i32,
     height: i32,
@@ -42,38 +42,38 @@ pub fn pixmapToWebp(
     defer std.c.free(output_ptr);
     return try allocator.dupe(u8, output_ptr[0..size]);
 }
-const Pixmap = struct {
-    width: i32,
-    height: i32,
-    webp: []const u8,
-};
 const DBusPixmap = dbus.Array(dbus.Struct(.{
     dbus.Int32,
     dbus.Int32,
     dbus.Array(dbus.Byte),
 }));
-pub const Attention = struct {
-    iconName: []const u8,
-    iconPixmap: []const Pixmap,
-    movieName: []const u8,
-};
-pub const Icon = struct {
-    name: []const u8,
-    themePath: []const u8,
-    pixmap: []const Pixmap,
-};
-pub const Overlay = struct {
-    iconName: []const u8,
-    iconPixmap: []const Pixmap,
-};
-pub const Tooltip = struct {
-    iconName: []const u8,
-    iconPixmap: []const Pixmap,
-    title: []const u8,
-    text: []const u8,
-};
 pub const Item = struct {
     const Self = @This();
+    pub const Pixmap = struct {
+        width: i32,
+        height: i32,
+        webp: []const u8,
+    };
+    pub const Attention = struct {
+        iconName: []const u8,
+        iconPixmap: []const Pixmap,
+        movieName: []const u8,
+    };
+    pub const Icon = struct {
+        name: []const u8,
+        themePath: []const u8,
+        pixmap: []const Pixmap,
+    };
+    pub const Overlay = struct {
+        iconName: []const u8,
+        iconPixmap: []const Pixmap,
+    };
+    pub const Tooltip = struct {
+        iconName: []const u8,
+        iconPixmap: []const Pixmap,
+        title: []const u8,
+        text: []const u8,
+    };
     const Listener = struct {
         func: *const fn (item: *Item, data: ?*anyopaque) void,
         data: ?*anyopaque,
