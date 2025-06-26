@@ -9,8 +9,8 @@
 
     .dependencies = .{
         .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig#bf66b28690967fec187bc3074ebdd2cf748e172e",
-            .hash = "httpz-0.0.0-PNVzrDm1BgBS1NqfP2uTPocAxDSTjZNJKr41Q_S63cFB",
+            .url = "git+https://github.com/karlseguin/http.zig#68e760cc9eed0722dfcae69bda0ed9406bb83be2",
+            .hash = "httpz-0.0.0-PNVzrOu4BgCBCARbwWC7MUn7_MqnGwUNfTXEUryOns06",
         },
         .@"zig-cli" = .{
             .url = "git+https://github.com/sam701/zig-cli#9fca749122a321fd4af4fecafba0062b3e36db98",

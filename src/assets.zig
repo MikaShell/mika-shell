@@ -6,22 +6,15 @@ const RouteData = struct {
 };
 const fs = std.fs;
 pub const Server = struct {
-    arena: Allocator,
     allocator: Allocator,
     _server: httpz.Server(void),
     routerData: RouteData,
     pub fn init(allocator: Allocator, assetsDir: []const u8) !*Server {
-        const arena = try allocator.create(std.heap.ArenaAllocator);
-        errdefer allocator.destroy(arena);
-        arena.* = std.heap.ArenaAllocator.init(allocator);
-        errdefer arena.deinit();
-
         const server = try allocator.create(Server);
         errdefer allocator.destroy(server);
-        server.arena = arena.allocator();
         server.allocator = allocator;
 
-        const ownedAssetsDir = try arena.allocator().dupe(u8, assetsDir);
+        const ownedAssetsDir = try allocator.dupe(u8, assetsDir);
         server.routerData.assetsDir = ownedAssetsDir;
         server._server = try httpz.Server(void).init(allocator, .{ .port = 6797 }, {});
 
@@ -37,9 +30,8 @@ pub const Server = struct {
     }
     pub fn deinit(self: *Server) void {
         self._server.deinit();
-        const arena: *std.heap.ArenaAllocator = @ptrCast(@alignCast(self.arena.ptr));
-        arena.deinit();
-        self.allocator.destroy(arena);
+        self.allocator.free(self.routerData.assetsDir);
+        self.allocator.destroy(self);
     }
 };
 fn fileServer(req: *httpz.Request, res: *httpz.Response) !void {
@@ -65,5 +57,6 @@ fn fileServer(req: *httpz.Request, res: *httpz.Response) !void {
     };
     defer f.close();
     const buf = try f.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    defer allocator.free(buf);
     try res.writer().writeAll(buf);
 }

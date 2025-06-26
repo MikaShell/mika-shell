@@ -39,7 +39,7 @@ fn pixmapToWebp(
     if (size == 0 or output_ptr == null) {
         return error.WebPEncodingFailed;
     }
-    defer std.c.free(output_ptr);
+    defer c.WebPFree(output_ptr);
     return try allocator.dupe(u8, output_ptr[0..size]);
 }
 const DBusPixmap = dbus.Array(dbus.Struct(.{

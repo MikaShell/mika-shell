@@ -15,6 +15,7 @@ pub const Webview = struct {
         id: u64,
         uri: []const u8,
     };
+    allocator: std.mem.Allocator,
     type: WebviewType,
     options: union {
         window: WindowOptions,
@@ -26,6 +27,7 @@ pub const Webview = struct {
     pub fn init(allocator: std.mem.Allocator, m: *Modules) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
+            .allocator = allocator,
             .impl = webkit.WebView.new(),
             .container = gtk.Window.new(),
             ._modules = m,
@@ -33,7 +35,7 @@ pub const Webview = struct {
             .type = .None,
         };
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
-        settings.setEnableDeveloperExtras(true);
+        settings.setEnableDeveloperExtras(false);
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
         _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
 
@@ -121,6 +123,7 @@ pub const Webview = struct {
     }
     pub fn close(self: *Webview) void {
         self.container.destroy();
+        self.allocator.destroy(self);
     }
 };
 const dbus = @import("dbus");
@@ -204,16 +207,14 @@ pub const App = struct {
         return app;
     }
     pub fn deinit(self: *App) void {
-        for (self.webviews.items) |webview| {
-            webview.close();
-        }
+        for (self.webviews.items) |webview| webview.close();
         self.busWatcher.deinit();
-        self.bus.deinit();
 
         self.webviews.deinit();
         self.modules.deinit();
 
         self.tray.deinit();
+        self.bus.deinit();
 
         self.allocator.destroy(self.mikami);
         self.allocator.destroy(self.window);
@@ -289,16 +290,17 @@ pub const App = struct {
     }
 };
 // 查找 $XDG_CONFIG_HOME/mikami $HOME/.config/mikami
-pub fn getConfigDir(allocator: std.mem.Allocator) ![]u8 {
-    var baseConfigDir: [*:0]u8 = undefined;
+pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
+    var baseConfigDir: []const u8 = undefined;
     for (std.os.environ) |env| {
-        if (std.mem.startsWith(u8, std.mem.sliceTo(env, 0), "XDG_CONFIG_HOME=")) {
-            baseConfigDir = env[15..];
+        const e = std.mem.sliceTo(env, 0);
+        if (std.mem.startsWith(u8, e, "XDG_CONFIG_HOME=")) {
+            baseConfigDir = e[15..];
             break;
-        } else if (std.mem.startsWith(u8, std.mem.sliceTo(env, 0), "HOME=")) {
-            baseConfigDir = env[5..];
+        } else if (std.mem.startsWith(u8, e, "HOME=")) {
+            baseConfigDir = e[5..];
             break;
         }
     }
-    return try std.fs.path.join(allocator, &[_][]const u8{ std.mem.sliceTo(baseConfigDir, 0), "mikami" });
+    return try std.fs.path.join(allocator, &.{ baseConfigDir, "mikami" });
 }

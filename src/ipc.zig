@@ -18,8 +18,8 @@ pub const Server = struct {
         return self;
     }
     pub fn deinit(self: *Server) void {
-        self.s.deinit();
         self.watcher.deinit();
+        self.s.deinit();
         self.allocator.destroy(self);
     }
 

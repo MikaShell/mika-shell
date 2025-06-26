@@ -171,8 +171,9 @@ pub fn daemon() !void {
     _ = app_.open("http://localhost:6797/");
 
     const baseConfigDir = try app.getConfigDir(allocator);
+    defer allocator.free(baseConfigDir);
     std.log.debug("ConfigDir: {s}", .{baseConfigDir});
-    var assetsserver = try assets.Server.init(allocator, baseConfigDir);
+    var assetsserver = try assets.Server.init(std.heap.page_allocator, baseConfigDir);
     defer {
         assetsserver.stop();
         assetsserver.deinit();
