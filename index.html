@@ -4,9 +4,26 @@
         <title>Welcome</title>
         <style>
             body {
+                color: beige;
                 background-color: rgb(57, 57, 57);
                 height: 500px;
                 width: 800px;
+            }
+            .tray-icon {
+                top: 10px;
+                right: 10px;
+                width: 32px;
+                height: 32px;
+            }
+            #tray {
+                position: absolute;
+                top: 10px;
+                right: 50px;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
         </style>
         <script>
@@ -14,7 +31,7 @@
                 console.log(data.detail);
             });
             const postMessage = (msg) => {
-                window.webkit.messageHandlers.mikami.postMessage(msg);
+                return window.webkit.messageHandlers.mikami.postMessage(msg);
             };
             const layerInit = {
                 method: "layer.init",
@@ -44,10 +61,94 @@
                 ],
             };
             postMessage(windowInit);
+
+            const trayGetItem = {
+                method: "tray.getItem",
+                args: [],
+            };
+            const traySubscribe = {
+                method: "tray.subscribe",
+                args: [],
+            };
+            const arrayToWebp = (arr) => {
+                const uint8Array = new Uint8Array(arr);
+                const blob = new Blob([uint8Array], { type: "image/webp" });
+                const imageUrl = URL.createObjectURL(blob);
+                return imageUrl;
+            };
+            var tray = {};
+            const trayProxy = new Proxy(tray, {
+                get: (target, prop) => {
+                    return target[prop];
+                },
+                set: (target, prop, value) => {
+                    target[prop] = value;
+                    const trayBox = document.getElementById("tray");
+                    const img = document.getElementById(prop);
+                    const item = value;
+                    console.log(value);
+
+                    item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
+                    const imageUrl = arrayToWebp(item.icon.pixmap[0].webp);
+                    if (img) {
+                        // 释放旧的图片资源
+                        URL.revokeObjectURL(img.src);
+                        img.src = imageUrl;
+                    } else {
+                        const img = document.createElement("img");
+                        img.src = imageUrl;
+                        img.className = "tray-icon";
+                        img.id = prop;
+                        img.onclick = () => {
+                            postMessage({
+                                method: "tray.activat\e",
+                                args: [prop, 0, 0],
+                            });
+                        };
+                        trayBox.appendChild(img);
+                    }
+
+                    return true;
+                },
+                deleteProperty: (target, prop) => {
+                    delete target[prop];
+                    const trayBox = document.getElementById("tray");
+                    const img = document.getElementById(prop);
+                    if (img) {
+                        trayBox.removeChild(img);
+                    }
+                    return true;
+                },
+            });
+            window.addEventListener("tray-added", (data) => {
+                const service = data.detail;
+                postMessage({
+                    method: "tray.getItem",
+                    args: [service],
+                }).then((item) => {
+                    trayProxy[service] = item;
+                });
+            });
+            window.addEventListener("tray-changed", (data) => {
+                const service = data.detail;
+                postMessage({
+                    method: "tray.getItem",
+                    args: [service],
+                }).then((item) => {
+                    trayProxy[service] = item;
+                });
+            });
+            window.addEventListener("tray-removed", (data) => {
+                const service = data.detail;
+                delete trayProxy[service];
+            });
+
+            postMessage(traySubscribe);
         </script>
     </head>
     <body>
         <h1>Welcome</h1>
-        <p>This is a test website for Aikami.</p>
+        <p>This is a test website for MikaShell.</p>
+        <div id="tray" />
     </body>
 </html>

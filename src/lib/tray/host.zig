@@ -74,7 +74,7 @@ pub const Host = struct {
     }
     fn onItemUpdated(item: *Item, data: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(data));
-        self.triggerListeners(.changed, item.service);
+        self.triggerListeners(.changed, item.data.service);
     }
     pub fn addListener(self: *Self, func: *const fn (host: *Self, state: ItemState, services: []const u8, data: ?*anyopaque) void, data: ?*anyopaque) !void {
         try self.listeners.append(.{ .func = func, .data = data });
@@ -97,7 +97,7 @@ pub const Host = struct {
         const lostName = e.iter.next(dbus.String).?;
         for (self.items.items, 0..) |item, i| {
             if (std.mem.eql(u8, item.owner, lostName)) {
-                triggerListeners(self, .removed, item.service);
+                triggerListeners(self, .removed, item.data.service);
                 self.items.swapRemove(i).deinit();
                 break;
             }
@@ -118,7 +118,7 @@ pub const Host = struct {
         const self: *Self = @ptrCast(@alignCast(data));
         const service = e.iter.next(dbus.String).?;
         for (self.items.items, 0..) |item, i| {
-            if (std.mem.eql(u8, item.service, service)) {
+            if (std.mem.eql(u8, item.data.service, service)) {
                 triggerListeners(self, .removed, service);
                 self.items.swapRemove(i).deinit();
                 break;

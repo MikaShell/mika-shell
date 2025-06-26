@@ -93,14 +93,11 @@ pub const Connection = extern struct {
     extern fn dbus_connection_send(connection: *Connection, message: ?*Message, client_serial: ?*c_uint) c.dbus_bool_t;
     extern fn dbus_bus_request_name(connection: *Connection, name: [*c]const u8, flags: c_uint, @"error": ?*c.DBusError) c_int;
     extern fn dbus_bus_release_name(connection: *Connection, name: [*c]const u8, @"error": ?*c.DBusError) c_int;
-
+    extern fn dbus_bus_get_private(@"type": BusType, @"error": ?*c.DBusError) *Connection;
     pub fn get(bus_type: BusType, err: Error) !*Connection {
-        const conn = dbus_bus_get(bus_type, err.ptr);
+        const conn = dbus_bus_get_private(bus_type, err.ptr);
         if (err.isSet()) return DBusError;
         return conn;
-    }
-    pub fn unref(self: *Self) void {
-        dbus_connection_unref(self);
     }
     pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: Error) !*Message {
         const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err.ptr);
@@ -123,6 +120,7 @@ pub const Connection = extern struct {
     }
     pub fn close(self: *Self) void {
         dbus_connection_close(self);
+        dbus_connection_unref(self);
     }
     pub fn readWrite(self: *Self, timeout_milliseconds: i32) bool {
         return dbus_connection_read_write(self, @intCast(timeout_milliseconds)) != 0;
@@ -732,7 +730,7 @@ test "method-call-result" {
         std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
         return;
     };
-    defer conn.unref();
+    defer conn.close();
     const iter = MessageIter.init(testing.allocator);
     defer iter.deinit();
     var helper = struct {

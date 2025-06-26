@@ -8,12 +8,12 @@ const Options = struct {
 const std = @import("std");
 const webkit = @import("webkit");
 const modules = @import("modules.zig");
-const appM = @import("../app.zig");
-
+const App = @import("../app.zig").App;
+const Webview = @import("../app.zig").Webview;
 pub const Window = struct {
-    app: *appM.App,
+    app: *App,
     const Self = @This();
-    fn getWindow(self: *Self, args: modules.Args) !*appM.Webview {
+    fn getWindow(self: *Self, args: modules.Args) !*Webview {
         const id = try args.uInteger(0);
         const w = self.app.getWebview(id).?;
         if (w.type != .Window) {

@@ -1,9 +1,9 @@
 const std = @import("std");
 const webkit = @import("webkit");
 const modules = @import("modules.zig");
-const appM = @import("../app.zig");
+const App = @import("../app.zig").App;
 pub const Mikami = struct {
-    app: *appM.App,
+    app: *App,
     const Self = @This();
 
     pub fn open(self: *Self, args: modules.Args, result: *modules.Result) !void {

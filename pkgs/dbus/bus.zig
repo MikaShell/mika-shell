@@ -14,8 +14,9 @@ pub fn readWrite(bus: *Bus, timeout_milliseconds: i32) bool {
 pub fn dispatch(bus: *Bus) libdbus.DispatchStatus {
     return bus.conn.dispatch();
 }
-pub fn withGLibLoop(bus: *Bus) !glib.FdWatch(Bus) {
-    return try glib.FdWatch(Bus).add(try bus.conn.getUnixFd(), struct {
+pub const GLibWatch = glib.FdWatch(Bus);
+pub fn withGLibLoop(bus: *Bus) !GLibWatch {
+    return try GLibWatch.add(try bus.conn.getUnixFd(), struct {
         fn cb(b: *Bus) bool {
             if (!b.conn.readWrite(-1)) return false;
             while (b.conn.dispatch() != .Complete) {}
@@ -216,7 +217,7 @@ pub const Bus = struct {
         const bus = try allocator.create(Self);
         errdefer allocator.destroy(bus);
         errdefer err.deinit();
-        errdefer conn.unref();
+        errdefer conn.close();
         bus.* = Bus{
             .conn = conn,
             .uniqueName = conn.getUniqueName(),
@@ -271,7 +272,7 @@ pub const Bus = struct {
         }
         self.filters.deinit();
         self.objects.deinit();
-        self.conn.unref();
+        self.conn.close();
         self.err.deinit();
         self.allocator.destroy(self);
     }

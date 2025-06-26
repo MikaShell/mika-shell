@@ -49,6 +49,19 @@ const DBusPixmap = dbus.Array(dbus.Struct(.{
 }));
 pub const Item = struct {
     const Self = @This();
+    pub const Data = struct {
+        service: []const u8,
+        attention: Attention,
+        category: []const u8,
+        icon: Icon,
+        id: []const u8,
+        ItemIsMenu: bool,
+        menu: []const u8,
+        overlay: Overlay,
+        status: []const u8,
+        title: []const u8,
+        tooltip: Tooltip,
+    };
     pub const Pixmap = struct {
         width: i32,
         height: i32,
@@ -82,18 +95,9 @@ pub const Item = struct {
     _arena: Allocator,
     _object: *dbus.Object,
     _listeners: std.ArrayList(Listener),
-    service: []const u8,
     owner: []const u8,
-    attention: Attention,
-    category: []const u8,
-    icon: Icon,
-    id: []const u8,
-    ItemIsMenu: bool,
-    menu: []const u8,
-    overlay: Overlay,
-    status: []const u8,
-    title: []const u8,
-    tooltip: Tooltip,
+    data: Data,
+
     // windowId: i32, // X11 only, not supported.
     pub fn init(allocator: Allocator, bus: *dbus.Bus, service: []const u8) !*Self {
         const self = try allocator.create(Self);
@@ -118,51 +122,51 @@ pub const Item = struct {
         self._allocator = allocator;
         self._arena = arena.allocator();
         self._object = item;
-        self.service = try self._arena.dupe(u8, service);
+        self.data.service = try self._arena.dupe(u8, service);
 
         // id
         blk: {
             const id = item.get("Id", dbus.String) catch {
                 item.err.reset();
-                self.id = "";
+                self.data.id = "";
                 break :blk;
             };
             defer id.deinit();
-            self.id = try arenaAllocator.dupe(u8, id.value);
+            self.data.id = try arenaAllocator.dupe(u8, id.value);
         }
         // category
         blk: {
             const category = item.get("Category", dbus.String) catch {
                 item.err.reset();
-                self.category = "";
+                self.data.category = "";
                 break :blk;
             };
             defer category.deinit();
-            self.category = try arenaAllocator.dupe(u8, category.value);
+            self.data.category = try arenaAllocator.dupe(u8, category.value);
         }
         // isMenu
         blk: {
             const isMenu = item.get("ItemIsMenu", dbus.Boolean) catch {
                 item.err.reset();
-                self.ItemIsMenu = false;
+                self.data.ItemIsMenu = false;
                 break :blk;
             };
             defer isMenu.deinit();
-            self.ItemIsMenu = isMenu.value;
+            self.data.ItemIsMenu = isMenu.value;
         }
         // menu
         blk: {
             const menu = item.get("Menu", dbus.ObjectPath) catch {
                 item.err.reset();
-                self.menu = "";
+                self.data.menu = "";
                 break :blk;
             };
             defer menu.deinit();
-            self.menu = try arenaAllocator.dupe(u8, menu.value);
+            self.data.menu = try arenaAllocator.dupe(u8, menu.value);
         }
         // title, status 等可能会变化的值, 需要及时响应释放或者重新分配新的内存
         // title
-        self.title = "";
+        self.data.title = "";
         self.loadTitle();
         try item.connect("NewTitle", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -172,7 +176,7 @@ pub const Item = struct {
             }
         }.f, self);
         // status
-        self.status = "";
+        self.data.status = "";
         self.loadStatus();
         try item.connect("NewStatus", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -183,9 +187,9 @@ pub const Item = struct {
         }.f, self);
 
         // attention
-        self.attention.iconName = "";
-        self.attention.movieName = "";
-        self.attention.iconPixmap = &.{};
+        self.data.attention.iconName = "";
+        self.data.attention.movieName = "";
+        self.data.attention.iconPixmap = &.{};
         self.loadAttention();
         try item.connect("NewAttentionIcon", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -196,9 +200,9 @@ pub const Item = struct {
         }.f, self);
 
         // icon
-        self.icon.name = "";
-        self.icon.themePath = "";
-        self.icon.pixmap = &.{};
+        self.data.icon.name = "";
+        self.data.icon.themePath = "";
+        self.data.icon.pixmap = &.{};
         self.loadIcon();
         try item.connect("NewIcon", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -209,8 +213,8 @@ pub const Item = struct {
         }.f, self);
 
         // overlay
-        self.overlay.iconName = "";
-        self.overlay.iconPixmap = &.{};
+        self.data.overlay.iconName = "";
+        self.data.overlay.iconPixmap = &.{};
         self.loadOverlay();
         try item.connect("NewOverlayIcon", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -221,10 +225,10 @@ pub const Item = struct {
         }.f, self);
 
         // tooltip
-        self.tooltip.iconName = "";
-        self.tooltip.title = "";
-        self.tooltip.text = "";
-        self.tooltip.iconPixmap = &.{};
+        self.data.tooltip.iconName = "";
+        self.data.tooltip.title = "";
+        self.data.tooltip.text = "";
+        self.data.tooltip.iconPixmap = &.{};
         self.loadTooltip();
         try item.connect("NewToolTip", struct {
             fn f(_: dbus.Event, data: ?*anyopaque) void {
@@ -255,45 +259,82 @@ pub const Item = struct {
             }
         }
     }
+    pub fn activate(self: *Self, x: i32, y: i32) void {
+        self._object.callN(
+            "Activate",
+            .{ dbus.Int32, dbus.Int32 },
+            .{ x, y },
+        ) catch {
+            self._object.err.reset();
+        };
+    }
+    pub fn secondaryActivate(self: *Self, x: i32, y: i32) void {
+        self._object.callN(
+            "SecondaryActivate",
+            .{ dbus.Int32, dbus.Int32 },
+            .{ x, y },
+        ) catch self._object.err.reset();
+    }
+    pub fn scrool(self: *Self, delta: i32, orientation: enum { vertical, horizontal }) void {
+        self._object.callN(
+            "Scroll",
+            .{ dbus.Int32, dbus.String },
+            .{ delta, @tagName(orientation) },
+        ) catch self._object.err.reset();
+    }
+    pub fn contextMenu(self: *Self, x: i32, y: i32) void {
+        self._object.callN(
+            "ContextMenu",
+            .{ dbus.Int32, dbus.Int32 },
+            .{ x, y },
+        ) catch self._object.err.reset();
+    }
+    pub fn provideXdgActivationToken(self: *Self, token: []const u8) void {
+        self._object.callN(
+            "ProvideXdgActivationToken",
+            .{dbus.String},
+            .{token},
+        ) catch self._object.err.reset();
+    }
     fn loadTitle(self: *Self) void {
-        self._allocator.free(self.title);
+        self._allocator.free(self.data.title);
         const title = self._object.get("Title", dbus.String) catch {
             self._object.err.reset();
-            self.title = self._allocator.dupe(u8, "") catch unreachable;
+            self.data.title = self._allocator.dupe(u8, "") catch unreachable;
             return;
         };
         defer title.deinit();
-        self.title = self._allocator.dupe(u8, title.value) catch unreachable;
+        self.data.title = self._allocator.dupe(u8, title.value) catch unreachable;
     }
     fn loadStatus(self: *Self) void {
-        self._allocator.free(self.status);
+        self._allocator.free(self.data.status);
         const status = self._object.get("Status", dbus.String) catch {
             self._object.err.reset();
-            self.status = self._allocator.dupe(u8, "") catch unreachable;
+            self.data.status = self._allocator.dupe(u8, "") catch unreachable;
             return;
         };
         defer status.deinit();
-        self.status = self._allocator.dupe(u8, status.value) catch unreachable;
+        self.data.status = self._allocator.dupe(u8, status.value) catch unreachable;
     }
     fn loadAttention(self: *Self) void {
         const item = self._object;
         const allocator = self._allocator;
-        allocator.free(self.attention.iconName);
-        allocator.free(self.attention.movieName);
-        for (self.attention.iconPixmap) |*pixmap| {
+        allocator.free(self.data.attention.iconName);
+        allocator.free(self.data.attention.movieName);
+        for (self.data.attention.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.attention.iconPixmap);
-        self.attention.iconName = "";
-        self.attention.movieName = "";
-        self.attention.iconPixmap = &.{};
+        allocator.free(self.data.attention.iconPixmap);
+        self.data.attention.iconName = "";
+        self.data.attention.movieName = "";
+        self.data.attention.iconPixmap = &.{};
         blk: {
             const iconName = item.get("AttentionIconName", dbus.String) catch {
                 item.err.reset();
                 break :blk;
             };
             defer iconName.deinit();
-            self.attention.iconName = allocator.dupe(u8, iconName.value) catch unreachable;
+            self.data.attention.iconName = allocator.dupe(u8, iconName.value) catch unreachable;
         }
         blk: {
             const movieName = item.get("AttentionMovieName", dbus.String) catch {
@@ -301,7 +342,7 @@ pub const Item = struct {
                 break :blk;
             };
             defer movieName.deinit();
-            self.attention.movieName = allocator.dupe(u8, movieName.value) catch unreachable;
+            self.data.attention.movieName = allocator.dupe(u8, movieName.value) catch unreachable;
         }
         const iconPixmap = item.get("AttentionIconPixmap", DBusPixmap) catch {
             item.err.reset();
@@ -316,20 +357,20 @@ pub const Item = struct {
                 continue;
             };
         }
-        self.attention.iconPixmap = pixmaps;
+        self.data.attention.iconPixmap = pixmaps;
     }
     fn loadIcon(self: *Self) void {
         const item = self._object;
         const allocator = self._allocator;
-        allocator.free(self.icon.name);
-        allocator.free(self.icon.themePath);
-        for (self.icon.pixmap) |*pixmap| {
+        allocator.free(self.data.icon.name);
+        allocator.free(self.data.icon.themePath);
+        for (self.data.icon.pixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.icon.pixmap);
-        self.icon.name = "";
-        self.icon.themePath = "";
-        self.icon.pixmap = &.{};
+        allocator.free(self.data.icon.pixmap);
+        self.data.icon.name = "";
+        self.data.icon.themePath = "";
+        self.data.icon.pixmap = &.{};
 
         blk: {
             const iconName = item.get("IconName", dbus.String) catch {
@@ -337,7 +378,7 @@ pub const Item = struct {
                 break :blk;
             };
             defer iconName.deinit();
-            self.icon.name = allocator.dupe(u8, iconName.value) catch unreachable;
+            self.data.icon.name = allocator.dupe(u8, iconName.value) catch unreachable;
         }
         blk: {
             const themePath = item.get("IconThemePath", dbus.String) catch {
@@ -345,7 +386,7 @@ pub const Item = struct {
                 break :blk;
             };
             defer themePath.deinit();
-            self.icon.themePath = allocator.dupe(u8, themePath.value) catch unreachable;
+            self.data.icon.themePath = allocator.dupe(u8, themePath.value) catch unreachable;
         }
         const iconPixmap = item.get("IconPixmap", DBusPixmap) catch {
             item.err.reset();
@@ -367,25 +408,25 @@ pub const Item = struct {
                 },
             };
         }
-        self.icon.pixmap = pixmaps;
+        self.data.icon.pixmap = pixmaps;
     }
     fn loadOverlay(self: *Self) void {
         const item = self._object;
         const allocator = self._allocator;
-        allocator.free(self.overlay.iconName);
-        for (self.overlay.iconPixmap) |*pixmap| {
+        allocator.free(self.data.overlay.iconName);
+        for (self.data.overlay.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.overlay.iconPixmap);
-        self.overlay.iconName = "";
-        self.overlay.iconPixmap = &.{};
+        allocator.free(self.data.overlay.iconPixmap);
+        self.data.overlay.iconName = "";
+        self.data.overlay.iconPixmap = &.{};
         blk: {
             const iconName = item.get("OverlayIconName", dbus.String) catch {
                 item.err.reset();
                 break :blk;
             };
             defer iconName.deinit();
-            self.overlay.iconName = allocator.dupe(u8, iconName.value) catch unreachable;
+            self.data.overlay.iconName = allocator.dupe(u8, iconName.value) catch unreachable;
         }
 
         const iconPixmap = item.get("OverlayIconPixmap", DBusPixmap) catch {
@@ -401,21 +442,21 @@ pub const Item = struct {
                 continue;
             };
         }
-        self.overlay.iconPixmap = pixmaps;
+        self.data.overlay.iconPixmap = pixmaps;
     }
     fn loadTooltip(self: *Self) void {
         const item = self._object;
         const allocator = self._allocator;
-        self.tooltip.iconName = "";
-        for (self.tooltip.iconPixmap) |*pixmap| {
+        self.data.tooltip.iconName = "";
+        for (self.data.tooltip.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.tooltip.iconPixmap);
-        allocator.free(self.tooltip.title);
-        allocator.free(self.tooltip.text);
-        self.tooltip.title = "";
-        self.tooltip.text = "";
-        self.tooltip.iconPixmap = &.{};
+        allocator.free(self.data.tooltip.iconPixmap);
+        allocator.free(self.data.tooltip.title);
+        allocator.free(self.data.tooltip.text);
+        self.data.tooltip.title = "";
+        self.data.tooltip.text = "";
+        self.data.tooltip.iconPixmap = &.{};
 
         const tooltip = item.get("ToolTip", dbus.Struct(.{
             dbus.String,
@@ -427,7 +468,7 @@ pub const Item = struct {
             return;
         };
         defer tooltip.deinit();
-        self.tooltip.iconName = allocator.dupe(u8, tooltip.value[0]) catch unreachable;
+        self.data.tooltip.iconName = allocator.dupe(u8, tooltip.value[0]) catch unreachable;
         const pixmaps = allocator.alloc(Pixmap, tooltip.value[1].len) catch unreachable;
         for (pixmaps, 0..) |*pixmap, i| {
             pixmap.* = Pixmap{
@@ -436,47 +477,47 @@ pub const Item = struct {
                 .webp = pixmapToWebp(allocator, tooltip.value[1][i][0], tooltip.value[1][i][1], tooltip.value[1][i][2]) catch continue,
             };
         }
-        self.tooltip.iconPixmap = pixmaps;
-        self.tooltip.title = allocator.dupe(u8, tooltip.value[2]) catch unreachable;
-        self.tooltip.text = allocator.dupe(u8, tooltip.value[3]) catch unreachable;
+        self.data.tooltip.iconPixmap = pixmaps;
+        self.data.tooltip.title = allocator.dupe(u8, tooltip.value[2]) catch unreachable;
+        self.data.tooltip.text = allocator.dupe(u8, tooltip.value[3]) catch unreachable;
     }
     pub fn deinit(self: *Self) void {
         self._object.deinit();
         const arena: *std.heap.ArenaAllocator = @ptrCast(@alignCast(self._arena.ptr));
         arena.deinit();
         const allocator = self._allocator;
-        allocator.free(self.title);
-        allocator.free(self.status);
+        allocator.free(self.data.title);
+        allocator.free(self.data.status);
         allocator.free(self.owner);
         self._listeners.deinit();
         // attention
-        allocator.free(self.attention.iconName);
-        allocator.free(self.attention.movieName);
-        for (self.attention.iconPixmap) |*pixmap| {
+        allocator.free(self.data.attention.iconName);
+        allocator.free(self.data.attention.movieName);
+        for (self.data.attention.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.attention.iconPixmap);
+        allocator.free(self.data.attention.iconPixmap);
         // icon
-        allocator.free(self.icon.name);
-        allocator.free(self.icon.themePath);
-        for (self.icon.pixmap) |*pixmap| {
+        allocator.free(self.data.icon.name);
+        allocator.free(self.data.icon.themePath);
+        for (self.data.icon.pixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.icon.pixmap);
+        allocator.free(self.data.icon.pixmap);
         // overlay
-        allocator.free(self.overlay.iconName);
-        for (self.overlay.iconPixmap) |*pixmap| {
+        allocator.free(self.data.overlay.iconName);
+        for (self.data.overlay.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.overlay.iconPixmap);
+        allocator.free(self.data.overlay.iconPixmap);
         // tooltip
-        allocator.free(self.tooltip.iconName);
-        for (self.tooltip.iconPixmap) |*pixmap| {
+        allocator.free(self.data.tooltip.iconName);
+        for (self.data.tooltip.iconPixmap) |*pixmap| {
             allocator.free(pixmap.webp);
         }
-        allocator.free(self.tooltip.iconPixmap);
-        allocator.free(self.tooltip.title);
-        allocator.free(self.tooltip.text);
+        allocator.free(self.data.tooltip.iconPixmap);
+        allocator.free(self.data.tooltip.title);
+        allocator.free(self.data.tooltip.text);
 
         allocator.destroy(arena);
         allocator.destroy(self);

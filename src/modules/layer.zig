@@ -14,10 +14,9 @@ const Options = struct {
 const std = @import("std");
 const webkit = @import("webkit");
 const modules = @import("modules.zig");
-const appM = @import("../app.zig");
-
+const App = @import("../app.zig").App;
 pub const Layer = struct {
-    app: *appM.App,
+    app: *App,
     const Self = @This();
     fn getLayer(self: *Self, args: modules.Args) !layershell.Layer {
         const id = try args.uInteger(0);

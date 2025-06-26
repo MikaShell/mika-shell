@@ -1,4 +1,7 @@
 const std = @import("std");
+/// 放心地在 Modules 回调中使用 try xxx(n), xxx是参数类型, n是参数的位置
+///
+/// 如果参数不符合预期,则会返回 error.InvalidArgs, 可以直接将此错误返回给前端
 pub const Args = struct {
     items: []std.json.Value,
     fn verifyIndex(self: Args, index: usize) !void {
@@ -116,7 +119,7 @@ pub const Modules = struct {
         module: anytype,
         name: []const u8,
         comptime function: Callable(@TypeOf(module)),
-    ) !void {
+    ) void {
         const wrap: Callable(*anyopaque) = comptime blk: {
             const wrapper = struct {
                 fn wrap(self_: *anyopaque, args: Args, result: *Result) !void {
@@ -130,7 +133,7 @@ pub const Modules = struct {
             .call = wrap,
         };
         if (self.table.contains(name)) {
-            return error.FunctionAlreadyRegistered;
+            @panic("function already registered");
         }
         self.table.put(name, entry) catch unreachable;
     }

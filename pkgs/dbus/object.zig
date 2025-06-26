@@ -134,7 +134,7 @@ pub const Object = struct {
             resultType,
         );
     }
-    // 发送但不接收回复
+    /// 发送但不接收回复
     pub fn callN(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType)) !void {
         const request = libdbus.Message.newMethodCall(self.name, self.path, self.iface, name);
         defer request.deinit();
@@ -142,7 +142,7 @@ pub const Object = struct {
         defer iter.deinit();
         iter.fromAppend(request);
         if (args != null) {
-            for (args.?, 0..) |arg, i| {
+            inline for (args.?, 0..) |arg, i| {
                 try iter.append(argsType[i], arg);
             }
         }

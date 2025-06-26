@@ -22,8 +22,8 @@ pub const Webview = struct {
     },
     impl: *webkit.WebView,
     container: *gtk.Window,
-    _modules: *modules_.Modules,
-    pub fn init(allocator: std.mem.Allocator, m: *modules_.Modules) !*Webview {
+    _modules: *Modules,
+    pub fn init(allocator: std.mem.Allocator, m: *Modules) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
             .impl = webkit.WebView.new(),
@@ -43,7 +43,7 @@ pub const Webview = struct {
                 const wv: *Webview = @ptrCast(@alignCast(data));
                 const request = std.json.parseFromSlice(std.json.Value, alc, v.toJson(0), .{}) catch unreachable;
                 defer request.deinit();
-                var result = modules_.Result.init(alc);
+                var result = Result.init(alc);
                 defer result.deinit();
 
                 // {
@@ -75,7 +75,7 @@ pub const Webview = struct {
                 defer args.deinit();
                 args.append(std.json.Value{ .integer = @intCast(wv.impl.getPageId()) }) catch unreachable;
                 args.appendSlice(origin_args.?.array.items) catch unreachable;
-                const value = modules_.Args{
+                const value = Args{
                     .items = args.items,
                 };
                 std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv.impl.getPageId(), v.toJson(0) });
@@ -123,59 +123,83 @@ pub const Webview = struct {
         self.container.destroy();
     }
 };
-const modules_ = @import("modules/modules.zig");
-const mikami_ = @import("modules/mikami.zig");
-const layer_ = @import("modules/layer.zig");
-const window_ = @import("modules/window.zig");
+const dbus = @import("dbus");
+const Modules = @import("modules/modules.zig").Modules;
+const Result = @import("modules/modules.zig").Result;
+const Args = @import("modules/modules.zig").Args;
+const Mikami = @import("modules/mikami.zig").Mikami;
+const Layer = @import("modules/layer.zig").Layer;
+const Window = @import("modules/window.zig").Window;
+const Tray = @import("modules/tray.zig").Tray;
 pub const Error = error{
     WebviewNotExists,
 };
 pub const App = struct {
-    modules: *modules_.Modules,
+    modules: *Modules,
     webviews: std.ArrayList(*Webview),
     allocator: std.mem.Allocator,
-
-    mikami: *mikami_.Mikami,
-    window: *window_.Window,
-    layer: *layer_.Layer,
+    bus: *dbus.Bus,
+    busWatcher: dbus.GLibWatch,
+    mikami: *Mikami,
+    window: *Window,
+    layer: *Layer,
+    tray: *Tray,
     pub fn init(allocator: std.mem.Allocator) *App {
         const app = allocator.create(App) catch unreachable;
-        app.* = .{
-            .modules = modules_.Modules.init(allocator),
-            .webviews = std.ArrayList(*Webview).init(allocator),
-            .allocator = allocator,
-            .mikami = undefined,
-            .window = undefined,
-            .layer = undefined,
+        app.modules = Modules.init(allocator);
+        app.webviews = std.ArrayList(*Webview).init(allocator);
+        app.allocator = allocator;
+        const bus = dbus.Bus.init(allocator, .Session) catch {
+            @panic("can not connect to dbus");
         };
-        const mikami = allocator.create(mikami_.Mikami) catch unreachable;
-        const window = allocator.create(window_.Window) catch unreachable;
-        const layer = allocator.create(layer_.Layer) catch unreachable;
-        mikami.* = mikami_.Mikami{ .app = app };
-        window.* = window_.Window{ .app = app };
-        layer.* = layer_.Layer{ .app = app };
+        app.bus = bus;
+        app.busWatcher = dbus.withGLibLoop(bus) catch {
+            @panic("can not watch dbus loop");
+        };
+        const mikami = allocator.create(Mikami) catch unreachable;
+        const window = allocator.create(Window) catch unreachable;
+        const layer = allocator.create(Layer) catch unreachable;
+
+        mikami.* = Mikami{ .app = app };
+        window.* = Window{ .app = app };
+        layer.* = Layer{ .app = app };
+
+        const tray = Tray.init(allocator, app, bus) catch unreachable;
 
         app.mikami = mikami;
         app.window = window;
         app.layer = layer;
+        app.tray = tray;
 
-        app.modules.register(mikami, "mikami.open", &mikami_.Mikami.open) catch unreachable;
+        const modules = app.modules;
 
-        app.modules.register(window, "window.init", &window_.Window.init) catch unreachable;
-        app.modules.register(window, "window.show", &window_.Window.show) catch unreachable;
-        app.modules.register(window, "window.hide", &window_.Window.hide) catch unreachable;
+        modules.register(mikami, "mikami.open", Mikami.open);
 
-        app.modules.register(layer, "layer.init", &layer_.Layer.init) catch unreachable;
-        app.modules.register(layer, "layer.show", &layer_.Layer.show) catch unreachable;
-        app.modules.register(layer, "layer.hide", &layer_.Layer.hide) catch unreachable;
-        app.modules.register(layer, "layer.resetAnchor", &layer_.Layer.resetAnchor) catch unreachable;
-        app.modules.register(layer, "layer.setAnchor", &layer_.Layer.setAnchor) catch unreachable;
-        app.modules.register(layer, "layer.setLayer", &layer_.Layer.setLayer) catch unreachable;
-        app.modules.register(layer, "layer.setKeyboardMode", &layer_.Layer.setKeyboardMode) catch unreachable;
-        app.modules.register(layer, "layer.setNamespace", &layer_.Layer.setNamespace) catch unreachable;
-        app.modules.register(layer, "layer.setMargin", &layer_.Layer.setMargin) catch unreachable;
-        app.modules.register(layer, "layer.setExclusiveZone", &layer_.Layer.setExclusiveZone) catch unreachable;
-        app.modules.register(layer, "layer.autoExclusiveZoneEnable", &layer_.Layer.autoExclusiveZoneEnable) catch unreachable;
+        modules.register(window, "window.init", Window.init);
+        modules.register(window, "window.show", Window.show);
+        modules.register(window, "window.hide", Window.hide);
+
+        modules.register(layer, "layer.init", Layer.init);
+        modules.register(layer, "layer.show", Layer.show);
+        modules.register(layer, "layer.hide", Layer.hide);
+        modules.register(layer, "layer.resetAnchor", Layer.resetAnchor);
+        modules.register(layer, "layer.setAnchor", Layer.setAnchor);
+        modules.register(layer, "layer.setLayer", Layer.setLayer);
+        modules.register(layer, "layer.setKeyboardMode", Layer.setKeyboardMode);
+        modules.register(layer, "layer.setNamespace", Layer.setNamespace);
+        modules.register(layer, "layer.setMargin", Layer.setMargin);
+        modules.register(layer, "layer.setExclusiveZone", Layer.setExclusiveZone);
+        modules.register(layer, "layer.autoExclusiveZoneEnable", Layer.autoExclusiveZoneEnable);
+
+        modules.register(tray, "tray.getItem", Tray.getItem);
+        modules.register(tray, "tray.getItems", Tray.getItems);
+        modules.register(tray, "tray.subscribe", Tray.subscribe);
+        modules.register(tray, "tray.unsubscribe", Tray.unsubscribe);
+        modules.register(tray, "tray.activate", Tray.activate);
+        modules.register(tray, "tray.secondaryActivate", Tray.secondaryActivate);
+        modules.register(tray, "tray.scroll", Tray.scroll);
+        modules.register(tray, "tray.contextMenu", Tray.contextMenu);
+        modules.register(tray, "tray.provideXdgActivationToken", Tray.provideXdgActivationToken);
 
         return app;
     }
@@ -183,8 +207,13 @@ pub const App = struct {
         for (self.webviews.items) |webview| {
             webview.close();
         }
+        self.busWatcher.deinit();
+        self.bus.deinit();
+
         self.webviews.deinit();
         self.modules.deinit();
+
+        self.tray.deinit();
 
         self.allocator.destroy(self.mikami);
         self.allocator.destroy(self.window);
@@ -225,11 +254,18 @@ pub const App = struct {
         }
         return null;
     }
-    fn emitEventIgnore(self: *App, ignore: u64, name: []const u8, data: anytype) void {
+    /// 发送事件，忽略指定 id 的 webview
+    pub fn emitEventIgnore(self: *App, ignore: u64, name: []const u8, data: anytype) void {
         for (self.webviews.items) |webview| {
             if (webview.impl.getPageId() == ignore) {
                 continue;
             }
+            webview.emitEvent(name, data);
+        }
+    }
+    /// 向所有 webview 发送事件
+    pub fn emitEvent(self: *App, name: []const u8, data: anytype) void {
+        for (self.webviews.items) |webview| {
             webview.emitEvent(name, data);
         }
     }
