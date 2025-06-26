@@ -30,6 +30,7 @@ pub const Error = extern struct {
         dbus_error_destroy(err.ptr);
     }
     pub fn reset(err: *Error) void {
+        if (!err.isSet()) return;
         err.deinit();
         err.ptr = dbus_error_new();
     }

@@ -8,6 +8,12 @@ const Type = libdbus.Types;
 const Message = libdbus.Message;
 const object = @import("object.zig");
 const service = @import("service.zig");
+const DBusError = libdbus.DBusError;
+/// 仅包含 error.DBusError 和 error.OutOfMemory
+pub const Errors = error{
+    DBusError,
+    OutOfMemory,
+};
 pub fn readWrite(bus: *Bus, timeout_milliseconds: i32) bool {
     return bus.conn.readWrite(timeout_milliseconds);
 }
@@ -39,15 +45,13 @@ pub const MatchRule = struct {
     path_namespace: ?[]const u8 = null,
     arg: []?[]const u8 = &.{},
     arg_path: []?[]const u8 = &.{},
-    fn toString(self: MatchRule, allocator: Allocator) ![]const u8 {
+    fn toString(self: MatchRule, allocator: Allocator) Allocator.Error![]const u8 {
         var str = std.ArrayList(u8).init(allocator);
         defer str.deinit();
         const writer = str.writer();
         const format = std.fmt.format;
         if (self.type) |t| {
-            try str.appendSlice("type='");
-            try str.appendSlice(@tagName(t));
-            try str.appendSlice("',");
+            try format(writer, "type='{s}',", .{@tagName(t)});
         }
         if (self.sender) |s| {
             try format(writer, "sender='{s}',", .{s});
@@ -211,6 +215,12 @@ pub const Bus = struct {
     dbus: *object.Object,
     filters: std.ArrayList(*FilterWrapper),
     objects: std.ArrayList(*object.Object),
+    /// 获取 bus
+    ///
+    /// 底层使用 libdbus 的 `dbus_bus_get_private()` 函数获取 bus 连接.
+    /// 在调用 Bus 的函数时,如果捕获到 `dbus.DBusError` 错误,可以从 err 字段中获取错误信息,
+    /// 无论你是否使用 err 字段,都应当调用 `err.reset()` 函数重置错误.
+    /// 即使不是 `dbus.DBusError` 错误,你也可以安全地调用 `err.reset()` .
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
         var err = Error.init();
         const conn = try libdbus.Connection.get(bus_type, err);
@@ -228,7 +238,7 @@ pub const Bus = struct {
             .filters = std.ArrayList(*FilterWrapper).init(allocator),
         };
         bus.dbus = try common.freedesktopDBus(bus);
-        try bus.dbus.connect("NameOwnerChanged", struct {
+        bus.dbus.connect("NameOwnerChanged", struct {
             fn f(e: common.Event, data: ?*anyopaque) void {
                 const bus_: *Self = @ptrCast(@alignCast(data));
                 const values = e.iter.getAll(.{ Type.String, Type.String, Type.String }) catch unreachable;
@@ -259,8 +269,16 @@ pub const Bus = struct {
                     }
                 }
             }
-        }.f, bus);
+        }.f, bus) catch {
+            bus.replaceError(&bus.dbus.err);
+            return error.DBusError;
+        };
         return bus;
+    }
+    fn replaceError(self: *Self, err: *Error) void {
+        const old = self.err.ptr;
+        self.err.ptr = err.ptr;
+        err.ptr = old;
     }
     pub fn deinit(self: *Self) void {
         for (self.objects.items) |item| {
@@ -276,6 +294,10 @@ pub const Bus = struct {
         self.err.deinit();
         self.allocator.destroy(self);
     }
+    /// 获取指定名称的代理
+    ///
+    /// 获得一个 dbus.Object 实例,该实例代表一个 dbus 服务.
+    /// 如果你需要调用某个 dbus 服务的接口,你应该使用该函数获取对应的 dbus.Object 实例.
     pub fn proxy(self: *Self, name: []const u8, path: []const u8, iface: []const u8) !*object.Object {
         const req = try object.baseCall(self.allocator, self.conn, self.err, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", .{Type.String}, .{name}, .{Type.String});
         defer req.deinit();
@@ -294,7 +316,14 @@ pub const Bus = struct {
         try self.objects.append(obj);
         return obj;
     }
-    pub fn owner(self: *Self, name: []const u8, flag: libdbus.Connection.NameFlag) !*service.Service {
+    pub const OwnerError = error{
+        NameInQueue,
+        NameExists,
+        NameAlreadyOwner,
+    } || Errors;
+    /// 获取名称并返回一个 service.Service 实例.
+    /// 如果你需要发布某个 dbus 服务,你应该使用该函数
+    pub fn owner(self: *Self, name: []const u8, flag: libdbus.Connection.NameFlag) OwnerError!*service.Service {
         const allocator = self.allocator;
         const s = try allocator.create(service.Service);
         errdefer allocator.destroy(s);
@@ -324,11 +353,13 @@ pub const Bus = struct {
         }
         return s;
     }
-    pub fn addFilter(self: *Self, rule: MatchRule, filter: Filter, data: ?*anyopaque) !bool {
-        const wrapper = self.allocator.create(FilterWrapper) catch return false;
+    /// 向 bus 添加过滤器, 过滤器会在收到 dbus 消息时调用.
+    ///
+    /// 注意,此处的 rule 仅用于对 dbus 消息进行过滤, 并不会向 dbus 发送 AddMatch 请求.
+    /// 你需要调用 `addMatch()` 方法来向 dbus 发送 AddMatch 请求.
+    pub fn addFilter(self: *Self, rule: MatchRule, filter: Filter, data: ?*anyopaque) Allocator.Error!bool {
+        const wrapper = try self.allocator.create(FilterWrapper);
         errdefer self.allocator.destroy(wrapper);
-        const match = try rule.toString(self.allocator);
-        defer self.allocator.free(match);
         wrapper.* = FilterWrapper{
             .rule = rule,
             .filter = filter,
@@ -352,12 +383,12 @@ pub const Bus = struct {
             }
         }
     }
-    pub fn addMatch(self: *Self, rule: MatchRule) !void {
+    pub fn addMatch(self: *Self, rule: MatchRule) Errors!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
         try self.conn.addMatch(match, self.err);
     }
-    pub fn removeMatch(self: *Self, rule: MatchRule) !void {
+    pub fn removeMatch(self: *Self, rule: MatchRule) Errors!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
         try self.conn.removeMatch(match, self.err);

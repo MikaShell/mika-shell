@@ -7,6 +7,8 @@ const Error = libdbus.Error;
 const Type = libdbus.Types;
 const Message = libdbus.Message;
 const Bus = @import("bus.zig").Bus;
+const Errors = @import("bus.zig").Errors;
+/// 啊这
 pub fn Result(T: type) type {
     return struct {
         response: *libdbus.Message,
@@ -42,6 +44,37 @@ pub const GetAllResult = struct {
         self.allocator.destroy(self.map);
     }
 };
+/// 调用一个 dbus 方法, 并返回结果
+///
+/// argsType 和 resultType: 是方法的参数类型,接受一个 Tuple 描述方法调用的参数的类型
+///
+/// args 是实际传入的参数,根据 argsType 决定传入的参数类型:
+/// ```
+/// {dbus.String, dbus.Int32, dbus.Array(dbus.String)}
+/// ```
+/// 根据上方的类型, args 应当与 argsType 匹配:
+/// ```
+/// .{ "hello", 123, &.{ "world", "foo" } }
+/// ```
+///
+/// example:
+/// ```
+/// const result = try baseCall(
+///     allocator,
+///     conn,
+///     err,
+///     "org.freedesktop.DBus",
+///     "/",
+///     "org.freedesktop.DBus",
+///     "ListNames",
+///    .{},
+///     null,
+///    .{dbus.Array(dbus.String)},
+/// );
+/// defer result.deinit();
+/// ```
+/// 在 result 中可以获取返回值, resulr.value 会根据传入的 resulrType 进行类型转换.
+/// 在上面的调用中,result.value的类型是 `[][]const u8`
 pub fn baseCall(
     allocator: Allocator,
     conn: *libdbus.Connection,
@@ -102,7 +135,6 @@ pub const Object = struct {
 
         for (self.bus.objects.items, 0..) |obj, i| {
             if (obj == self) {
-                // FIXME: 考虑线程安全
                 _ = self.bus.objects.swapRemove(i);
                 break;
             }
@@ -123,6 +155,21 @@ pub const Object = struct {
             resultType,
         );
     }
+    /// 调用一个 dbus 方法, 并返回结果
+    ///
+    /// argsType 和 resultType: 是方法的参数类型,接受一个 Tuple 描述方法调用的参数的类型
+    ///
+    /// args 是实际传入的参数,根据 argsType 决定传入的参数类型:
+    /// ```
+    /// {dbus.String, dbus.Int32, dbus.Array(dbus.String)}
+    /// ```
+    /// 根据上方的类型, args 应当与 argsType 匹配:
+    /// ```
+    /// .{ "hello", 123, &.{ "world", "foo" } }
+    /// ```
+    /// `const result = object.call(xxx);`
+    /// 从 result.values 中获取返回值, resulr.value 会根据传入的 resulrType 进行类型转换.
+    /// 使用完成后,必须调用 result.deinit() 释放资源
     pub fn call(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType), comptime resultType: anytype) !Result(Type.getTupleTypes(resultType)) {
         return self.callWithSelf(
             self.name,
@@ -150,6 +197,7 @@ pub const Object = struct {
             return error.SendFailed;
         }
     }
+    /// 获取属性值
     pub fn get(self: *Object, name: []const u8, ResultTyep: type) !GetResult(ResultTyep.Type) {
         const resp = try self.callWithSelf(
             self.name,
@@ -162,6 +210,7 @@ pub const Object = struct {
         );
         return .{ .result = resp, .value = try resp.values.?[0].get(ResultTyep) };
     }
+    /// 设置属性值
     pub fn set(self: *Object, name: []const u8, Value: type, value: Value.Type) !void {
         const resp = try self.callWithSelf(
             self.name,
@@ -174,6 +223,7 @@ pub const Object = struct {
         );
         defer resp.deinit();
     }
+    /// 获取所有属性值
     pub fn getAll(self: *Object) !GetAllResult {
         const resp = try self.callWithSelf(
             self.name,
@@ -197,6 +247,7 @@ pub const Object = struct {
             .result = resp,
         };
     }
+    /// 调用 Ping 方法
     pub fn ping(self: *Object) bool {
         const r = self.callWithSelf(self.name, self.path, "org.freedesktop.DBus.Peer", "Ping", .{}, null, .{}) catch {
             self.err.reset();
@@ -205,10 +256,13 @@ pub const Object = struct {
         defer r.deinit();
         return true;
     }
-    /// 无需处理 Event 中的 iter, iter 会在回调退出后自动释放
+    /// 监听信号
+    ///
+    /// 在回调中无需处理 Event 中的 iter, iter 会在回调退出后自动释放
     pub fn connect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         if (self.listeners.items.len == 0) {
             if (!try self.bus.addFilter(.{ .type = .signal }, signalHandler, self)) {
+                self.bus.err.reset();
                 return error.AddFilterFailed;
             }
         }
@@ -220,11 +274,11 @@ pub const Object = struct {
 
         try self.bus.addMatch(.{ .type = .signal, .sender = self.uniqueName, .interface = self.iface, .member = signal, .path = self.path });
 
-        try self.listeners.append(.{
+        self.listeners.append(.{
             .signal = signal,
             .handler = @ptrCast(handler),
             .data = data,
-        });
+        }) catch @panic("OOM");
     }
     pub fn disconnect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         for (self.listeners.items, 0..) |listener, i| {
