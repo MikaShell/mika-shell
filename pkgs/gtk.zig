@@ -4,9 +4,6 @@ const c = @cImport({
 const std = @import("std");
 extern fn gtk_init() void;
 
-pub fn mainIteration() bool {
-    return c.g_main_context_iteration(null, 1) == 1;
-}
 pub const init = gtk_init;
 pub const StyleContext = extern struct {
     const Self = @This();

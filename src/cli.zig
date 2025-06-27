@@ -5,6 +5,9 @@ const app = @import("app.zig");
 const ipc = @import("ipc.zig");
 const cli = @import("zig-cli");
 var config = struct {
+    daemon: struct {
+        config_dir: []const u8 = undefined,
+    } = undefined,
     open: struct {
         uri: []const u8 = undefined,
     } = undefined,
@@ -19,12 +22,20 @@ var config = struct {
         id: u64 = undefined,
     } = undefined,
 }{};
-fn cmdDaemon(_: *cli.AppRunner) !cli.Command {
+fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
     return cli.Command{
         .name = "daemon",
         .description = .{
             .one_line = "run mikami as a daemon",
         },
+        .options = try r.allocOptions(&.{.{
+            .long_name = "config-dir",
+            .short_alias = 'c',
+            .help = "directory to store configuration files, defaults to $XDG_CONFIG_HOME/mikami or $HOME/.config/mikami",
+            // This was defined but never used. Consider using app.getConfigDir instead.
+            .value_ref = r.mkRef(&config.daemon.config_dir),
+            .envvar = "MIKASHELL_CONFIG_DIR",
+        }}),
         .target = .{
             .action = .{ .exec = daemon },
         },
@@ -159,7 +170,6 @@ pub fn run() !void {
     };
     return r.run(&cliApp);
 }
-
 pub fn daemon() !void {
     gtk.init();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -167,9 +177,8 @@ pub fn daemon() !void {
     const allocator = gpa.allocator();
     const app_ = app.App.init(allocator);
     defer app_.deinit();
-
+    std.debug.print("congif dir: {s}", .{config.daemon.config_dir});
     _ = app_.open("http://localhost:6797/");
-
     const baseConfigDir = try app.getConfigDir(allocator);
     defer allocator.free(baseConfigDir);
     std.log.debug("ConfigDir: {s}", .{baseConfigDir});
@@ -186,9 +195,11 @@ pub fn daemon() !void {
     try ipcServer.listen();
 
     while (true) {
-        _ = gtk.mainIteration();
+        _ = glib.mainIteration();
     }
 }
+const glib = @import("glib");
+
 fn open() !void {
     try ipc.request(.{
         .type = "open",

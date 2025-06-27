@@ -35,7 +35,7 @@ pub const Webview = struct {
             .type = .None,
         };
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
-        settings.setEnableDeveloperExtras(false);
+        settings.setEnableDeveloperExtras(true);
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
         _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
 
@@ -292,15 +292,18 @@ pub const App = struct {
 // 查找 $XDG_CONFIG_HOME/mikami $HOME/.config/mikami
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     var baseConfigDir: []const u8 = undefined;
-    for (std.os.environ) |env| {
-        const e = std.mem.sliceTo(env, 0);
-        if (std.mem.startsWith(u8, e, "XDG_CONFIG_HOME=")) {
-            baseConfigDir = e[15..];
-            break;
-        } else if (std.mem.startsWith(u8, e, "HOME=")) {
-            baseConfigDir = e[5..];
-            break;
-        }
+    var env = try std.process.getEnvMap(allocator);
+    defer env.deinit();
+    const join = std.fs.path.join;
+    if (env.get("MIKASHELL_CONFIG_DIR")) |config_dir| {
+        return std.fs.realpathAlloc(allocator, config_dir);
+    } else if (env.get("XDG_CONFIG_HOME")) |xdg_config_home| {
+        baseConfigDir = xdg_config_home;
+    } else if (env.get("HOME")) |home| {
+        baseConfigDir = try join(allocator, &.{ home, ".config" });
+    } else {
+        return error.NoConfigDir;
     }
-    return try std.fs.path.join(allocator, &.{ baseConfigDir, "mikami" });
+    defer allocator.free(baseConfigDir);
+    return try join(allocator, &.{ baseConfigDir, "mikami" });
 }

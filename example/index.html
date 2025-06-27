@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Welcome</title>
+        <style>
+            body {
+                color: beige;
+                background-color: rgb(57, 57, 57);
+                height: 500px;
+                width: 800px;
+            }
+            .tray-icon {
+                width: 32px;
+                height: 32px;
+                border: 1px solid rgb(116, 116, 116);
+                border-radius: 8px;
+                padding: 4px;
+            }
+            #tray {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 4px;
+            }
+        </style>
+        <script type="module">
+            import call from "./call.js";
+            window.addEventListener("mikami-open", (data) => {
+                console.log("Open Event Received:", data.detail);
+            });
+            const layerInit = () =>
+                call("layer.init", {
+                    anchor: [2],
+                    layer: 2,
+                    keyboardMode: 2,
+                    namespace: "mikami",
+                    margin: [0, 0, 0, 0],
+                    exclusiveZone: 0,
+                    autoExclusiveZone: false,
+                    backgroundTransparent: true,
+                    hidden: false,
+                });
+            const windowInit = () =>
+                call("window.init", {
+                    title: "Aikami Test",
+                    resizable: true,
+                    backgroundTransparent: true,
+                    hidden: false,
+                });
+            windowInit();
+            import tray from "./tray.js";
+            tray.mount("tray");
+        </script>
+    </head>
+    <body>
+        <h1>Welcome</h1>
+        <p>This is a test website for MikaShell.</p>
+        <div id="tray" />
+    </body>
+</html>

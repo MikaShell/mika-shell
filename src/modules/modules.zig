@@ -161,10 +161,9 @@ test "register and call" {
     defer m.deinit();
     var testModule = TestModule{};
     const t = &testModule;
-    try m.register(t, "show", &TestModule.show);
-    try m.register(t, "throw", &TestModule.throw);
-    try m.register(t, "testArgs", &TestModule.testArgs);
-    try std.testing.expectError(error.FunctionAlreadyRegistered, m.register(t, "show", &TestModule.show));
+    m.register(t, "show", TestModule.show);
+    m.register(t, "throw", TestModule.throw);
+    m.register(t, "testArgs", TestModule.testArgs);
     const jsonStr =
         \\{
         \\    "args": [

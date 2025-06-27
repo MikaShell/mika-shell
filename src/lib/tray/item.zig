@@ -3,7 +3,9 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("webp/encode.h");
 });
-
+// TODO: 这个函数的 CPU 代价较大, 尝试优化.
+// 虽然这个函数本身似乎不能再优化, 但是考虑减少该函数的调用.
+// 目前的处理方式是为每一个 icon 都转换 webp
 fn pixmapToWebp(
     allocator: std.mem.Allocator,
     width: i32,

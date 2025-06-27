@@ -9,6 +9,7 @@ pub const Server = struct {
     allocator: Allocator,
     _server: httpz.Server(void),
     routerData: RouteData,
+    thread: std.Thread,
     pub fn init(allocator: Allocator, assetsDir: []const u8) !*Server {
         const server = try allocator.create(Server);
         errdefer allocator.destroy(server);
@@ -23,10 +24,11 @@ pub const Server = struct {
     pub fn start(self: *Server) !void {
         const router = try self._server.router(.{});
         router.get("/*", fileServer, .{ .data = &self.routerData });
-        _ = try self._server.listenInNewThread();
+        self.thread = try self._server.listenInNewThread();
     }
     pub fn stop(self: *Server) void {
         self._server.stop();
+        self.thread.join();
     }
     pub fn deinit(self: *Server) void {
         self._server.deinit();
@@ -55,6 +57,7 @@ fn fileServer(req: *httpz.Request, res: *httpz.Response) !void {
         },
         else => return err,
     };
+    res.content_type = httpz.ContentType.forFile(filePath);
     defer f.close();
     const buf = try f.readToEndAlloc(allocator, 10 * 1024 * 1024);
     defer allocator.free(buf);

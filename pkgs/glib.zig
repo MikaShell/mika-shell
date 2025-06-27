@@ -1,8 +1,22 @@
-pub const c = @cImport({
+const c = @cImport({
     @cInclude("glib-2.0/glib.h");
     @cInclude("gio/gio.h");
 });
 const std = @import("std");
+pub fn timeoutMainLoop(timeout_ms: u32) void {
+    const loop = c.g_main_loop_new(null, 0);
+    _ = c.g_timeout_add(timeout_ms, &struct {
+        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
+            const loop__: *c.GMainLoop = @ptrCast(@alignCast(loop_));
+            c.g_main_loop_quit(loop__);
+            return 0;
+        }
+    }.timeout, loop);
+    c.g_main_loop_run(loop);
+}
+pub fn mainIteration() bool {
+    return c.g_main_context_iteration(null, 1) == 1;
+}
 pub fn FdWatch(T: type) type {
     return struct {
         const Callback = if (T == void) *const fn () bool else *const fn (*T) bool;

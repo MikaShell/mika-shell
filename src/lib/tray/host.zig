@@ -150,17 +150,6 @@ const glib = @import("glib");
 const std = @import("std");
 const testing = std.testing;
 const print = std.debug.print;
-fn test_main_loop(timeout_ms: u32) void {
-    const loop = glib.c.g_main_loop_new(null, 0);
-    _ = glib.c.g_timeout_add(timeout_ms, &struct {
-        fn timeout(loop_: ?*anyopaque) callconv(.c) c_int {
-            const loop__: *glib.c.GMainLoop = @ptrCast(@alignCast(loop_));
-            glib.c.g_main_loop_quit(loop__);
-            return 0;
-        }
-    }.timeout, loop);
-    glib.c.g_main_loop_run(loop);
-}
 // test "tray-host" {
 //     const allocator = testing.allocator;
 //     const bus = try dbus.Bus.init(allocator, .Session);
@@ -174,5 +163,5 @@ fn test_main_loop(timeout_ms: u32) void {
 //             print("state: {}, services: {s}\n", .{ state, services });
 //         }
 //     }.f, null);
-//     test_main_loop(10_000);
+//     glib.timeoutMainLoop(10_000);
 // }

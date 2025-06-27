@@ -59,6 +59,7 @@ in
           dbus-python
         ]))
     ];
+    MIKASHELL_CONFIG_DIR = "./example";
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
     shellHook = ''
       export XDG_DATA_DIRS=${docs}:$XDG_DATA_DIRS
