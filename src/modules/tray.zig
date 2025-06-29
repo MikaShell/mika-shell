@@ -152,21 +152,6 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn contextMenu(self: *Self, args: Args, _: *Result) !void {
-        const service = try args.string(1);
-        const x = try args.integer(2);
-        const y = try args.integer(3);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
-        const host = self.host.?;
-        for (host.items.items) |item| {
-            if (std.mem.eql(u8, item.data.service, service)) {
-                item.contextMenu(@intCast(x), @intCast(y));
-                return;
-            }
-        }
-    }
     pub fn provideXdgActivationToken(self: *Self, args: Args, _: *Result) !void {
         const service = try args.string(1);
         const token = try args.string(2);
@@ -200,6 +185,35 @@ pub const Tray = struct {
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
                 item.scrool(@intCast(delta), @enumFromInt(orientation));
+                return;
+            }
+        }
+    }
+    pub fn getMenu(self: *Self, args: Args, result: *Result) !void {
+        const service = try args.string(1);
+        if (self.host == null) {
+            return error.TrayHostNotInitlized;
+        }
+        const host = self.host.?;
+        for (host.items.items) |item| {
+            if (std.mem.eql(u8, item.data.service, service)) {
+                const menu = try tray.Menu.new(self.allocator, self.bus, item.owner, item.data.menu);
+                defer menu.deinit(self.allocator);
+                try result.commit(menu);
+                return;
+            }
+        }
+    }
+    pub fn activateMenu(self: *Self, args: Args, _: *Result) !void {
+        const service = try args.string(1);
+        const id = try args.integer(2);
+        if (self.host == null) {
+            return error.TrayHostNotInitlized;
+        }
+        const host = self.host.?;
+        for (host.items.items) |item| {
+            if (std.mem.eql(u8, item.data.service, service)) {
+                try tray.Menu.activate(self.allocator, self.bus, item.owner, item.data.menu, @intCast(id));
                 return;
             }
         }

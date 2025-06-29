@@ -100,7 +100,6 @@ pub const Item = struct {
     owner: []const u8,
     data: Data,
 
-    // windowId: i32, // X11 only, not supported.
     pub fn init(allocator: Allocator, bus: *dbus.Bus, service: []const u8) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -282,13 +281,6 @@ pub const Item = struct {
             "Scroll",
             .{ dbus.Int32, dbus.String },
             .{ delta, @tagName(orientation) },
-        ) catch self._object.err.reset();
-    }
-    pub fn contextMenu(self: *Self, x: i32, y: i32) void {
-        self._object.callN(
-            "ContextMenu",
-            .{ dbus.Int32, dbus.Int32 },
-            .{ x, y },
         ) catch self._object.err.reset();
     }
     pub fn provideXdgActivationToken(self: *Self, token: []const u8) void {

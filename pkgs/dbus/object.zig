@@ -112,10 +112,10 @@ pub fn baseCall(
 
 pub const Object = struct {
     const Self = @This();
-    name: []const u8,
-    path: []const u8,
-    iface: []const u8,
-    uniqueName: []const u8,
+    name: [:0]const u8,
+    path: [:0]const u8,
+    iface: [:0]const u8,
+    uniqueName: [:0]const u8,
     bus: *Bus,
     allocator: Allocator,
     err: Error,

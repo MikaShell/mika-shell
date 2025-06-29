@@ -4,6 +4,7 @@ const glib = @import("glib");
 const Allocator = std.mem.Allocator;
 pub const Message = libdbus.Message;
 pub const MessageIter = libdbus.MessageIter;
+pub const Error = libdbus.Error;
 pub const DBusError = libdbus.DBusError;
 pub usingnamespace libdbus.Types;
 pub usingnamespace @import("service.zig");

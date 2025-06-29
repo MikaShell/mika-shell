@@ -254,7 +254,7 @@ pub const Bus = struct {
                             };
                             defer resp.deinit();
                             const uniqueName = resp.values.?[0];
-                            const uniqueName_ = obj.allocator.dupe(u8, uniqueName) catch @panic("OOM");
+                            const uniqueName_ = obj.allocator.dupeZ(u8, uniqueName) catch @panic("OOM");
                             if (std.mem.eql(u8, uniqueName_, newOwner)) {
                                 obj.uniqueName = uniqueName_;
                                 break;
@@ -264,7 +264,7 @@ pub const Bus = struct {
                         }
                     } else if (std.mem.eql(u8, obj.uniqueName, oldOwner)) {
                         const old = obj.uniqueName;
-                        obj.uniqueName = obj.allocator.dupe(u8, newOwner) catch @panic("OOM");
+                        obj.uniqueName = obj.allocator.dupeZ(u8, newOwner) catch @panic("OOM");
                         obj.allocator.free(old);
                     }
                 }
@@ -305,10 +305,10 @@ pub const Bus = struct {
         errdefer self.allocator.destroy(obj);
         obj.* = .{
             .bus = self,
-            .name = try self.allocator.dupe(u8, name),
-            .path = try self.allocator.dupe(u8, path),
-            .iface = try self.allocator.dupe(u8, iface),
-            .uniqueName = try self.allocator.dupe(u8, req.values.?[0]),
+            .name = try self.allocator.dupeZ(u8, name),
+            .path = try self.allocator.dupeZ(u8, path),
+            .iface = try self.allocator.dupeZ(u8, iface),
+            .uniqueName = try self.allocator.dupeZ(u8, req.values.?[0]),
             .err = Error.init(),
             .listeners = std.ArrayList(common.Listener).init(self.allocator),
             .allocator = self.allocator,

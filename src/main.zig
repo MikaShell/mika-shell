@@ -4,4 +4,5 @@ pub fn main() !void {
 }
 test {
     _ = @import("lib/tray.zig");
+    _ = @import("lib/tray/menu.zig");
 }

@@ -36,6 +36,12 @@ function updataTray(divID, trayData) {
     img.src = imageUrl;
     img.className = "tray-icon";
     img.dataset["service"] = trayData.service;
+    img.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        call("tray.getMenu", trayData.service).then((menu) => {
+            console.log("tray-menu", menu);
+        });
+    });
     img.onclick = () => call("tray.activate", trayData.service, 0, 0);
     div.appendChild(img);
 }

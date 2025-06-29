@@ -201,9 +201,9 @@ pub const App = struct {
         modules.register(tray, "tray.activate", Tray.activate);
         modules.register(tray, "tray.secondaryActivate", Tray.secondaryActivate);
         modules.register(tray, "tray.scroll", Tray.scroll);
-        modules.register(tray, "tray.contextMenu", Tray.contextMenu);
         modules.register(tray, "tray.provideXdgActivationToken", Tray.provideXdgActivationToken);
-
+        modules.register(tray, "tray.getMenu", Tray.getMenu);
+        modules.register(tray, "tray.activateMenu", Tray.activateMenu);
         return app;
     }
     pub fn deinit(self: *App) void {

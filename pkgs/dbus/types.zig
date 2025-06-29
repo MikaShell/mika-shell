@@ -91,7 +91,7 @@ pub const Variant = struct {
             .value = @ptrCast(v),
             .store = struct {
                 fn f(self: Type, parent: *libdbus.MessageIter) !void {
-                    const iter = try parent.openContainer(.variant, T.tag);
+                    const iter = try parent.openContainerS(.variant, signature(T));
                     defer iter.deinit();
                     defer parent.closeContainer(iter) catch {};
                     const vv: *T.Type = @ptrCast(@alignCast(self.value));
