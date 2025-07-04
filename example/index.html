@@ -54,10 +54,19 @@
             import tray from "./tray.js";
             tray.mount("tray");
         </script>
+        <script type="module">
+            import { lookup } from "./icon.js";
+            lookup("folder_color_default_desktop", 128).then((src) => {
+                document.getElementById("icon-desktop").src = src;
+            });
+        </script>
     </head>
     <body>
         <h1>Welcome</h1>
         <p>This is a test website for MikaShell.</p>
         <div id="tray" />
+        <div id="icons">
+            <img id="icon-desktop" alt="Desktop" />
+        </div>
     </body>
 </html>

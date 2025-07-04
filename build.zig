@@ -78,14 +78,13 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("libwebp", static_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
-    const httpz = b.dependency("httpz", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const zigcli = b.dependency("zig-cli", .{ .target = target });
+    const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
+    const zigcli = b.dependency("zig-cli", .{ .target = target, .optimize = optimize });
+    const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
 
     exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("zig-cli", zigcli.module("zig-cli"));
+    exe_mod.addImport("ini", ini.module("ini"));
     exe_mod.addImport("gtk", gtk_mod);
     exe_mod.addImport("layershell", layershell_mod);
     exe_mod.addImport("webkit", webkit_mod);

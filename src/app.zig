@@ -134,6 +134,7 @@ const Mikami = @import("modules/mikami.zig").Mikami;
 const Layer = @import("modules/layer.zig").Layer;
 const Window = @import("modules/window.zig").Window;
 const Tray = @import("modules/tray.zig").Tray;
+const Icon = @import("modules/icon.zig").Icon;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -147,6 +148,7 @@ pub const App = struct {
     window: *Window,
     layer: *Layer,
     tray: *Tray,
+    icon: *Icon,
     pub fn init(allocator: std.mem.Allocator) *App {
         const app = allocator.create(App) catch unreachable;
         app.modules = Modules.init(allocator);
@@ -162,10 +164,12 @@ pub const App = struct {
         const mikami = allocator.create(Mikami) catch unreachable;
         const window = allocator.create(Window) catch unreachable;
         const layer = allocator.create(Layer) catch unreachable;
+        const icon = allocator.create(Icon) catch unreachable;
 
         mikami.* = Mikami{ .app = app };
         window.* = Window{ .app = app };
         layer.* = Layer{ .app = app };
+        icon.* = Icon{};
 
         const tray = Tray.init(allocator, app, bus) catch unreachable;
 
@@ -173,6 +177,7 @@ pub const App = struct {
         app.window = window;
         app.layer = layer;
         app.tray = tray;
+        app.icon = icon;
 
         const modules = app.modules;
 
@@ -204,6 +209,8 @@ pub const App = struct {
         modules.register(tray, "tray.provideXdgActivationToken", Tray.provideXdgActivationToken);
         modules.register(tray, "tray.getMenu", Tray.getMenu);
         modules.register(tray, "tray.activateMenu", Tray.activateMenu);
+
+        modules.register(icon, "icon.lookup", Icon.lookup);
         return app;
     }
     pub fn deinit(self: *App) void {
