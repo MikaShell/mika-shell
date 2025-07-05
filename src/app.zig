@@ -38,9 +38,9 @@ pub const Webview = struct {
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
         settings.setEnableDeveloperExtras(true);
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
-        _ = manager.registerScriptMessageHandlerWithReply("mikami", null);
-
-        manager.connect(.ScriptMessageWithReplyReceived, "mikami", &struct {
+        _ = manager.registerScriptMessageHandlerWithReply("mikaShell", null);
+        manager.addScript(@embedFile("bindings.js"));
+        manager.connect(.ScriptMessageWithReplyReceived, "mikaShell", &struct {
             fn f(_: *webkit.UserContentManager, v: *webkit.JSCValue, reply: *webkit.ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int {
                 const alc = std.heap.page_allocator;
                 const wv: *Webview = @ptrCast(@alignCast(data));
@@ -99,7 +99,7 @@ pub const Webview = struct {
         const alc = std.heap.page_allocator;
         const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
         defer alc.free(dataJson);
-        const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('{s}', {{ detail: {s} }}));", .{ name, dataJson }) catch unreachable;
+        const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('mika-shell-event', {{ detail: {{ name: '{s}', data: {s} }} }}));", .{ name, dataJson }) catch unreachable;
         defer alc.free(js);
         self.impl.evaluateJavaScript(js);
     }
@@ -129,11 +129,12 @@ const dbus = @import("dbus");
 const Modules = @import("modules/modules.zig").Modules;
 const Result = @import("modules/modules.zig").Result;
 const Args = @import("modules/modules.zig").Args;
-const Mikami = @import("modules/mikami.zig").Mikami;
+const Mika = @import("modules/mika.zig").Mika;
 const Layer = @import("modules/layer.zig").Layer;
 const Window = @import("modules/window.zig").Window;
 const Tray = @import("modules/tray.zig").Tray;
 const Icon = @import("modules/icon.zig").Icon;
+const OS = @import("modules/os.zig").OS;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -143,11 +144,12 @@ pub const App = struct {
     allocator: std.mem.Allocator,
     bus: *dbus.Bus,
     busWatcher: dbus.GLibWatch,
-    mikami: *Mikami,
+    mika: *Mika,
     window: *Window,
     layer: *Layer,
     tray: *Tray,
     icon: *Icon,
+    os: *OS,
     pub fn init(allocator: std.mem.Allocator) *App {
         const app = allocator.create(App) catch unreachable;
         app.modules = Modules.init(allocator);
@@ -160,27 +162,30 @@ pub const App = struct {
         app.busWatcher = dbus.withGLibLoop(bus) catch {
             @panic("can not watch dbus loop");
         };
-        const mikami = allocator.create(Mikami) catch unreachable;
+        const mika = allocator.create(Mika) catch unreachable;
         const window = allocator.create(Window) catch unreachable;
         const layer = allocator.create(Layer) catch unreachable;
         const icon = allocator.create(Icon) catch unreachable;
+        const os = allocator.create(OS) catch unreachable;
 
-        mikami.* = Mikami{ .app = app };
+        mika.* = Mika{ .app = app };
         window.* = Window{ .app = app };
         layer.* = Layer{ .app = app };
         icon.* = Icon{};
+        os.* = OS{};
 
         const tray = Tray.init(allocator, app, bus) catch unreachable;
 
-        app.mikami = mikami;
+        app.mika = mika;
         app.window = window;
         app.layer = layer;
         app.tray = tray;
         app.icon = icon;
+        app.os = os;
 
         const modules = app.modules;
 
-        modules.register(mikami, "mikami.open", Mikami.open);
+        modules.register(mika, "mika.open", Mika.open);
 
         modules.register(window, "window.init", Window.init);
         modules.register(window, "window.show", Window.show);
@@ -210,6 +215,8 @@ pub const App = struct {
         modules.register(tray, "tray.activateMenu", Tray.activateMenu);
 
         modules.register(icon, "icon.lookup", Icon.lookup);
+
+        modules.register(os, "os.getEnv", OS.getEnv);
         return app;
     }
     pub fn deinit(self: *App) void {
@@ -222,7 +229,7 @@ pub const App = struct {
         self.tray.deinit();
         self.bus.deinit();
 
-        self.allocator.destroy(self.mikami);
+        self.allocator.destroy(self.mika);
         self.allocator.destroy(self.window);
         self.allocator.destroy(self.layer);
         self.allocator.destroy(self);
@@ -250,7 +257,7 @@ pub const App = struct {
             }
         }.f, self);
         const info = webview.getInfo();
-        self.emitEventIgnore(info.id, events.Mikami.Open, info);
+        self.emitEventIgnore(info.id, events.Mika.Open, info);
         return webview;
     }
     pub fn getWebview(self: *App, id: u64) ?*Webview {
@@ -280,22 +287,22 @@ pub const App = struct {
         const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
         webview.show();
         const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mikami.Show, info);
+        self.emitEventIgnore(id, events.Mika.Show, info);
     }
     pub fn hide(self: *App, id: u64) !void {
         const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
         webview.hide();
         const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mikami.Hide, info);
+        self.emitEventIgnore(id, events.Mika.Hide, info);
     }
     pub fn close(self: *App, id: u64) !void {
         const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
         webview.close();
         const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mikami.Close, info);
+        self.emitEventIgnore(id, events.Mika.Close, info);
     }
 };
-// 查找 $XDG_CONFIG_HOME/mikami $HOME/.config/mikami
+// 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     var baseConfigDir: []const u8 = undefined;
     var env = try std.process.getEnvMap(allocator);
@@ -311,5 +318,5 @@ pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
         return error.NoConfigDir;
     }
     defer allocator.free(baseConfigDir);
-    return try join(allocator, &.{ baseConfigDir, "mikami" });
+    return try join(allocator, &.{ baseConfigDir, "mika-shell" });
 }

@@ -70,9 +70,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-
+    const generate_js_binding = b.addSystemCommand(&.{ "esbuild", "bindings/index.ts", "--bundle", "--outfile=src/bindings.js" });
     const exe = b.addExecutable(.{
-        .name = "mikami",
+        .name = "mika-shell",
         .root_module = exe_mod,
     });
     exe_mod.linkSystemLibrary("libwebp", static_link_opts);
@@ -91,6 +91,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("glib", glib_mod);
     exe_mod.addImport("dbus", dbus_mod);
 
+    exe.step.dependOn(&generate_js_binding.step);
     b.installArtifact(exe);
     // CMD
     const run_cmd = b.addRunArtifact(exe);

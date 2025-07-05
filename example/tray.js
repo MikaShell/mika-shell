@@ -1,8 +1,4 @@
-import call from "./call.js";
-
-async function getItem(service) {
-    return await call("tray.getItem", service);
-}
+const tray = window.mikaShell.tray;
 const arrayToUrl = (arr) => {
     const uint8Array = new Uint8Array(arr);
     const blob = new Blob([uint8Array], { type: "image/png" });
@@ -15,7 +11,6 @@ function mount(divID) {
         return;
     }
     mounted.push(divID);
-    call("tray.subscribe");
 }
 export default {
     mount,
@@ -38,48 +33,35 @@ function updataTray(divID, trayData) {
     img.dataset["service"] = trayData.service;
     img.addEventListener("contextmenu", function (e) {
         e.preventDefault();
-        call("tray.getMenu", trayData.service).then((menu) => {
+        tray.getMenu(trayData.service).then((menu) => {
             console.log("tray-menu", menu);
         });
     });
-    img.onclick = () => call("tray.activate", trayData.service, 0, 0);
+    img.onclick = () => tray.activate(trayData.service, 0, 0);
     div.appendChild(img);
 }
-var tray = {};
-const trayProxy = new Proxy(tray, {
-    get: (target, prop) => {
-        return target[prop];
-    },
-    set: (target, prop, value) => {
-        target[prop] = value;
-        mounted.forEach((id) => updataTray(id, value));
-        return true;
-    },
-    deleteProperty: (target, prop) => {
-        delete target[prop];
-        console.log("tray-removed", prop);
-        mounted.forEach((div) => {
-            const img = div.querySelector(`img[data-service="${prop}"]`);
-            if (img) {
-                div.removeChild(img);
-            }
-        });
-        return true;
-    },
-});
-window.addEventListener("tray-added", (data) => {
-    const service = data.detail;
-    getItem(service).then((item) => {
-        trayProxy[service] = item;
-    });
-});
-window.addEventListener("tray-changed", (data) => {
-    const service = data.detail;
-    getItem(service).then((item) => {
-        trayProxy[service] = item;
-    });
-});
-window.addEventListener("tray-removed", (data) => {
-    const service = data.detail;
-    delete trayProxy[service];
-});
+const trayProxy = new Proxy(
+    {},
+    {
+        get: (target, prop) => {
+            return target[prop];
+        },
+        set: (target, prop, value) => {
+            target[prop] = value;
+            mounted.forEach((id) => updataTray(id, value));
+            return true;
+        },
+        deleteProperty: (target, prop) => {
+            delete target[prop];
+            console.log("tray-removed", prop);
+            mounted.forEach((div) => {
+                const img = div.querySelector(`img[data-service="${prop}"]`);
+                if (img) {
+                    div.removeChild(img);
+                }
+            });
+            return true;
+        },
+    }
+);
+tray.proxy(trayProxy);

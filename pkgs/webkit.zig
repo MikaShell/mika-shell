@@ -81,7 +81,9 @@ pub const WebView = extern struct {
         return std.mem.sliceTo(webkit_web_view_get_uri(self), 0);
     }
     pub fn loadUri(self: *Self, uri: []const u8) void {
-        webkit_web_view_load_uri(self, uri.ptr);
+        const uri_ = std.heap.page_allocator.dupeZ(u8, uri) catch unreachable;
+        defer std.heap.page_allocator.free(uri_);
+        webkit_web_view_load_uri(self, uri_.ptr);
     }
     pub fn loadHtml(self: *Self, html: []u8, baseUrl: []const u8) void {
         webkit_web_view_load_html(self, html.ptr, baseUrl.ptr);
@@ -160,6 +162,10 @@ pub const UserContentManager = extern struct {
     }
     pub fn registerScriptMessageHandlerWithReply(self: *Self, name: []const u8, world_name: ?[]const u8) bool {
         return boolFromGboolean(webkit_user_content_manager_register_script_message_handler_with_reply(self, name.ptr, if (world_name == null) null else world_name.?.ptr));
+    }
+    pub fn addScript(self: *Self, script: []const u8) void {
+        const script_ = c.webkit_user_script_new(script.ptr, c.WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, c.WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, null, null);
+        c.webkit_user_content_manager_add_script(@ptrCast(self), script_);
     }
     pub fn connect(
         self: *Self,

@@ -27,38 +27,53 @@
             }
         </style>
         <script type="module">
-            import call from "./call.js";
-            window.addEventListener("mikami-open", (data) => {
-                console.log("Open Event Received:", data.detail);
+            window.mikaShell.mika.addListener("open", (data) => {
+                console.log("Open Event Received:", data);
             });
-            const layerInit = () =>
-                call("layer.init", {
-                    anchor: [2],
-                    layer: 2,
-                    keyboardMode: 2,
-                    namespace: "mikami",
-                    margin: [0, 0, 0, 0],
-                    exclusiveZone: 0,
-                    autoExclusiveZone: false,
+            const layerInit = () => {
+                window.mikaShell.layer.init({
+                    anchor: ["top"],
+                    layer: "bottom",
+                    namespace: "mika-shell-example",
                     backgroundTransparent: true,
-                    hidden: false,
                 });
-            const windowInit = () =>
-                call("window.init", {
-                    title: "Aikami Test",
-                    resizable: true,
+            };
+            const windowInit = () => {
+                window.mikaShell.window.init({
+                    title: "MikaShell Test",
                     backgroundTransparent: true,
-                    hidden: false,
+                    resizable: false,
                 });
+            };
             windowInit();
+            // or
+            // layerInit();
             import tray from "./tray.js";
             tray.mount("tray");
         </script>
         <script type="module">
-            import { lookup } from "./icon.js";
-            lookup("folder_color_default_desktop", 128).then((src) => {
-                document.getElementById("icon-desktop").src = src;
-            });
+            window.mikaShell.icon
+                .lookup("folder_color_default_desktop", 128)
+                .then((src) => {
+                    document.getElementById("icon-desktop").src = src;
+                })
+                .catch((err) => {});
+        </script>
+        <script type="module">
+            const os = window.mikaShell.os;
+            async function listenHyprland() {
+                const xdgRuntimeDir = await os.getEnv("XDG_RUNTIME_DIR");
+                const his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
+                const ws = window.mikaShell.socket(`/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`);
+                let buffer = "";
+                ws.onmessage = (event) => {
+                    const parts = (buffer + event.data).split("\n");
+                    buffer = parts.pop();
+                    const message = parts.shift();
+                    console.log("Received from server:", message);
+                };
+            }
+            listenHyprland();
         </script>
     </head>
     <body>

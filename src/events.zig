@@ -1,10 +1,10 @@
 const std = @import("std");
 
-pub const Mikami = struct {
-    pub const Open = "mikami-open";
-    pub const Close = "mikami-close";
-    pub const Show = "mikami-show";
-    pub const Hide = "mikami-hide";
+pub const Mika = struct {
+    pub const Open = "mika-open";
+    pub const Close = "mika-close";
+    pub const Show = "mika-show";
+    pub const Hide = "mika-hide";
 };
 pub const Tray = struct {
     pub const Added = "tray-added";

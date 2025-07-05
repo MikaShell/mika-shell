@@ -20,6 +20,9 @@
   gobject-introspection,
   glib,
   linuxKernel,
+  typescript,
+  esbuild,
+  nodejs_24,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -48,6 +51,11 @@ in
       lldb
       dbus
       libwebp
+
+      # NPM Package
+      esbuild
+      nodejs_24
+      typescript
 
       # DBus test scripts require dbus-python and pygobject3
       glib

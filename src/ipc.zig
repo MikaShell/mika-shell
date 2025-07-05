@@ -1,6 +1,6 @@
 const std = @import("std");
 const gtk = @import("gtk");
-const SOCKET_PATH = "/tmp/mikami.sock";
+const SOCKET_PATH = "/tmp/mika-shell.sock";
 const glib = @import("glib");
 pub const Server = struct {
     allocator: std.mem.Allocator,

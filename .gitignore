@@ -12,3 +12,4 @@ zig-out
 .zig-cache
 zigfetch
 perf.data
+src/bindings.js

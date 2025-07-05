@@ -2,7 +2,7 @@ const std = @import("std");
 const webkit = @import("webkit");
 const modules = @import("modules.zig");
 const App = @import("../app.zig").App;
-pub const Mikami = struct {
+pub const Mika = struct {
     app: *App,
     const Self = @This();
 

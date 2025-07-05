@@ -13,7 +13,7 @@ const Handler = struct {
             unixSock: std.net.Stream,
         };
         ctx: *Context,
-        watch: glib.FdWatch(WebsocketHandler),
+        watch: glib.FdWatch(Context),
         pub fn init(conn: *ws.Conn, path: []const u8) !WebsocketHandler {
             // TODO: 剔除路径防止注入
             const sock = try std.net.connectUnixSocket(path);
@@ -36,11 +36,11 @@ const Handler = struct {
         }
         pub fn close(h: *WebsocketHandler) void {
             h.watch.deinit();
-            h.unixSock.close();
+            h.ctx.unixSock.close();
             std.heap.page_allocator.destroy(h.ctx);
         }
         pub fn clientMessage(self: *WebsocketHandler, data: []const u8) !void {
-            _ = try self.unixSock.write(data);
+            _ = try self.ctx.unixSock.write(data);
         }
     };
 };

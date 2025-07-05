@@ -1,9 +1,9 @@
 .{
-    .name = .mikami,
+    .name = .mika_shell,
 
     .version = "0.0.0",
 
-    .fingerprint = 0xd085b518aca596ce, // Changing this has security and trust implications.
+    .fingerprint = 0xe97bd437b48f450a,
 
     .minimum_zig_version = "0.14.0",
 

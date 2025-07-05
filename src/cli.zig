@@ -26,12 +26,12 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
     return cli.Command{
         .name = "daemon",
         .description = .{
-            .one_line = "run mikami as a daemon",
+            .one_line = "run mika-shell as a daemon",
         },
         .options = try r.allocOptions(&.{.{
             .long_name = "config-dir",
             .short_alias = 'c',
-            .help = "directory to store configuration files, defaults to $XDG_CONFIG_HOME/mikami or $HOME/.config/mikami",
+            .help = "directory to store configuration files, defaults to $XDG_CONFIG_HOME/mika-shell or $HOME/.config/mika-shell",
             // This was defined but never used. Consider using app.getConfigDir instead.
             .value_ref = r.mkRef(&config.daemon.config_dir),
             .envvar = "MIKASHELL_CONFIG_DIR",
@@ -153,7 +153,7 @@ pub fn run() !void {
     defer allocator.free(config.open.uri);
     const cliApp = cli.App{
         .command = .{
-            .name = "mikami",
+            .name = "mika-shell",
             .target = .{
                 .subcommands = try r.allocCommands(&.{
                     try cmdDaemon(r),
@@ -177,6 +177,7 @@ pub fn daemon() !void {
     const allocator = gpa.allocator();
     const app_ = app.App.init(allocator);
     defer app_.deinit();
+    // TODO: 使用config_dir
     std.debug.print("congif dir: {s}", .{config.daemon.config_dir});
     _ = app_.open("http://localhost:6797/");
     const baseConfigDir = try app.getConfigDir(allocator);
