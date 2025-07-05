@@ -1,51 +1,106 @@
 const httpz = @import("httpz");
+const ws = httpz.websocket;
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const RouteData = struct {
-    assetsDir: []const u8,
-};
 const fs = std.fs;
+const glib = @import("glib");
+const Handler = struct {
+    allocator: Allocator,
+    assetsDir: []const u8,
+    pub const WebsocketHandler = struct {
+        pub const Context = struct {
+            conn: *ws.Conn,
+            unixSock: std.net.Stream,
+        };
+        ctx: *Context,
+        watch: glib.FdWatch(WebsocketHandler),
+        pub fn init(conn: *ws.Conn, path: []const u8) !WebsocketHandler {
+            // TODO: 剔除路径防止注入
+            const sock = try std.net.connectUnixSocket(path);
+            errdefer sock.close();
+            const ctx = try std.heap.page_allocator.create(Context);
+            ctx.* = .{
+                .conn = conn,
+                .unixSock = sock,
+            };
+            return .{
+                .ctx = ctx,
+                .watch = try glib.FdWatch(Context).add(sock.handle, onUnixSockMessage, ctx),
+            };
+        }
+        fn onUnixSockMessage(ctx: *Context) bool {
+            var buf: [512]u8 = undefined;
+            const n = ctx.unixSock.reader().read(&buf) catch return false;
+            ctx.conn.write(buf[0..n]) catch return false;
+            return true;
+        }
+        pub fn close(h: *WebsocketHandler) void {
+            h.watch.deinit();
+            h.unixSock.close();
+            std.heap.page_allocator.destroy(h.ctx);
+        }
+        pub fn clientMessage(self: *WebsocketHandler, data: []const u8) !void {
+            _ = try self.unixSock.write(data);
+        }
+    };
+};
 pub const Server = struct {
     allocator: Allocator,
-    _server: httpz.Server(void),
-    routerData: RouteData,
+    server: httpz.Server(*Handler),
     thread: std.Thread,
+    handler: *Handler,
+    // TODO: 增加验证机制
     pub fn init(allocator: Allocator, assetsDir: []const u8) !*Server {
         const server = try allocator.create(Server);
         errdefer allocator.destroy(server);
+        server.handler = try allocator.create(Handler);
         server.allocator = allocator;
+        server.handler.allocator = allocator;
 
         const ownedAssetsDir = try allocator.dupe(u8, assetsDir);
-        server.routerData.assetsDir = ownedAssetsDir;
-        server._server = try httpz.Server(void).init(allocator, .{ .port = 6797 }, {});
+        server.handler.assetsDir = ownedAssetsDir;
+        server.server = try httpz.Server(*Handler).init(allocator, .{ .port = 6797 }, server.handler);
 
         return server;
     }
     pub fn start(self: *Server) !void {
-        const router = try self._server.router(.{});
-        router.get("/*", fileServer, .{ .data = &self.routerData });
-        self.thread = try self._server.listenInNewThread();
+        const router = try self.server.router(.{});
+        router.get("/*", handler, .{});
+        self.thread = try self.server.listenInNewThread();
     }
     pub fn stop(self: *Server) void {
-        self._server.stop();
+        self.server.stop();
         self.thread.join();
     }
     pub fn deinit(self: *Server) void {
-        self._server.deinit();
-        self.allocator.free(self.routerData.assetsDir);
+        self.server.deinit();
+        self.allocator.free(self.handler.assetsDir);
+        self.allocator.destroy(self.handler);
         self.allocator.destroy(self);
     }
 };
-fn fileServer(req: *httpz.Request, res: *httpz.Response) !void {
-    const route_data: *const RouteData = @ptrCast(@alignCast(req.route_data));
-    const allocator = std.heap.page_allocator;
+fn handler(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
+    if (req.header("upgrade")) |upgrade| {
+        if (std.ascii.eqlIgnoreCase(upgrade, "websocket")) {
+            if ((try httpz.upgradeWebsocket(Handler.WebsocketHandler, req, res, req.url.path)) == false) {
+                res.status = 400;
+                res.body = "invalid websocket handshake";
+            }
+            return;
+        }
+    }
+    return fileServer(h, req, res);
+}
+
+fn fileServer(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
+    const allocator = h.allocator;
     const path = req.url.path;
     // TODO: 剔除路径防止注入
     var fileName = path;
     if (std.mem.endsWith(u8, path, "/")) {
         fileName = try std.fs.path.join(allocator, &[_][]const u8{ path, "index.html" });
     }
-    const filePath = try std.fs.path.join(allocator, &[_][]const u8{ route_data.assetsDir, fileName });
+    const filePath = try std.fs.path.join(allocator, &[_][]const u8{ h.assetsDir, fileName });
     defer allocator.free(filePath);
     std.log.debug("req: {s} {s}", .{ path, fileName });
 

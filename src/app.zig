@@ -24,6 +24,7 @@ pub const Webview = struct {
     impl: *webkit.WebView,
     container: *gtk.Window,
     _modules: *Modules,
+    // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
     pub fn init(allocator: std.mem.Allocator, m: *Modules) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
@@ -102,8 +103,6 @@ pub const Webview = struct {
         defer alc.free(js);
         self.impl.evaluateJavaScript(js);
     }
-    // pub fn makeWindow(self: *Webview, options: WindowOptions) void {}
-    // pub fn makeLayer(self: *Webview, options: LayerOptions) void {}
     pub fn getInfo(self: *Webview) Info {
         return Info{
             .type = switch (self.type) {

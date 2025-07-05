@@ -11,3 +11,4 @@ npm-package/*.js
 zig-out
 .zig-cache
 zigfetch
+perf.data

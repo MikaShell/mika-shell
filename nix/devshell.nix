@@ -19,6 +19,7 @@
   python3,
   gobject-introspection,
   glib,
+  linuxKernel,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -44,11 +45,10 @@ in
       glib-networking
       gtk4
       webkitgtk_6_0
-      devhelp
       lldb
       dbus
-      d-spy
       libwebp
+
       # DBus test scripts require dbus-python and pygobject3
       glib
       gobject-introspection
@@ -58,6 +58,11 @@ in
           pygobject3
           dbus-python
         ]))
+
+      # Dev Tools
+      devhelp
+      d-spy
+      linuxKernel.packages.linux_zen.perf
     ];
     MIKASHELL_CONFIG_DIR = "./example";
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
