@@ -2,6 +2,7 @@ const libdbus = @import("libdbus.zig");
 const std = @import("std");
 const glib = @import("glib");
 const Allocator = std.mem.Allocator;
+pub const Connection = libdbus.Connection;
 pub const Message = libdbus.Message;
 pub const MessageIter = libdbus.MessageIter;
 pub const Error = libdbus.Error;

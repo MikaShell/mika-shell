@@ -432,43 +432,48 @@ pub const Icon = struct {
         const name = try args.string(1);
         const size = try args.integer(2);
         const scale = try args.integer(3);
-        const theme = c.gtk_icon_theme_get_for_display(c.gdk_display_get_default());
-        const name_c = try allocator.dupeZ(u8, name);
-        defer allocator.free(name_c);
-        const icon = c.gtk_icon_theme_lookup_icon(theme, name_c.ptr, null, @intCast(size), @intCast(scale), c.GTK_TEXT_DIR_LTR, c.GTK_ICON_LOOKUP_NONE);
-        defer c.g_object_unref(icon);
-        if (icon == null) return error.IconNotFound;
-        const file = c.gtk_icon_paintable_get_file(icon);
-        if (file == null) return error.IconNotSupported;
-        const path_c = c.g_file_get_path(file);
-        if (path_c == null) return error.IconMissing;
-        defer c.g_free(path_c);
-        const path = std.mem.sliceTo(path_c, 0);
-        const f = try std.fs.openFileAbsolute(path, .{ .mode = .read_only });
-        defer f.close();
-        if (std.mem.endsWith(u8, path, ".svg")) {
-            const svg = try f.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-            defer allocator.free(svg);
-            var uri = std.ArrayList(u8).init(allocator);
-            defer uri.deinit();
-            try std.Uri.Component.percentEncode(uri.writer(), svg, isValidcharhar);
-            const img = try std.fmt.allocPrint(allocator, "data:image/svg+xml,{s}", .{uri.items});
-            defer allocator.free(img);
-            try result.commit(img);
-            return;
-        }
-        if (std.mem.endsWith(u8, path, ".png")) {
-            var base64 = std.ArrayList(u8).init(allocator);
-            defer base64.deinit();
-            try std.base64.standard.Encoder.encodeFromReaderToWriter(base64.writer(), f.reader());
-            const img = try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{base64.items});
-            defer allocator.free(img);
-            try result.commit(img);
-            return;
-        }
-        return error.IconNotSupported;
+        const img = lookupIcon(allocator, name, @intCast(size), @intCast(scale)) catch |err| blk: {
+            if (!std.fs.path.isAbsolute(name)) return err;
+            break :blk makeHtmlImg(allocator, name) catch return err;
+        };
+        defer allocator.free(img);
+        try result.commit(img);
     }
 };
+fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]const u8 {
+    const theme = c.gtk_icon_theme_get_for_display(c.gdk_display_get_default());
+    const name_c = try allocator.dupeZ(u8, name);
+    defer allocator.free(name_c);
+    const icon = c.gtk_icon_theme_lookup_icon(theme, name_c.ptr, null, size, scale, c.GTK_TEXT_DIR_LTR, c.GTK_ICON_LOOKUP_NONE);
+    defer c.g_object_unref(icon);
+    if (icon == null) return error.IconNotFound;
+    const file = c.gtk_icon_paintable_get_file(icon);
+    if (file == null) return error.IconNotSupported;
+    const path_c = c.g_file_get_path(file);
+    if (path_c == null) return error.IconMissing;
+    defer c.g_free(path_c);
+    const path = std.mem.sliceTo(path_c, 0);
+    return try makeHtmlImg(allocator, path);
+}
+fn makeHtmlImg(allocator: Allocator, filePath: []const u8) ![]const u8 {
+    const f = try std.fs.openFileAbsolute(filePath, .{});
+    defer f.close();
+    if (std.mem.endsWith(u8, filePath, ".svg")) {
+        const svg = try f.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(svg);
+        var uri = std.ArrayList(u8).init(allocator);
+        defer uri.deinit();
+        try std.Uri.Component.percentEncode(uri.writer(), svg, isValidcharhar);
+        return try std.fmt.allocPrint(allocator, "data:image/svg+xml,{s}", .{uri.items});
+    }
+    if (std.mem.endsWith(u8, filePath, ".png")) {
+        var base64 = std.ArrayList(u8).init(allocator);
+        defer base64.deinit();
+        try std.base64.standard.Encoder.encodeFromReaderToWriter(base64.writer(), f.reader());
+        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{base64.items});
+    }
+    return error.IconNotSupported;
+}
 fn isValidcharhar(char: u8) bool {
     return (char >= 'a' and char <= 'z') or
         (char >= 'A' and char <= 'Z') or

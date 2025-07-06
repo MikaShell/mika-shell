@@ -8,6 +8,10 @@
                 background-color: rgb(57, 57, 57);
                 height: 500px;
                 width: 800px;
+                display: flex;
+                justify-content: start;
+                align-items: start;
+                flex-direction: column;
             }
             .tray-icon {
                 width: 32px;
@@ -24,6 +28,32 @@
                 justify-content: center;
                 align-items: center;
                 gap: 4px;
+            }
+            #apps {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(256px, 2fr));
+                grid-gap: 8px;
+            }
+            .app-entry {
+                display: flex;
+                justify-content: start;
+                align-items: center;
+                gap: 8px;
+                padding: 8px;
+                margin: 8px;
+                border-radius: 8px;
+                background-color: rgb(47, 47, 47);
+            }
+            .app-entry > span {
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                overflow: hidden;
+            }
+            .app-icon {
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
             }
         </style>
         <script type="module">
@@ -58,6 +88,33 @@
                     document.getElementById("icon-desktop").src = src;
                 })
                 .catch((err) => {});
+
+            window.mikaShell.apps.list().then((apps) => {
+                const appList = document.getElementById("apps");
+                apps = apps.filter((app) => app.noDisplay !== true);
+                for (const app of apps) {
+                    if (app.name === "kitty") {
+                        console.log("kitty", app);
+                    }
+                    const div = document.createElement("div");
+                    div.classList.add("app-entry");
+                    const img = document.createElement("img");
+                    window.mikaShell.icon
+                        .lookup(app.icon, 256)
+                        .then((src) => (img.src = src))
+                        .catch((err) => {});
+                    img.alt = app.icon;
+                    img.classList.add("app-icon");
+                    div.appendChild(img);
+                    const name = document.createElement("span");
+                    name.textContent = app.name;
+                    div.appendChild(name);
+                    div.addEventListener("click", () => {
+                        window.mikaShell.apps.activate(app.id);
+                    });
+                    appList.appendChild(div);
+                }
+            });
         </script>
         <script type="module">
             const os = window.mikaShell.os;
@@ -79,9 +136,10 @@
     <body>
         <h1>Welcome</h1>
         <p>This is a test website for MikaShell.</p>
-        <div id="tray" />
         <div id="icons">
             <img id="icon-desktop" alt="Desktop" />
         </div>
+        <div id="apps"></div>
+        <div id="tray" />
     </body>
 </html>

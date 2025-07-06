@@ -111,15 +111,6 @@ pub const Variant = struct {
         }
     };
 };
-pub const Variant2 = struct {
-    pub const tag: Tags = .variant;
-    pub const typeCode = 'v';
-    pub const Type = struct {
-        value: *anyopaque,
-        signature: []const u8,
-    };
-};
-
 pub const Invalid = struct {
     pub const tag: Tags = .invalid;
     pub const typeCode = '\x00';

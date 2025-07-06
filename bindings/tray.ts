@@ -37,22 +37,22 @@ export interface Item {
     tooltip: Tooltip;
 }
 export interface MenuProperties {
-    label?: string;
+    label: string | null;
     visible: boolean;
     enabled: boolean;
-    iconName?: string;
-    iconData?: string;
-    iconSize?: number;
-    childrenDisplay?: string;
-    toggleType?: "checkmark" | "radio";
-    toggleState?: "unchecked" | "checked" | "indeterminate";
-    group?: string;
-    shortcut?: string[];
-    shortcutLabel?: string;
-    tooltip?: string;
-    type?: string;
-    childrenTypes?: string[];
-    action?: string;
+    iconName: string | null;
+    iconData: string | null;
+    iconSize: number | null;
+    childrenDisplay: string | null;
+    toggleType: "checkmark" | "radio" | null;
+    toggleState: "unchecked" | "checked" | "indeterminate" | null;
+    group: string | null;
+    shortcut: string[] | null;
+    shortcutLabel: string | null;
+    tooltip: string | null;
+    type: string | null;
+    childrenTypes: string[] | null;
+    action: string | null;
 }
 export interface MenuNode {
     id: number;

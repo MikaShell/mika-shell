@@ -13,8 +13,6 @@ export function addEventListener(
     window.addEventListener("mika-shell-event", (event: any) => {
         const name: string = event.detail.name;
         const data: any = event.detail.data;
-        console.log("Received event", name, data);
-
         const callbacks = listeners.get(name) || [];
         callbacks.forEach((listener) => {
             if (listener.once) {

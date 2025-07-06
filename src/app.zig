@@ -135,6 +135,7 @@ const Window = @import("modules/window.zig").Window;
 const Tray = @import("modules/tray.zig").Tray;
 const Icon = @import("modules/icon.zig").Icon;
 const OS = @import("modules/os.zig").OS;
+const Apps = @import("modules/apps.zig").Apps;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -150,6 +151,7 @@ pub const App = struct {
     tray: *Tray,
     icon: *Icon,
     os: *OS,
+    apps: *Apps,
     pub fn init(allocator: std.mem.Allocator) *App {
         const app = allocator.create(App) catch unreachable;
         app.modules = Modules.init(allocator);
@@ -167,12 +169,14 @@ pub const App = struct {
         const layer = allocator.create(Layer) catch unreachable;
         const icon = allocator.create(Icon) catch unreachable;
         const os = allocator.create(OS) catch unreachable;
+        const apps = allocator.create(Apps) catch unreachable;
 
         mika.* = Mika{ .app = app };
         window.* = Window{ .app = app };
         layer.* = Layer{ .app = app };
         icon.* = Icon{};
         os.* = OS{};
+        apps.* = Apps{ .allocator = allocator };
 
         const tray = Tray.init(allocator, app, bus) catch unreachable;
 
@@ -182,6 +186,7 @@ pub const App = struct {
         app.tray = tray;
         app.icon = icon;
         app.os = os;
+        app.apps = apps;
 
         const modules = app.modules;
 
@@ -217,6 +222,9 @@ pub const App = struct {
         modules.register(icon, "icon.lookup", Icon.lookup);
 
         modules.register(os, "os.getEnv", OS.getEnv);
+
+        modules.register(apps, "apps.list", Apps.list);
+        modules.register(apps, "apps.activate", Apps.activate);
         return app;
     }
     pub fn deinit(self: *App) void {
@@ -232,6 +240,9 @@ pub const App = struct {
         self.allocator.destroy(self.mika);
         self.allocator.destroy(self.window);
         self.allocator.destroy(self.layer);
+        self.allocator.destroy(self.icon);
+        self.allocator.destroy(self.os);
+        self.allocator.destroy(self.apps);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, uri: []const u8) *Webview {
@@ -308,9 +319,7 @@ pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();
     const join = std.fs.path.join;
-    if (env.get("MIKASHELL_CONFIG_DIR")) |config_dir| {
-        return std.fs.realpathAlloc(allocator, config_dir);
-    } else if (env.get("XDG_CONFIG_HOME")) |xdg_config_home| {
+    if (env.get("XDG_CONFIG_HOME")) |xdg_config_home| {
         baseConfigDir = xdg_config_home;
     } else if (env.get("HOME")) |home| {
         baseConfigDir = try join(allocator, &.{ home, ".config" });

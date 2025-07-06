@@ -177,13 +177,18 @@ pub fn daemon() !void {
     const allocator = gpa.allocator();
     const app_ = app.App.init(allocator);
     defer app_.deinit();
-    // TODO: 使用config_dir
-    std.debug.print("congif dir: {s}", .{config.daemon.config_dir});
     _ = app_.open("http://localhost:6797/");
-    const baseConfigDir = try app.getConfigDir(allocator);
+    // TODO: 完善报错信息
+    const baseConfigDir = blk: {
+        if (config.daemon.config_dir.len > 0) {
+            break :blk try std.fs.realpathAlloc(allocator, config.daemon.config_dir);
+        } else {
+            break :blk try app.getConfigDir(allocator);
+        }
+    };
     defer allocator.free(baseConfigDir);
     std.log.debug("ConfigDir: {s}", .{baseConfigDir});
-    var assetsserver = try assets.Server.init(std.heap.page_allocator, baseConfigDir);
+    var assetsserver = try assets.Server.init(allocator, baseConfigDir);
     defer {
         assetsserver.stop();
         assetsserver.deinit();

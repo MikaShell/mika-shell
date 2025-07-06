@@ -74,6 +74,7 @@ in
     ];
     MIKASHELL_CONFIG_DIR = "./example";
     GIO_EXTRA_MODULES = "${glib-networking.out}/lib/gio/modules";
+    TERMINAL = "kitty";
     shellHook = ''
       export XDG_DATA_DIRS=${docs}:$XDG_DATA_DIRS
     '';
