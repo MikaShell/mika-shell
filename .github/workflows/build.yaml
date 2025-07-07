@@ -1,0 +1,51 @@
+name: Build Project
+
+on:
+    workflow_call:
+    workflow_dispatch:
+
+jobs:
+    build:
+        container: ubuntu:25.04
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            id-token: write
+        env:
+            DEBIAN_FRONTEND: noninteractive
+            PACKAGES: |
+                xz-utils
+                libgtk4-layer-shell-dev
+                esbuild
+                libgtk-4-dev
+                libwebkitgtk-6.0-dev
+                libwebp-dev
+                zlib1g-dev
+                libssl-dev
+                librsvg2-dev
+                libdbus-1-dev
+                libglib2.0-dev
+                pkg-config
+                libsharpyuv-dev
+                libsystemd-dev
+        steps:
+            - name: Install packages
+              run: |
+                  apt update
+                  apt install -y $PACKAGES
+
+            - uses: mlugg/setup-zig@v2
+              with:
+                  version: 0.14.1
+
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Build Project
+              run: |
+                  zig build install
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: mika-shell
+                  path: zig-out/bin/mika-shell

@@ -7,10 +7,6 @@ pub fn build(b: *std.Build) void {
         .preferred_link_mode = .dynamic,
         .search_strategy = .mode_first,
     };
-    const static_link_opts: std.Build.Module.LinkSystemLibraryOptions = .{
-        .preferred_link_mode = .static,
-        .search_strategy = .mode_first,
-    };
     var gtk_mod: *std.Build.Module = undefined;
     var layershell_mod: *std.Build.Module = undefined;
     var webkit_mod: *std.Build.Module = undefined;
@@ -53,8 +49,9 @@ pub fn build(b: *std.Build) void {
         layershell_mod.addImport("gtk", gtk_mod);
         webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
         webkit_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+
         webkit_mod.addImport("gtk", gtk_mod);
-        dbus_mod.linkSystemLibrary("dbus-1", static_link_opts);
+        dbus_mod.linkSystemLibrary("dbus-1", dynamic_link_opts);
         dbus_mod.addCSourceFile(.{
             .file = b.path("pkgs/dbus/dbus.c"),
         });
@@ -84,7 +81,7 @@ pub fn build(b: *std.Build) void {
     });
     exe.step.dependOn(&generate_js_binding.step);
 
-    exe_mod.linkSystemLibrary("libwebp", static_link_opts);
+    exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
     const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });

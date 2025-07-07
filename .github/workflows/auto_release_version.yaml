@@ -5,25 +5,26 @@ on:
         tags: ["v*"]
 
 jobs:
-    build-and-release:
-        runs-on: ubuntu-22.04
+    build:
+        permissions:
+            contents: write
+            id-token: write
+        uses: ./.github/workflows/build.yaml
+
+    release:
+        needs: build
+        runs-on: ubuntu-latest
         permissions:
             contents: write
             id-token: write
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
 
-            - uses: awalsh128/cache-apt-pkgs-action@latest
+            - name: Download Artifact
+              uses: actions/download-artifact@v4
               with:
-                  packages: libgtk-3-dev libwebkit2gtk-4.1-dev libwebp-dev libgtk-layer-shell-dev build-essential pkg-config
-                  version: 1.0
-
-            - name: Build Project
-              run: |
-                  go build
+                  name: mika-shell
 
             - name: Get Version Info
               id: version
@@ -52,5 +53,4 @@ jobs:
                       Commit SHA: ${{ github.sha }}
                   draft: true
                   prerelease: ${{ contains(env.RELEASE_TAG, '-') }} # 包含连字符标记为预发布
-                  files: |
-                      mikami
+                  files: mika-shell
