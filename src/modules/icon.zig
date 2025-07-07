@@ -445,8 +445,13 @@ fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]
     const name_c = try allocator.dupeZ(u8, name);
     defer allocator.free(name_c);
     const icon = c.gtk_icon_theme_lookup_icon(theme, name_c.ptr, null, size, scale, c.GTK_TEXT_DIR_LTR, c.GTK_ICON_LOOKUP_NONE);
-    defer c.g_object_unref(icon);
     if (icon == null) return error.IconNotFound;
+    defer c.g_object_unref(icon);
+    const gotIconName_c = c.gtk_icon_paintable_get_icon_name(icon);
+    const gotIconName = std.mem.sliceTo(gotIconName_c, 0);
+    if (std.mem.eql(u8, gotIconName, "image-missing")) {
+        return error.IconNotFound;
+    }
     const file = c.gtk_icon_paintable_get_file(icon);
     if (file == null) return error.IconNotSupported;
     const path_c = c.g_file_get_path(file);
