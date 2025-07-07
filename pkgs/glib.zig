@@ -1,4 +1,4 @@
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("glib-2.0/glib.h");
     @cInclude("gio/gio.h");
 });
@@ -51,3 +51,70 @@ pub fn FdWatch(T: type) type {
         }
     };
 }
+
+pub const FileMonitor = struct {
+    pub const Event = enum(c_int) {
+        changed = c.G_FILE_MONITOR_EVENT_CHANGED,
+        changesDone = c.G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT,
+        deleted = c.G_FILE_MONITOR_EVENT_DELETED,
+        created = c.G_FILE_MONITOR_EVENT_CREATED,
+        attributeChanged = c.G_FILE_MONITOR_EVENT_ATTRIBUTE_CHANGED,
+        preunmount = c.G_FILE_MONITOR_EVENT_PRE_UNMOUNT,
+        unmounted = c.G_FILE_MONITOR_EVENT_UNMOUNTED,
+        moved = c.G_FILE_MONITOR_EVENT_MOVED,
+        renamed = c.G_FILE_MONITOR_EVENT_RENAMED,
+        movein = c.G_FILE_MONITOR_EVENT_MOVED_IN,
+        moveout = c.G_FILE_MONITOR_EVENT_MOVED_OUT,
+    };
+    const Callback = *const fn (?*anyopaque, file: ?[]const u8, otherFile: ?[]const u8, event: Event) void;
+    const Wrapper = struct {
+        d: ?*anyopaque,
+        c: Callback,
+        fn f(_: *c.GFileMonitor, file: ?*c.GFile, otherFile: ?*c.GFile, event: c.GFileMonitorEvent, w: *@This()) callconv(.c) void {
+            var file_: ?[]const u8 = null;
+            var otherFile_: ?[]const u8 = null;
+            const file_c = if (file) |fc| c.g_file_get_path(fc) else null;
+            defer if (file_c) |fc| c.g_free(fc);
+            const otherFile_c = if (otherFile) |ofc| c.g_file_get_path(ofc) else null;
+            defer if (otherFile_c) |ofc| c.g_free(ofc);
+            if (file_c) |fc| file_ = std.mem.sliceTo(fc, 0);
+            if (otherFile_c) |ofc| otherFile_ = std.mem.sliceTo(ofc, 0);
+            const event_: Event = @enumFromInt(event);
+            w.c(w.d, file_, otherFile_, event_);
+        }
+    };
+    wrapper: *Wrapper,
+    monitor: *c.GFileMonitor,
+    pub fn addFile(path: []const u8, callback: Callback, data: ?*anyopaque) !@This() {
+        return try add(true, path, callback, data);
+    }
+    pub fn addDirectory(path: []const u8, callback: Callback, data: ?*anyopaque) !@This() {
+        return try add(false, path, callback, data);
+    }
+    fn add(isFile: bool, path: []const u8, callback: Callback, data: ?*anyopaque) !@This() {
+        const gFile = c.g_file_new_for_path(path.ptr);
+        if (gFile == null) return error.FailedToCreateFile;
+        defer c.g_object_unref(gFile);
+        const wrapper = try std.heap.page_allocator.create(Wrapper);
+        errdefer std.heap.page_allocator.destroy(wrapper);
+        wrapper.* = .{
+            .d = data,
+            .c = callback,
+        };
+        var err: *c.GError = undefined;
+        const monitor = if (isFile) c.g_file_monitor(gFile, c.G_FILE_MONITOR_NONE, null, @ptrCast(&err)) else c.g_file_monitor_directory(gFile, c.G_FILE_MONITOR_NONE, null, @ptrCast(&err));
+        if (monitor == null) {
+            c.g_error_free(@ptrCast(&err));
+            return error.FailedToMonitorFile;
+        }
+        _ = c.g_signal_connect_data(monitor, "changed", @ptrCast(&Wrapper.f), @ptrCast(wrapper), null, 0);
+        return .{
+            .wrapper = wrapper,
+            .monitor = monitor,
+        };
+    }
+    pub fn deinit(self: @This()) void {
+        c.g_object_unref(self.monitor);
+        std.heap.page_allocator.destroy(self.wrapper);
+    }
+};

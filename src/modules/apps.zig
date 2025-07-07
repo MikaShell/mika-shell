@@ -582,27 +582,66 @@ const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
 const icon = @import("icon.zig");
+const glib = @import("glib");
 pub const Apps = struct {
     const Self = @This();
     allocator: Allocator,
+    entrys: ?[]Entry = null,
+    monitors: ?[]glib.FileMonitor = null,
+    needReload: bool = false,
     pub fn list(self: *Self, _: modules.Args, result: *modules.Result) !void {
+        try self.init();
         const allocator = self.allocator;
-        const entrys = try listApps(allocator);
-        defer for (entrys) |*e| e.deinit(allocator);
+        if (self.needReload) {
+            for (self.entrys.?) |*entry| entry.deinit(allocator);
+            allocator.free(self.entrys.?);
+            self.entrys = try listApps(allocator);
+            self.needReload = false;
+        }
+        const entrys = self.entrys.?;
         try result.commit(entrys);
     }
+    fn init(self: *Self) !void {
+        const allocator = self.allocator;
+        if (self.entrys == null) {
+            self.entrys = try listApps(allocator);
+            const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
+            defer allocator.free(xdgDataDirs);
+            var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
+            var monitors = std.ArrayList(glib.FileMonitor).init(allocator);
+            defer monitors.deinit();
+            errdefer for (monitors.items) |m| m.deinit();
+            while (paths.next()) |path| {
+                const monitor = glib.FileMonitor.addDirectory(path, struct {
+                    fn f(data: ?*anyopaque, _: ?[]const u8, _: ?[]const u8, _: glib.FileMonitor.Event) void {
+                        const flg: *bool = @ptrCast(@alignCast(data));
+                        flg.* = true;
+                    }
+                }.f, &self.needReload) catch continue;
+                try monitors.append(monitor);
+            }
+            self.monitors = try monitors.toOwnedSlice();
+        }
+    }
+    pub fn deinit(self: *Self) void {
+        if (self.entrys) |entrys| {
+            for (entrys) |*e| e.deinit(self.allocator);
+            self.allocator.free(entrys);
+        }
+        if (self.monitors) |monitors| {
+            for (monitors) |m| m.deinit();
+            self.allocator.free(monitors);
+        }
+    }
     pub fn activate(self: *Self, args: Args, _: *Result) !void {
+        try self.init();
         const allocator = self.allocator;
         const id = try args.string(1);
         const action_ = try args.string(2);
         const parsedUrls = try std.json.parseFromValue([]const []const u8, allocator, try args.value(3), .{});
         defer parsedUrls.deinit();
         const urls = parsedUrls.value;
-        // TODO: 缓存应用列表
-        const entrys = try listApps(allocator);
-        defer allocator.free(entrys);
-        defer for (entrys) |*e| e.deinit(allocator);
-
+        const entrys = self.entrys.?;
         const entry: Entry = blk: {
             for (entrys) |e| {
                 if (std.mem.eql(u8, e.id, id)) break :blk e;

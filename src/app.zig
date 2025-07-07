@@ -237,6 +237,8 @@ pub const App = struct {
         self.tray.deinit();
         self.bus.deinit();
 
+        self.apps.deinit();
+
         self.allocator.destroy(self.mika);
         self.allocator.destroy(self.window);
         self.allocator.destroy(self.layer);
