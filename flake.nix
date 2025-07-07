@@ -17,6 +17,7 @@
         default = pkgs.callPackage ./nix/devshell.nix {};
       }
     );
+    packages = forAllSystems (system: import ./nix/pkgs.nix {inherit nixpkgs system;});
   };
   nixConfig = {
     # substituers will be appended to the default substituters when fetching packages
