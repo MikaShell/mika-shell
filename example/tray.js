@@ -54,11 +54,10 @@ const trayProxy = new Proxy(
         deleteProperty: (target, prop) => {
             delete target[prop];
             console.log("tray-removed", prop);
-            mounted.forEach((div) => {
+            mounted.forEach((id) => {
+                const div = document.getElementById(id);
                 const img = div.querySelector(`img[data-service="${prop}"]`);
-                if (img) {
-                    div.removeChild(img);
-                }
+                if (img) div.removeChild(img);
             });
             return true;
         },
