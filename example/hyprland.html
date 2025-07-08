@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Hyprland</title>
+        <link rel="stylesheet" href="styles.css" />
+        <style></style>
+        <script>
+            window.mikaShell.window.init({
+                title: "MikaShell Hyprland",
+                backgroundTransparent: true,
+                resizable: false,
+            });
+
+            const os = window.mikaShell.os;
+            let xdgRuntimeDir = undefined;
+            let his = undefined;
+            async function hyprctl(msg) {
+                const promise = new Promise((resolve, reject) => {
+                    const ws = window.mikaShell.socket(
+                        `/${xdgRuntimeDir}/hypr/${his}/.socket.sock`
+                    );
+                    ws.onmessage = (event) => {
+                        resolve(event.data);
+                    };
+                    ws.onopen = () => {
+                        ws.send(msg);
+                    };
+                    ws.onerror = (event) => {
+                        reject(event);
+                    };
+                    ws.onclose = () => {
+                        reject("Socket closed");
+                    };
+                });
+                return promise;
+            }
+            async function init() {
+                xdgRuntimeDir = await os.getEnv("XDG_RUNTIME_DIR");
+                his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
+            }
+            function listenHyprland() {
+                const ws = window.mikaShell.socket(`/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`);
+                let buffer = "";
+                ws.onmessage = (event) => {
+                    const parts = (buffer + event.data).split("\n");
+                    buffer = parts.pop();
+                    const message = parts.shift();
+                    console.log("Hyprland Event:", {
+                        name: message.split(">>")[0],
+                        args: message.split(">>")[1].split(","),
+                    });
+                };
+            }
+            init().then(() => {
+                listenHyprland();
+                hyprctl("version").then((version) => {
+                    document.getElementById("version").innerHTML = version;
+                });
+            });
+        </script>
+    </head>
+    <body>
+        <h1>Hyprland</h1>
+        <span id="version" style="white-space: pre-wrap; display: inline-block"></span>
+        <p>
+            <button onclick="window.mikaShell.window.openDevTools()">Open DevTools</button> to see
+            events from Hyprland.
+        </p>
+    </body>
+</html>

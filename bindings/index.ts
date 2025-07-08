@@ -7,7 +7,7 @@ import * as window_ from "./window";
 import * as layer from "./layer";
 import * as apps from "./apps";
 function socket(path: string) {
-    return new WebSocket(`ws://localhost:6797/${path}`);
+    return new WebSocket(["ws://localhost:6797", path].join("/"));
 }
 const mikaShell = {
     tray,

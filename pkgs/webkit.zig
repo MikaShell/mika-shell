@@ -97,6 +97,12 @@ pub const WebView = extern struct {
     pub fn setBackgroundColor(self: *Self, rgba: GdkRGBA) void {
         webkit_web_view_set_background_color(self, &rgba);
     }
+    pub fn openDevTools(self: *Self) void {
+        const inspector = c.webkit_web_view_get_inspector(@ptrCast(self));
+        if (inspector != null) {
+            c.webkit_web_inspector_show(inspector);
+        }
+    }
     pub fn connect(
         self: *Self,
         comptime signal: Signal,

@@ -1,0 +1,29 @@
+body {
+    color: beige;
+    background-color: rgb(57, 57, 57);
+    display: flex;
+    justify-content: start;
+    align-items: start;
+    flex-direction: column;
+    padding: 12px;
+}
+:root {
+    height: 500px;
+    width: 800px;
+}
+button {
+    background-color: rgb(100, 100, 100);
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+button:hover {
+    background-color: rgb(50, 50, 50);
+}
+* {
+    outline: none;
+}

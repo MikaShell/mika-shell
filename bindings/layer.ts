@@ -56,6 +56,9 @@ export function hide(): Promise<void> {
 export function close(): Promise<void> {
     return call("layer.close");
 }
+export function openDevTools(): Promise<void> {
+    return call("layer.openDevTools");
+}
 export function resetAnchor(): Promise<void> {
     return call("layer.resetAnchor");
 }

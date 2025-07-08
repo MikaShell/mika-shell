@@ -26,6 +26,9 @@ export function hide(): Promise<void> {
 export function close(): Promise<void> {
     return call("window.close");
 }
+export function openDevTools(): Promise<void> {
+    return call("window.openDevTools");
+}
 import * as events from "./events";
 
 type Events = {

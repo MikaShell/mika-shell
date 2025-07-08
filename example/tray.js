@@ -7,13 +7,23 @@ const arrayToUrl = (arr) => {
 };
 var mounted = [];
 function mount(divID) {
+    if (mounted.length === 0) tray.proxy(trayProxy);
     if (mounted.includes(divID)) {
         return;
     }
     mounted.push(divID);
 }
+function unmount(divID) {
+    const index = mounted.indexOf(divID);
+    if (index === -1) {
+        return;
+    }
+    mounted.splice(index, 1);
+    if (mounted.length === 0) tray.unproxy(trayProxy);
+}
 export default {
     mount,
+    unmount,
 };
 function updataTray(divID, trayData) {
     const div = document.getElementById(divID);
@@ -63,4 +73,3 @@ const trayProxy = new Proxy(
         },
     }
 );
-tray.proxy(trayProxy);

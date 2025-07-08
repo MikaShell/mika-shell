@@ -8,6 +8,18 @@
             "path": "/index.html"
         },
         {
+            "name": "tray",
+            "path": "/tray.html"
+        },
+        {
+            "name": "apps",
+            "path": "/apps.html"
+        },
+        {
+            "name": "hyprland",
+            "path": "/hyprland.html"
+        },
+        {
             "name": "404",
             "description": "This page is used to test the built-in 404 page",
             "path": "/unknown.html"

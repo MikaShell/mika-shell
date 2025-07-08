@@ -94,6 +94,10 @@ pub const Layer = struct {
         const w = self.getWebview(args) catch unreachable;
         w.close();
     }
+    pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWebview(args);
+        w.impl.openDevTools();
+    }
     pub fn resetAnchor(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         layer.resetAnchor();

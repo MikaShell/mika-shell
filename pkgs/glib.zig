@@ -23,8 +23,10 @@ pub fn FdWatch(T: type) type {
         const Wrapper = struct {
             d: *T,
             c: Callback,
+            result: bool,
             fn f(_: *c.GIOChannel, _: c.GIOCondition, w: *@This()) callconv(.c) c_int {
-                return @intFromBool(if (T == void) w.c() else w.c(w.d));
+                w.result = if (T == void) w.c() else w.c(w.d);
+                return @intFromBool(w.result);
             }
         };
 
@@ -38,6 +40,7 @@ pub fn FdWatch(T: type) type {
             wrapper.* = .{
                 .d = data,
                 .c = callback,
+                .result = true,
             };
             const source = c.g_io_add_watch(ch, c.G_IO_IN, @ptrCast(&Wrapper.f), wrapper);
             return .{
@@ -46,7 +49,9 @@ pub fn FdWatch(T: type) type {
             };
         }
         pub fn deinit(self: @This()) void {
-            _ = c.g_source_remove(self.source);
+            if (self.wrapper.result == true) {
+                _ = c.g_source_remove(self.source);
+            }
             std.heap.page_allocator.destroy(self.wrapper);
         }
     };

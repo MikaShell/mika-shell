@@ -36,7 +36,7 @@ pub const Window = struct {
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
-        const ownerClass = try std.heap.page_allocator.dupeZ(u8, opt.class);
+        const ownedClass = try std.heap.page_allocator.dupe(u8, opt.class);
         if (w.type == .None) {
             // 这个回调只会执行一次
             w.container.asWidget().connect(.map, struct {
@@ -46,7 +46,7 @@ pub const Window = struct {
                     defer std.heap.page_allocator.free(class_);
                     widget.as(gtk.Window).setClass(class_);
                 }
-            }.f, @ptrCast(ownerClass.ptr));
+            }.f, @ptrCast(ownedClass.ptr));
         }
         if (w.type == .Window) {
             w.container.setClass(opt.class);
@@ -62,6 +62,15 @@ pub const Window = struct {
         if (!opt.hidden) {
             w.container.present();
         }
+    }
+    pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWindow(args);
+        w.impl.openDevTools();
+    }
+    pub fn setTitle(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWindow(args);
+        const title = try args.string(1);
+        w.container.setTitle(title);
     }
     pub fn getId(_: *Self, args: Args, result: *Result) !void {
         const id = args.uInteger(0) catch unreachable;

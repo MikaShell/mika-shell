@@ -282,12 +282,15 @@ pub const App = struct {
         modules.register(window, "window.show", Window.show);
         modules.register(window, "window.hide", Window.hide);
         modules.register(window, "window.getId", Window.getId);
+        modules.register(window, "window.openDevTools", Window.openDevTools);
+        modules.register(window, "window.setTitle", Window.setTitle);
 
         modules.register(layer, "layer.init", Layer.init);
         modules.register(layer, "layer.getId", Layer.getId);
         modules.register(layer, "layer.show", Layer.show);
         modules.register(layer, "layer.hide", Layer.hide);
         modules.register(layer, "layer.close", Layer.close);
+        modules.register(layer, "lsyer.openDevTools", Layer.openDevTools);
         modules.register(layer, "layer.resetAnchor", Layer.resetAnchor);
         modules.register(layer, "layer.setAnchor", Layer.setAnchor);
         modules.register(layer, "layer.setLayer", Layer.setLayer);

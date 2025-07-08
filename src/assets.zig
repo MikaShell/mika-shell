@@ -30,8 +30,18 @@ const Handler = struct {
         }
         fn onUnixSockMessage(ctx: *Context) bool {
             var buf: [512]u8 = undefined;
-            const n = ctx.unixSock.reader().read(&buf) catch return false;
-            ctx.conn.write(buf[0..n]) catch return false;
+            const n = ctx.unixSock.reader().read(&buf) catch {
+                _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
+                return false;
+            };
+            if (n == 0) {
+                _ = ctx.conn.close(.{ .code = 1000, .reason = "EOF" }) catch {};
+                return false;
+            }
+            ctx.conn.write(buf[0..n]) catch {
+                _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
+                return false;
+            };
             return true;
         }
         pub fn close(h: *WebsocketHandler) void {

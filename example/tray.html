@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Tray</title>
+        <link rel="stylesheet" href="styles.css" />
+        <style>
+            .tray-icon {
+                width: 32px;
+                height: 32px;
+                border: 1px solid rgb(116, 116, 116);
+                border-radius: 8px;
+                padding: 4px;
+            }
+            #tray {
+                top: 10px;
+                right: 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 4px;
+            }
+        </style>
+        <script type="module">
+            import tray from "./tray.js";
+            window.mikaShell.window.init({
+                title: "MikaShell Test",
+                backgroundTransparent: true,
+                resizable: false,
+            });
+            tray.mount("tray");
+            window.mikaShell.window.on("close", () => {
+                tray.unmount("tray");
+            });
+        </script>
+    </head>
+    <body>
+        <h1>Tray</h1>
+        <div id="tray" />
+    </body>
+</html>

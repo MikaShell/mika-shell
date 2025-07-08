@@ -2,60 +2,8 @@
 <html>
     <head>
         <title>Welcome</title>
+        <link rel="stylesheet" href="styles.css" />
         <style>
-            body {
-                color: beige;
-                background-color: rgb(57, 57, 57);
-                height: 500px;
-                width: 800px;
-                display: flex;
-                justify-content: start;
-                align-items: start;
-                flex-direction: column;
-                padding: 12px;
-            }
-            .tray-icon {
-                width: 32px;
-                height: 32px;
-                border: 1px solid rgb(116, 116, 116);
-                border-radius: 8px;
-                padding: 4px;
-            }
-            #tray {
-                position: absolute;
-                top: 10px;
-                right: 10px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 4px;
-            }
-            #apps {
-                width: 100%;
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(256px, 2fr));
-                grid-gap: 8px;
-            }
-            .app-entry {
-                display: flex;
-                justify-content: start;
-                align-items: center;
-                gap: 8px;
-                padding: 8px;
-                margin: 8px;
-                border-radius: 8px;
-                background-color: rgb(47, 47, 47);
-            }
-            .app-entry > span {
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                overflow: hidden;
-            }
-            .app-icon {
-                width: 32px;
-                height: 32px;
-                border-radius: 8px;
-            }
             #os-info {
                 display: flex;
                 justify-content: start;
@@ -74,6 +22,13 @@
                 height: 64px;
                 border-radius: 50%;
             }
+            .open {
+                margin: 12px auto;
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 8px;
+            }
         </style>
         <script type="module">
             const mika = window.mikaShell.mika;
@@ -81,8 +36,6 @@
             mika.on("close", (id) => console.log("Close Event Received, id:", id));
             mika.on("show", (id) => console.log("Show Event Received, id:", id));
             mika.on("hide", (id) => console.log("Hide Event Received, id:", id));
-            import tray from "./tray.js";
-            tray.mount("tray");
         </script>
         <script>
             const layerInit = () => {
@@ -131,48 +84,6 @@
                 document.getElementById("os-kernel-uptime").textContent =
                     "Kernel: " + info.kernel + " Uptime: " + (info.uptime / 3600).toFixed(2) + "h";
             });
-            mikaShell.apps.list().then((apps) => {
-                const appList = document.getElementById("apps");
-                apps = apps.filter((app) => app.noDisplay !== true);
-                for (const app of apps) {
-                    const div = document.createElement("div");
-                    div.classList.add("app-entry");
-                    const img = document.createElement("img");
-                    mikaShell.icon
-                        .lookup(app.icon, 256)
-                        .then((src) => (img.src = src))
-                        .catch((err) => {});
-                    img.alt = app.icon;
-                    img.classList.add("app-icon");
-                    div.appendChild(img);
-                    const name = document.createElement("span");
-                    name.textContent = app.name;
-                    div.appendChild(name);
-                    div.addEventListener("click", () => {
-                        window.mikaShell.apps.activate(app.id);
-                    });
-                    appList.appendChild(div);
-                }
-            });
-        </script>
-        <script>
-            const os = window.mikaShell.os;
-            async function listenHyprland() {
-                const xdgRuntimeDir = await os.getEnv("XDG_RUNTIME_DIR");
-                const his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
-                const ws = window.mikaShell.socket(`/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`);
-                let buffer = "";
-                ws.onmessage = (event) => {
-                    const parts = (buffer + event.data).split("\n");
-                    buffer = parts.pop();
-                    const message = parts.shift();
-                    console.log("Hyprland Event:", {
-                        name: message.split(">>")[0],
-                        args: message.split(">>")[1].split(","),
-                    });
-                };
-            }
-            listenHyprland();
         </script>
     </head>
     <body>
@@ -185,17 +96,10 @@
                 <span id="os-kernel-uptime"></span>
             </div>
         </div>
-        <div
-            style="
-                width: 100%;
-                height: 210px;
-                overflow: scroll;
-                border: solid 2px rgb(116, 116, 116);
-                margin: 12px auto;
-            "
-        >
-            <div id="apps"></div>
+        <div class="open">
+            <button onclick="window.mikaShell.mika.open('tray')">Tray</button>
+            <button onclick="window.mikaShell.mika.open('hyprland')">Hyprland</button>
+            <button onclick="window.mikaShell.mika.open('apps')">Apps</button>
         </div>
-        <div id="tray" />
     </body>
 </html>
