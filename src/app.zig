@@ -15,7 +15,8 @@ pub const Webview = struct {
         id: u64,
         uri: []const u8,
     };
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
+    name: []const u8,
     type: WebviewType,
     options: union {
         window: WindowOptions,
@@ -25,10 +26,11 @@ pub const Webview = struct {
     container: *gtk.Window,
     _modules: *Modules,
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
-    pub fn init(allocator: std.mem.Allocator, m: *Modules) !*Webview {
+    pub fn init(allocator: Allocator, m: *Modules, name: []const u8) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
             .allocator = allocator,
+            .name = try allocator.dupe(u8, name),
             .impl = webkit.WebView.new(),
             .container = gtk.Window.new(),
             ._modules = m,
@@ -121,11 +123,13 @@ pub const Webview = struct {
         self.container.asWidget().hide();
     }
     pub fn close(self: *Webview) void {
+        self.allocator.free(self.name);
         self.container.destroy();
         self.allocator.destroy(self);
     }
 };
 const dbus = @import("dbus");
+const Allocator = std.mem.Allocator;
 const Modules = @import("modules/modules.zig").Modules;
 const Result = @import("modules/modules.zig").Result;
 const Args = @import("modules/modules.zig").Args;
@@ -139,10 +143,56 @@ const Apps = @import("modules/apps.zig").Apps;
 pub const Error = error{
     WebviewNotExists,
 };
+pub const Config = struct {
+    const Page = struct {
+        name: []const u8,
+        path: []const u8,
+        description: ?[]const u8 = null,
+    };
+    name: []const u8,
+    description: ?[]const u8 = null,
+    pages: []Page = &.{},
+    init: ?[]const u8 = null,
+    pub fn load(allocator: Allocator, configDir: []const u8) !Config {
+        const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
+        const file = try std.fs.openFileAbsolute(config_path, .{});
+        defer file.close();
+        const configJson = try file.readToEndAlloc(allocator, 1024 * 1024);
+        defer allocator.free(configJson);
+        const cfgJson = try std.json.parseFromSlice(Config, allocator, configJson, .{});
+        defer cfgJson.deinit();
+        var cfg: Config = undefined;
+        cfg.name = try allocator.dupe(u8, cfgJson.value.name);
+        cfg.description = if (cfgJson.value.description) |desc| try allocator.dupe(u8, desc) else null;
+        cfg.pages = try allocator.alloc(Page, cfgJson.value.pages.len);
+        for (cfg.pages, 0..) |*page, i| {
+            const page_ = cfgJson.value.pages[i];
+            page.* = Page{
+                .name = try allocator.dupe(u8, page_.name),
+                .path = try allocator.dupe(u8, page_.path),
+                .description = if (page_.description) |desc| try allocator.dupe(u8, desc) else null,
+            };
+        }
+        cfg.init = if (cfgJson.value.init) |init| try allocator.dupe(u8, init) else null;
+        return cfg;
+    }
+    pub fn deinit(self: Config, allocator: Allocator) void {
+        for (self.pages) |page| {
+            allocator.free(page.name);
+            allocator.free(page.path);
+            if (page.description) |desc| allocator.free(desc);
+        }
+        allocator.free(self.pages);
+        if (self.description) |desc| allocator.free(desc);
+        if (self.init) |init| allocator.free(init);
+        allocator.free(self.name);
+    }
+};
 pub const App = struct {
     modules: *Modules,
     webviews: std.ArrayList(*Webview),
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
+    config: Config,
     bus: *dbus.Bus,
     busWatcher: dbus.GLibWatch,
     mika: *Mika,
@@ -152,8 +202,9 @@ pub const App = struct {
     icon: *Icon,
     os: *OS,
     apps: *Apps,
-    pub fn init(allocator: std.mem.Allocator) *App {
-        const app = allocator.create(App) catch unreachable;
+    pub fn init(allocator: Allocator, configDir: []const u8) !*App {
+        const app = try allocator.create(App);
+        app.config = try Config.load(allocator, configDir);
         app.modules = Modules.init(allocator);
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
@@ -164,12 +215,12 @@ pub const App = struct {
         app.busWatcher = dbus.withGLibLoop(bus) catch {
             @panic("can not watch dbus loop");
         };
-        const mika = allocator.create(Mika) catch unreachable;
-        const window = allocator.create(Window) catch unreachable;
-        const layer = allocator.create(Layer) catch unreachable;
-        const icon = allocator.create(Icon) catch unreachable;
-        const os = allocator.create(OS) catch unreachable;
-        const apps = allocator.create(Apps) catch unreachable;
+        const mika = try allocator.create(Mika);
+        const window = try allocator.create(Window);
+        const layer = try allocator.create(Layer);
+        const icon = try allocator.create(Icon);
+        const os = try allocator.create(OS);
+        const apps = try allocator.create(Apps);
 
         mika.* = Mika{ .app = app };
         window.* = Window{ .app = app };
@@ -178,7 +229,7 @@ pub const App = struct {
         os.* = OS{ .allocator = allocator };
         apps.* = Apps{ .allocator = allocator };
 
-        const tray = Tray.init(allocator, app, bus) catch unreachable;
+        const tray = try Tray.init(allocator, app, bus);
 
         app.mika = mika;
         app.window = window;
@@ -228,6 +279,10 @@ pub const App = struct {
 
         modules.register(apps, "apps.list", Apps.list);
         modules.register(apps, "apps.activate", Apps.activate);
+
+        if (app.config.init) |startup| {
+            _ = try app.open(startup);
+        }
         return app;
     }
     pub fn deinit(self: *App) void {
@@ -242,6 +297,8 @@ pub const App = struct {
 
         self.apps.deinit();
 
+        self.config.deinit(self.allocator);
+
         self.allocator.destroy(self.mika);
         self.allocator.destroy(self.window);
         self.allocator.destroy(self.layer);
@@ -250,8 +307,17 @@ pub const App = struct {
         self.allocator.destroy(self.apps);
         self.allocator.destroy(self);
     }
-    pub fn open(self: *App, uri: []const u8) *Webview {
-        const webview = Webview.init(self.allocator, self.modules) catch unreachable;
+    pub fn open(self: *App, pageName: []const u8) !*Webview {
+        for (self.config.pages) |page| {
+            if (std.mem.eql(u8, page.name, pageName)) {
+                const uri = std.fmt.allocPrint(self.allocator, "http://localhost:6797/{s}", .{page.path}) catch unreachable;
+                return self.openS(uri, pageName);
+            }
+        }
+        return error.PageNotFound;
+    }
+    fn openS(self: *App, uri: []const u8, name: []const u8) *Webview {
+        const webview = Webview.init(self.allocator, self.modules, name) catch unreachable;
         webview.impl.loadUri(uri);
         self.webviews.append(webview) catch unreachable;
         const cssProvider = gtk.CssProvider.new();
@@ -319,7 +385,7 @@ pub const App = struct {
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell
-pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
+pub fn getConfigDir(allocator: Allocator) ![]const u8 {
     var baseConfigDir: []const u8 = undefined;
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();

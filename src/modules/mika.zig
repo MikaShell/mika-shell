@@ -7,8 +7,8 @@ pub const Mika = struct {
     const Self = @This();
 
     pub fn open(self: *Self, args: modules.Args, result: *modules.Result) !void {
-        const uri = try args.string(1);
-        const webview = self.app.open(uri);
+        const pageName = try args.string(1);
+        const webview = try self.app.open(pageName);
         const id = webview.impl.getPageId();
         try result.commit(id);
     }

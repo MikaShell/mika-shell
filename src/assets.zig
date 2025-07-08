@@ -107,7 +107,7 @@ fn fileServer(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
     const f = std.fs.openFileAbsolute(filePath, .{ .mode = .read_only }) catch |err| switch (err) {
         fs.File.OpenError.IsDir, fs.File.OpenError.FileNotFound => {
             res.status = 404;
-            res.body = "Not Found";
+            res.body = @embedFile("404.html");
             return;
         },
         else => return err,

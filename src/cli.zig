@@ -1,7 +1,8 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const assets = @import("assets.zig");
-const app = @import("app.zig");
+const App = @import("app.zig").App;
+const getConfigDir = @import("app.zig").getConfigDir;
 const ipc = @import("ipc.zig");
 const cli = @import("zig-cli");
 var config = struct {
@@ -9,7 +10,7 @@ var config = struct {
         config_dir: []const u8 = undefined,
     } = undefined,
     open: struct {
-        uri: []const u8 = undefined,
+        pageName: []const u8 = undefined,
     } = undefined,
     show: struct {
         id: u64 = undefined,
@@ -45,7 +46,7 @@ fn cmdOpen(r: *cli.AppRunner) !cli.Command {
     return cli.Command{
         .name = "open",
         .description = .{
-            .one_line = "open a webview with a URI",
+            .one_line = "Open a webview with the page name",
         },
         .target = .{
             .action = .{
@@ -53,9 +54,9 @@ fn cmdOpen(r: *cli.AppRunner) !cli.Command {
                 .positional_args = cli.PositionalArgs{
                     .required = try r.allocPositionalArgs(&.{
                         .{
-                            .name = "URI",
-                            .help = "URI to open",
-                            .value_ref = r.mkRef(&config.open.uri),
+                            .name = "page",
+                            .help = "page name to open, defined in `mika-shell.json`, use `mika-shell pages` to list all pages",
+                            .value_ref = r.mkRef(&config.open.pageName),
                         },
                     }),
                 },
@@ -70,6 +71,24 @@ fn cmdList(_: *cli.AppRunner) !cli.Command {
             .one_line = "list all open webviews",
         },
         .target = .{ .action = .{ .exec = list } },
+    };
+}
+fn cmdPages(_: *cli.AppRunner) !cli.Command {
+    return cli.Command{
+        .name = "pages",
+        .description = .{
+            .one_line = "list all pages can be opened",
+        },
+        .target = .{ .action = .{ .exec = pages } },
+    };
+}
+fn cmdAbout(_: *cli.AppRunner) !cli.Command {
+    return cli.Command{
+        .name = "about",
+        .description = .{
+            .one_line = "display details of the current configuration",
+        },
+        .target = .{ .action = .{ .exec = about } },
     };
 }
 fn cmdShow(r: *cli.AppRunner) !cli.Command {
@@ -150,7 +169,7 @@ pub fn run() !void {
     const allocator = gpa.allocator();
     var rr = try cli.AppRunner.init(allocator);
     const r = &rr;
-    defer allocator.free(config.open.uri);
+    defer allocator.free(config.open.pageName);
     const cliApp = cli.App{
         .command = .{
             .name = "mika-shell",
@@ -162,6 +181,8 @@ pub fn run() !void {
                     try cmdShow(r),
                     try cmdHide(r),
                     try cmdClose(r),
+                    try cmdPages(r),
+                    try cmdAbout(r),
                 }),
             },
         },
@@ -175,28 +196,29 @@ pub fn daemon() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    const app_ = app.App.init(allocator);
-    defer app_.deinit();
-    _ = app_.open("http://localhost:6797/");
+
     // TODO: 完善报错信息
-    const baseConfigDir = blk: {
+    const configDir = blk: {
         if (config.daemon.config_dir.len > 0) {
             break :blk try std.fs.realpathAlloc(allocator, config.daemon.config_dir);
         } else {
-            break :blk try app.getConfigDir(allocator);
+            break :blk try getConfigDir(allocator);
         }
     };
-    defer allocator.free(baseConfigDir);
-    std.log.debug("ConfigDir: {s}", .{baseConfigDir});
-    var assetsserver = try assets.Server.init(allocator, baseConfigDir);
+    defer allocator.free(configDir);
+    std.log.debug("ConfigDir: {s}", .{configDir});
+
+    var assetsserver = try assets.Server.init(allocator, configDir);
     defer {
         assetsserver.stop();
         assetsserver.deinit();
     }
-
     _ = try assetsserver.start();
 
-    const ipcServer = try ipc.Server.init(allocator, app_);
+    const app = try App.init(allocator, configDir);
+    defer app.deinit();
+
+    const ipcServer = try ipc.Server.init(allocator, app);
     defer ipcServer.deinit();
     try ipcServer.listen();
 
@@ -209,12 +231,22 @@ const glib = @import("glib");
 fn open() !void {
     try ipc.request(.{
         .type = "open",
-        .uri = config.open.uri,
+        .pageName = config.open.pageName,
     });
 }
 fn list() !void {
     try ipc.request(.{
         .type = "list",
+    });
+}
+fn pages() !void {
+    try ipc.request(.{
+        .type = "pages",
+    });
+}
+fn about() !void {
+    try ipc.request(.{
+        .type = "about",
     });
 }
 fn show() !void {

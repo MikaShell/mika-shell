@@ -5,9 +5,9 @@ const glib = @import("glib");
 pub const Server = struct {
     allocator: std.mem.Allocator,
     s: std.net.Server,
-    app: *app_.App,
+    app: *App,
     watcher: glib.FdWatch(Server),
-    pub fn init(allocator: std.mem.Allocator, app: *app_.App) !*Server {
+    pub fn init(allocator: std.mem.Allocator, app: *App) !*Server {
         const self = try allocator.create(Server);
         self.* = .{
             .allocator = allocator,
@@ -52,28 +52,35 @@ pub const Server = struct {
         }.f, self);
     }
 };
-fn isType(a: []const u8, b: []const u8) bool {
+fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
 pub const Request = struct {
     type: []const u8,
-    uri: ?[]const u8 = null,
+    pageName: ?[]const u8 = null,
     id: ?u64 = null,
     force: ?bool = null,
 };
 
 const app_ = @import("app.zig");
-fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
+const App = app_.App;
+fn handle(app: *App, r: Request, s: std.net.Stream) !void {
     std.log.debug("IPC: Received request: {s}", .{r.type});
-    if (isType(r.type, "open")) {
-        _ = app.open(r.uri.?);
-    }
     const out = s.writer();
-    if (isType(r.type, "list")) {
+    if (eql(r.type, "open")) {
+        _ = app.open(r.pageName.?) catch |err| switch (err) {
+            error.PageNotFound => {
+                try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
+            },
+            else => return err,
+        };
+    }
+    if (eql(r.type, "list")) {
         var isFirstLine = true;
         for (app.webviews.items) |w| {
-            const title = w.impl.getTitle();
+            const name = w.name;
+            const title = w.impl.getTitle() orelse "*unknown*";
             const id = w.impl.getPageId();
             const uri = w.impl.getUri();
             const visible = w.container.asWidget().getVisible();
@@ -88,12 +95,40 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
             isFirstLine = false;
             try out.print("id: {d}\n", .{id});
             try out.print("    uri: {s}\n", .{uri});
+            try out.print("    name: {s}\n", .{name});
             try out.print("    type: {s}\n", .{t});
             try out.print("    title: {s}\n", .{title});
             try out.print("    visible: {}\n", .{visible});
         }
     }
-    if (isType(r.type, "show")) {
+    if (eql(r.type, "pages")) {
+        for (app.config.pages) |page| {
+            try out.print("{s}\n", .{page.name});
+            if (page.description) |desc| {
+                try out.print("    {s}\n", .{desc});
+            }
+        }
+    }
+    if (eql(r.type, "about")) {
+        const cfg = app.config;
+        try out.print("Name: {s}\n", .{cfg.name});
+        if (cfg.description) |desc| {
+            try out.print("Description: {s}\n", .{desc});
+        }
+        try out.print("Pages:\n", .{});
+        const hasInit = cfg.init != null;
+        for (cfg.pages) |page| {
+            if (hasInit and eql(page.name, cfg.init.?)) {
+                try out.print("    {s} (*init)\n", .{page.name});
+            } else {
+                try out.print("    {s}\n", .{page.name});
+            }
+            if (page.description) |desc| {
+                try out.print("        {s}\n", .{desc});
+            }
+        }
+    }
+    if (eql(r.type, "show")) {
         const webview = app.getWebview(r.id.?);
         if (webview) |w| {
             switch (w.type) {
@@ -113,7 +148,7 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
         }
     }
-    if (isType(r.type, "hide")) {
+    if (eql(r.type, "hide")) {
         app.hide(r.id.?) catch |err| {
             if (err == app_.Error.WebviewNotExists) {
                 try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
@@ -122,7 +157,7 @@ fn handle(app: *app_.App, r: Request, s: std.net.Stream) !void {
             }
         };
     }
-    if (isType(r.type, "close")) {
+    if (eql(r.type, "close")) {
         app.close(r.id.?) catch |err| {
             if (err == app_.Error.WebviewNotExists) {
                 try out.print("Can`t find webview with id: {d}\n", .{r.id.?});

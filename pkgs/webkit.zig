@@ -74,8 +74,10 @@ pub const WebView = extern struct {
     pub const getUserContentManager = webkit_web_view_get_user_content_manager;
     pub const getNetworkSession = webkit_web_view_get_network_session;
     pub const getPageId = webkit_web_view_get_page_id;
-    pub fn getTitle(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_web_view_get_title(self), 0);
+    pub fn getTitle(self: *Self) ?[]const u8 {
+        const title = webkit_web_view_get_title(self);
+        if (title == null) return null;
+        return std.mem.sliceTo(title, 0);
     }
     pub fn getUri(self: *Self) []const u8 {
         return std.mem.sliceTo(webkit_web_view_get_uri(self), 0);

@@ -1,6 +1,6 @@
 import call from "./call";
-export function open(url: string): Promise<void> {
-    return call("open", url);
+export function open(name: string): Promise<void> {
+    return call("open", name);
 }
 export interface WebviewInfo {
     id: number;
