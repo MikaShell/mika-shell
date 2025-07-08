@@ -1,6 +1,7 @@
 import call from "./call";
 export type Options = {
     title: string;
+    class: string;
     resizable: boolean;
     backgroundTransparent: boolean;
     hidden: boolean;
@@ -8,7 +9,8 @@ export type Options = {
 
 export function init(options: Partial<Options> = {}): Promise<void> {
     const opt: any = {
-        title: options.title ?? "AikaShell Window",
+        title: options.title ?? "MikaShell Window",
+        class: options.class ?? "mika-shell",
         resizable: options.resizable ?? true,
         backgroundTransparent: options.backgroundTransparent ?? false,
         hidden: options.hidden ?? false,

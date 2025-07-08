@@ -1,5 +1,6 @@
 const c = @cImport({
     @cInclude("gtk/gtk.h");
+    @cInclude("gdk/wayland/gdkwayland.h");
 });
 const std = @import("std");
 extern fn gtk_init() void;
@@ -24,6 +25,7 @@ pub const Widget = extern struct {
         destroy,
         hide,
         show,
+        map,
     };
     extern fn gtk_widget_show(widget: *Widget) void;
     extern fn gtk_widget_hide(widget: *Widget) void;
@@ -58,13 +60,11 @@ pub const Widget = extern struct {
         callback: *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) void,
         data: ?*anyopaque,
     ) void {
-        const s = switch (signal) {
-            .destroy => "destroy",
-            .hide => "hide",
-            .show => "show",
-        };
-        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
+        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(@tagName(signal)), @ptrCast(callback), data, null, 0);
     }
+    // pub fn disconnect(self: *Self, id: c_ulong) void {
+    //     c.g_signal_handler_disconnect(@ptrCast(self), id);
+    // }
 };
 pub const CssProvider = extern struct {
     const Self = @This();
@@ -102,6 +102,13 @@ pub const Window = extern struct {
     }
     pub fn asWidget(self: *Self) *Widget {
         return @ptrCast(self);
+    }
+    pub fn setClass(self: *Self, name: []const u8) void {
+        const surface = c.gtk_native_get_surface(@ptrCast(self));
+        if (surface == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        c.gdk_wayland_toplevel_set_application_id(c.GDK_TOPLEVEL(surface), name.ptr);
     }
     pub fn present(self: *Self) void {
         gtk_window_present(self);

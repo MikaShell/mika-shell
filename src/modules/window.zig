@@ -1,5 +1,6 @@
 const Options = struct {
     title: []const u8,
+    class: []const u8,
     resizable: bool,
     hidden: bool,
     backgroundTransparent: bool,
@@ -12,9 +13,10 @@ const Webview = @import("../app.zig").Webview;
 const events = @import("../events.zig");
 const Args = @import("modules.zig").Args;
 const Result = @import("modules.zig").Result;
+const gtk = @import("gtk");
 pub const Window = struct {
-    app: *App,
     const Self = @This();
+    app: *App,
     fn getWindow(self: *Self, args: Args) !*Webview {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
@@ -30,11 +32,26 @@ pub const Window = struct {
             // 已经被初始化为 Layer, 无法再次初始化为 Window
             return error.WebviewIsAlreadyAWindow;
         }
-        w.type = .Window;
         const allocator = std.heap.page_allocator;
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
+        const ownerClass = try std.heap.page_allocator.dupeZ(u8, opt.class);
+        if (w.type == .None) {
+            // 这个回调只会执行一次
+            w.container.asWidget().connect(.map, struct {
+                fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                    const class: [*:0]const u8 = @ptrCast(data);
+                    const class_ = std.mem.sliceTo(class, 0);
+                    defer std.heap.page_allocator.free(class_);
+                    widget.as(gtk.Window).setClass(class_);
+                }
+            }.f, @ptrCast(ownerClass.ptr));
+        }
+        if (w.type == .Window) {
+            w.container.setClass(opt.class);
+        }
+        w.type = .Window;
         w.container.setTitle(opt.title);
         w.container.setResizable(opt.resizable);
         if (opt.backgroundTransparent) {

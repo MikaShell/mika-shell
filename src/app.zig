@@ -175,7 +175,7 @@ pub const Config = struct {
     name: []const u8,
     description: ?[]const u8 = null,
     pages: []Page = &.{},
-    init: ?[]const u8 = null,
+    startup: [][]const u8 = &.{},
     pub fn load(allocator: Allocator, configDir: []const u8) !Config {
         const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
         const file = try std.fs.openFileAbsolute(config_path, .{});
@@ -196,7 +196,12 @@ pub const Config = struct {
                 .description = if (page_.description) |desc| try allocator.dupe(u8, desc) else null,
             };
         }
-        cfg.init = if (cfgJson.value.init) |init| try allocator.dupe(u8, init) else null;
+
+        cfg.startup = try allocator.alloc([]const u8, cfgJson.value.startup.len);
+        for (cfg.startup, 0..) |*p, i| {
+            const s = cfgJson.value.startup[i];
+            p.* = try allocator.dupe(u8, s);
+        }
         return cfg;
     }
     pub fn deinit(self: Config, allocator: Allocator) void {
@@ -207,7 +212,8 @@ pub const Config = struct {
         }
         allocator.free(self.pages);
         if (self.description) |desc| allocator.free(desc);
-        if (self.init) |init| allocator.free(init);
+        for (self.startup) |p| allocator.free(p);
+        allocator.free(self.startup);
         allocator.free(self.name);
     }
 };
@@ -305,14 +311,14 @@ pub const App = struct {
         modules.register(icon, "icon.lookup", Icon.lookup);
 
         modules.register(os, "os.getEnv", OS.getEnv);
-        modules.register(os, "os.getInfo", OS.getInfo);
+        modules.register(os, "os.getSystemInfo", OS.getSystemInfo);
+        modules.register(os, "os.getUserInfo", OS.getUserInfo);
         modules.register(os, "os.exec", OS.exec);
-        modules.register(os, "os.execWithOutput", OS.execWithOutput);
 
         modules.register(apps, "apps.list", Apps.list);
         modules.register(apps, "apps.activate", Apps.activate);
 
-        if (app.config.init) |startup| {
+        for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
         return app;
@@ -342,7 +348,7 @@ pub const App = struct {
     pub fn open(self: *App, pageName: []const u8) !*Webview {
         for (self.config.pages) |page| {
             if (std.mem.eql(u8, page.name, pageName)) {
-                const uri = std.fmt.allocPrint(self.allocator, "http://localhost:6797/{s}", .{page.path}) catch unreachable;
+                const uri = std.fs.path.join(self.allocator, &.{ "http://localhost:6797", page.path }) catch unreachable;
                 return self.openS(uri, pageName);
             }
         }

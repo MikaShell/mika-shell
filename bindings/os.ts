@@ -2,7 +2,7 @@ import call from "./call";
 export function getEnv(key: string): Promise<string> {
     return call("os.getEnv", key);
 }
-export interface Info {
+export interface SystemInfo {
     name: string;
     version: string;
     prettyName: string;
@@ -13,12 +13,24 @@ export interface Info {
     cpu: string;
     hostname: string;
 }
-export function getInfo(): Promise<Info> {
-    return call("os.getInfo");
+
+export interface UserInfo {
+    name: string;
+    home: string;
+    shell: string;
+    gecos: string;
+    uid: number;
+    gid: number;
+    avatar: string | null;
 }
-export function exec(...argv: string[]): Promise<void> {
-    return call("os.exec", argv);
+export function getSystemInfo(): Promise<SystemInfo> {
+    return call("os.getSystemInfo");
 }
-export function execWithOutput(...argv: string[]): Promise<string> {
-    return call("os.execWithOutput", argv);
+export function getUserInfo(): Promise<UserInfo> {
+    return call("os.getUserInfo");
+}
+export function exec(argv: string[], needOutput: true): Promise<string>;
+export function exec(argv: string[], needOutput?: false): Promise<void>;
+export function exec(argv: string[], needOutput: boolean = false): Promise<string | void> {
+    return call("os.exec", argv, needOutput);
 }

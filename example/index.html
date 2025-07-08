@@ -69,6 +69,11 @@
                 flex-direction: column;
                 gap: 8px;
             }
+            #avatar {
+                width: 64px;
+                height: 64px;
+                border-radius: 50%;
+            }
         </style>
         <script type="module">
             const mika = window.mikaShell.mika;
@@ -107,13 +112,20 @@
             });
         </script>
         <script>
-            const mikaSHell = window.mikaShell;
-            mikaSHell.os.execWithOutput("date").then((date) => console.log(date));
-            mikaShell.os.getInfo().then((info) => {
+            const mikaShell = window.mikaShell;
+            mikaShell.os.exec(["date"], true).then((date) => console.log(date));
+            mikaShell.os.getSystemInfo().then((info) => {
                 console.log("OS Info:", info);
-                mikaShell.icon.lookup(info.logo, 128).then((src) => {
-                    document.getElementById("os-logo").src = src;
+                mikaShell.os.getUserInfo().then((user) => {
+                    if (user.avatar !== null) {
+                        document.getElementById("avatar").src = user.avatar;
+                    } else {
+                        mikaShell.icon.lookup(info.logo, 128).then((src) => {
+                            document.getElementById("os-logo").src = src;
+                        });
+                    }
                 });
+
                 document.getElementById("os-hostname-prettyname").textContent =
                     info.hostname + " - " + info.prettyName;
                 document.getElementById("os-kernel-uptime").textContent =
@@ -167,7 +179,7 @@
         <h1>Welcome</h1>
         <p>This is a test website for MikaShell.</p>
         <div id="os-info">
-            <img id="os-logo" alt="Logo" />
+            <img id="avatar" alt="Avatar" />
             <div class="os-info-content">
                 <span id="os-hostname-prettyname"></span>
                 <span id="os-kernel-uptime"></span>

@@ -83,6 +83,7 @@ pub fn build(b: *std.Build) void {
 
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+    exe_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
     const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
     const zigcli = b.dependency("zig-cli", .{ .target = target, .optimize = optimize });

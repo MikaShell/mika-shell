@@ -116,10 +116,16 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
             try out.print("Description: {s}\n", .{desc});
         }
         try out.print("Pages:\n", .{});
-        const hasInit = cfg.init != null;
         for (cfg.pages) |page| {
-            if (hasInit and eql(page.name, cfg.init.?)) {
-                try out.print("    {s} (*init)\n", .{page.name});
+            var isStartup = false;
+            for (cfg.startup) |su| {
+                if (eql(su, page.name)) {
+                    isStartup = true;
+                    break;
+                }
+            }
+            if (isStartup) {
+                try out.print("    {s} (*startup*)\n", .{page.name});
             } else {
                 try out.print("    {s}\n", .{page.name});
             }
