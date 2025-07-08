@@ -36,6 +36,10 @@
             mika.on("close", (id) => console.log("Close Event Received, id:", id));
             mika.on("show", (id) => console.log("Show Event Received, id:", id));
             mika.on("hide", (id) => console.log("Hide Event Received, id:", id));
+
+            window.mikaShell.monitor.list().then((ms) => {
+                console.log("Monitors:", ms);
+            });
         </script>
         <script>
             const layerInit = () => {
@@ -100,6 +104,7 @@
             <button onclick="window.mikaShell.mika.open('tray')">Tray</button>
             <button onclick="window.mikaShell.mika.open('hyprland')">Hyprland</button>
             <button onclick="window.mikaShell.mika.open('apps')">Apps</button>
+            <button onclick="window.mikaShell.mika.open('404')">404</button>
         </div>
     </body>
 </html>

@@ -163,6 +163,7 @@ const Tray = @import("modules/tray.zig").Tray;
 const Icon = @import("modules/icon.zig").Icon;
 const OS = @import("modules/os.zig").OS;
 const Apps = @import("modules/apps.zig").Apps;
+const Monitor = @import("modules/monitor.zig").Monitor;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -231,6 +232,7 @@ pub const App = struct {
     icon: *Icon,
     os: *OS,
     apps: *Apps,
+    monitor: *Monitor,
     pub fn init(allocator: Allocator, configDir: []const u8) !*App {
         const app = try allocator.create(App);
         app.config = try Config.load(allocator, configDir);
@@ -250,6 +252,7 @@ pub const App = struct {
         const icon = try allocator.create(Icon);
         const os = try allocator.create(OS);
         const apps = try allocator.create(Apps);
+        const monitor = try allocator.create(Monitor);
 
         mika.* = Mika{ .app = app };
         window.* = Window{ .app = app };
@@ -257,6 +260,7 @@ pub const App = struct {
         icon.* = Icon{};
         os.* = OS{ .allocator = allocator };
         apps.* = Apps{ .allocator = allocator };
+        monitor.* = Monitor{ .allocator = allocator };
 
         const tray = try Tray.init(allocator, app, bus);
 
@@ -267,6 +271,7 @@ pub const App = struct {
         app.icon = icon;
         app.os = os;
         app.apps = apps;
+        app.monitor = monitor;
 
         const modules = app.modules;
 
@@ -321,6 +326,8 @@ pub const App = struct {
         modules.register(apps, "apps.list", Apps.list);
         modules.register(apps, "apps.activate", Apps.activate);
 
+        modules.register(monitor, "monitor.list", Monitor.list);
+
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
@@ -346,6 +353,7 @@ pub const App = struct {
         self.allocator.destroy(self.icon);
         self.allocator.destroy(self.os);
         self.allocator.destroy(self.apps);
+        self.allocator.destroy(self.monitor);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {

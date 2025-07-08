@@ -1,5 +1,6 @@
 const layershell = @import("layershell");
 const Options = struct {
+    monitor: i32,
     anchor: []layershell.Edge,
     layer: layershell.Layers,
     keyboardMode: layershell.KeyboardMode,
@@ -41,15 +42,19 @@ pub const Layer = struct {
     pub fn init(self: *Self, args: Args, _: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
-        if (w.type == .Window) {
-            // 已经被初始化为 Window, 无法再次初始化为 Layer
-            return error.WebviewIsAlreadyAWindow;
-        }
+
         const allocator = std.heap.page_allocator;
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
+        if (w.type == .Window) {
+            // 已经被初始化为 Window, 无法再次初始化为 Layer
+            return error.WebviewIsAlreadyAWindow;
+        }
         const layer = layershell.Layer.init(w.container);
+        if (w.type == .None) {
+            _ = layer.setMonitor(opt.monitor) catch {};
+        }
         w.type = .Layer;
         layer.resetAnchor();
         for (opt.anchor) |a| {

@@ -136,3 +136,49 @@ pub const Window = extern struct {
         _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
     }
 };
+pub const Monitor = struct {
+    scale: f64,
+    width: i32,
+    height: i32,
+    widthMm: i32,
+    heightMm: i32,
+    connector: []const u8,
+    description: []const u8,
+    model: []const u8,
+    refreshRate: f64,
+    pub fn get(allocator: std.mem.Allocator) ![]Monitor {
+        const list = c.gdk_display_get_monitors(c.gdk_display_get_default());
+        const len = c.g_list_model_get_n_items(list);
+        var result = try allocator.alloc(Monitor, len);
+        for (0..len) |i| {
+            const monitor: *c.GdkMonitor = @ptrCast(c.g_list_model_get_item(list, @intCast(i)));
+            var rect: c.GdkRectangle = undefined;
+            c.gdk_monitor_get_geometry(monitor, &rect);
+            const scale = c.gdk_monitor_get_scale(monitor);
+            const connector = c.gdk_monitor_get_connector(monitor);
+            const desc = c.gdk_monitor_get_description(monitor);
+            const width_mm = c.gdk_monitor_get_height_mm(monitor);
+            const height_mm = c.gdk_monitor_get_width_mm(monitor);
+            const model = c.gdk_monitor_get_model(monitor);
+            const refresh_rate = c.gdk_monitor_get_refresh_rate(monitor);
+
+            result[i] = Monitor{
+                .scale = scale,
+                .width = @intCast(rect.width),
+                .height = @intCast(rect.height),
+                .widthMm = @intCast(width_mm),
+                .heightMm = @intCast(height_mm),
+                .connector = try allocator.dupe(u8, std.mem.span(connector)),
+                .description = try allocator.dupe(u8, std.mem.span(desc)),
+                .model = try allocator.dupe(u8, std.mem.span(model)),
+                .refreshRate = @as(f64, @floatFromInt(refresh_rate)) / 1000.0,
+            };
+        }
+        return result;
+    }
+    pub fn deinit(self: Monitor, allocator: std.mem.Allocator) void {
+        allocator.free(self.connector);
+        allocator.free(self.description);
+        allocator.free(self.model);
+    }
+};

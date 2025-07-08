@@ -22,6 +22,7 @@ const KeyboardModeToNumber = {
 export type Options = {
     anchor: Array<Edge>;
     layer: number;
+    monitor: number;
     keyboardMode: number;
     namespace: string;
     margin: [number, number, number, number];
@@ -35,6 +36,7 @@ export function init(options: Partial<Options> = {}): Promise<void> {
     const opt: any = {
         anchor: options.anchor?.map((e) => EdgeToNumber[e]) ?? [],
         layer: options.layer !== undefined ? LayersToNumber[options.layer] : 0,
+        monitor: options.monitor !== undefined ? options.monitor : 0,
         keyboardMode:
             options.keyboardMode !== undefined ? KeyboardModeToNumber[options.keyboardMode] : 0,
         namespace: options.namespace ?? "mika-shell",

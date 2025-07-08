@@ -19,9 +19,10 @@ pub const KeyboardMode = enum(c_int) {
     Exclusive,
     OnDemand,
 };
-
-// void gtk_layer_set_monitor(GtkWindow* window, GdkMonitor* monitor);
-// GdkMonitor* gtk_layer_get_monitor(GtkWindow* window);
+const c = @cImport({
+    @cInclude("gtk/gtk.h");
+});
+extern fn gtk_layer_set_monitor(window: *gtk.Window, monitor: *c.GdkMonitor) void;
 extern fn gtk_layer_init_for_window(window: *gtk.Window) void;
 extern fn gtk_layer_is_layer_window(window: *gtk.Window) c_int;
 extern fn gtk_layer_set_namespace(window: *gtk.Window, name_space: [*c]const u8) void;
@@ -54,6 +55,15 @@ pub const Layer = struct {
     }
     pub fn isLayer(self: Layer) bool {
         return gtk_layer_is_layer_window(self.window) == 1;
+    }
+    pub fn setMonitor(self: Layer, index: i32) !void {
+        const list = c.gdk_display_get_monitors(c.gdk_display_get_default());
+        const len = c.g_list_model_get_n_items(list);
+        if (index < 0 or index >= len) {
+            return error.CanNotFindMonitor;
+        }
+        const monitor = c.g_list_model_get_item(list, @intCast(index));
+        gtk_layer_set_monitor(self.window, @ptrCast(monitor));
     }
     pub fn setNamespace(self: Layer, namespace: []const u8) void {
         gtk_layer_set_namespace(self.window, namespace.ptr);
