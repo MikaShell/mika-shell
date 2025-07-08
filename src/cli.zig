@@ -18,9 +18,11 @@ var config = struct {
     } = undefined,
     hide: struct {
         id: u64 = undefined,
+        force: bool = false,
     } = undefined,
     close: struct {
         id: u64 = undefined,
+        force: bool = false,
     } = undefined,
 }{};
 fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
@@ -125,6 +127,12 @@ fn cmdHide(r: *cli.AppRunner) !cli.Command {
         .description = .{
             .one_line = "hide the webview",
         },
+        .options = try r.allocOptions(&.{.{
+            .long_name = "force",
+            .short_alias = 'f',
+            .help = "force hide the webview",
+            .value_ref = r.mkRef(&config.show.force),
+        }}),
         .target = .{
             .action = .{
                 .exec = hide,
@@ -147,6 +155,12 @@ fn cmdClose(r: *cli.AppRunner) !cli.Command {
         .description = .{
             .one_line = "close the webview",
         },
+        .options = try r.allocOptions(&.{.{
+            .long_name = "force",
+            .short_alias = 'f',
+            .help = "force close the webview",
+            .value_ref = r.mkRef(&config.close.force),
+        }}),
         .target = .{
             .action = .{
                 .exec = close,
@@ -260,11 +274,13 @@ fn hide() !void {
     try ipc.request(.{
         .type = "hide",
         .id = config.hide.id,
+        .force = config.hide.force,
     });
 }
 fn close() !void {
     try ipc.request(.{
         .type = "close",
         .id = config.close.id,
+        .force = config.close.force,
     });
 }

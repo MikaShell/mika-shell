@@ -60,23 +60,23 @@ pub const Tray = struct {
         const app = self.app;
         var event: []const u8 = undefined;
         switch (state) {
-            .added => event = Events.Added,
-            .removed => event = Events.Removed,
-            .changed => event = Events.Changed,
+            .added => event = Events.added,
+            .removed => event = Events.removed,
+            .changed => event = Events.changed,
         }
         var i: usize = self.subscriber.items.len;
         while (i > 0) {
             i -= 1;
             const id = self.subscriber.items[i];
-            if (app.getWebview(id)) |webview| {
-                webview.emitEvent(event, service);
-            } else {
+            const webview = app.getWebview(id) catch {
                 _ = self.subscriber.swapRemove(i);
-            }
+                continue;
+            };
+            webview.emitEvent(event, service);
         }
     }
     pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(0);
+        const id = args.uInteger(0) catch unreachable;
         blk: {
             for (self.subscriber.items) |id_| {
                 if (id == id_) {
@@ -86,14 +86,14 @@ pub const Tray = struct {
             try self.subscriber.append(id);
         }
         try self.setup();
-        const webview = self.app.getWebview(id).?;
+        const webview = self.app.getWebview(id) catch unreachable;
         const host = self.host.?;
         for (host.items.items) |item| {
-            webview.emitEvent(Events.Added, item.data.service);
+            webview.emitEvent(Events.added, item.data.service);
         }
     }
     pub fn unsubscribe(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(0);
+        const id = args.uInteger(0) catch unreachable;
         for (self.subscriber.items, 0..) |id_, i| {
             if (id == id_) {
                 _ = self.subscriber.swapRemove(i);

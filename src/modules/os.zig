@@ -27,6 +27,9 @@ pub const OS = struct {
             argv[i] = item.string;
         }
         var child = std.process.Child.init(argv, allocator);
+        child.stderr_behavior = .Ignore;
+        child.stdin_behavior = .Ignore;
+        child.stdout_behavior = .Ignore;
         try child.spawn();
         try child.waitForSpawn();
     }
@@ -40,6 +43,8 @@ pub const OS = struct {
         }
         var child = std.process.Child.init(argv, allocator);
         child.stdout_behavior = .Pipe;
+        child.stderr_behavior = .Ignore;
+        child.stdin_behavior = .Ignore;
         defer child.stdout.?.close();
         try child.spawn();
         try child.waitForSpawn();

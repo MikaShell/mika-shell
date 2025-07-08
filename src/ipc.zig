@@ -129,42 +129,45 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "show")) {
-        const webview = app.getWebview(r.id.?);
-        if (webview) |w| {
-            switch (w.type) {
-                .None => {
-                    if (r.force.?) {
-                        try app.show(r.id.?);
-                    } else {
-                        try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
-                        try out.print("If you want to show this webview, please use `force` option.\n", .{});
-                    }
-                },
-                else => {
-                    try app.show(r.id.?);
-                },
-            }
-        } else {
+        const w = app.getWebview(r.id.?) catch {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
+            return;
+        };
+        switch (w.type) {
+            .None => {
+                if (r.force.?) {
+                    w.forceShow();
+                } else {
+                    try out.print("Can`t show this webview, This webview well not initialized yet.\n", .{});
+                    try out.print("If you want to show this webview, please use `force` option.\n", .{});
+                }
+            },
+            else => {
+                w.show();
+            },
         }
     }
     if (eql(r.type, "hide")) {
-        app.hide(r.id.?) catch |err| {
-            if (err == app_.Error.WebviewNotExists) {
-                try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
-            } else {
-                return err;
-            }
+        const w = app.getWebview(r.id.?) catch {
+            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
+            return;
         };
+        if (r.force.?) {
+            w.forceHide();
+        } else {
+            w.hide();
+        }
     }
     if (eql(r.type, "close")) {
-        app.close(r.id.?) catch |err| {
-            if (err == app_.Error.WebviewNotExists) {
-                try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
-            } else {
-                return err;
-            }
+        const w = app.getWebview(r.id.?) catch {
+            try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
+            return;
         };
+        if (r.force.?) {
+            w.forceClose();
+        } else {
+            w.close();
+        }
     }
 }
 pub fn request(req: Request) !void {

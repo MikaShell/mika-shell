@@ -53,6 +53,9 @@ export function show(): Promise<void> {
 export function hide(): Promise<void> {
     return call("layer.hide");
 }
+export function close(): Promise<void> {
+    return call("layer.close");
+}
 export function resetAnchor(): Promise<void> {
     return call("layer.resetAnchor");
 }
@@ -76,4 +79,42 @@ export function setExclusiveZone(zone: number): Promise<void> {
 }
 export function autoExclusiveZoneEnable(): Promise<void> {
     return call("layer.autoExclusiveZoneEnable");
+}
+
+import * as events from "./events";
+
+type Events = {
+    close: () => boolean | Promise<boolean>;
+    hide: () => boolean | Promise<boolean>;
+    show: () => boolean | Promise<boolean>;
+};
+async function addListener<K extends keyof Events>(
+    event: K,
+    callback: Events[K],
+    once: boolean = false
+) {
+    if (event === "close" || event === "hide" || event === "show") {
+        events.addTryableListener(await call("window.getId"), event, callback, once);
+    } else {
+        events.addEventListener(event, callback, once);
+    }
+}
+
+async function removeListener<K extends keyof Events>(event: K, callback: Events[K]) {
+    if (event === "close" || event === "hide" || event === "show") {
+        events.removeTryableListener(await call("window.getId"), event, callback);
+    } else {
+        events.removeEventListener(event, callback);
+    }
+}
+
+export function on<K extends keyof Events>(event: K, callback: Events[K]) {
+    return addListener(event, callback);
+}
+export function off<K extends keyof Events>(event: K, callback: Events[K]) {
+    return removeListener(event, callback);
+}
+
+export function once<K extends keyof Events>(event: K, callback: Events[K]) {
+    return addListener(event, callback, true);
 }

@@ -14,22 +14,33 @@ const Options = struct {
 const std = @import("std");
 const webkit = @import("webkit");
 const modules = @import("modules.zig");
+const Webview = @import("../app.zig").Webview;
 const App = @import("../app.zig").App;
+const Args = @import("modules.zig").Args;
+const Result = @import("modules.zig").Result;
 pub const Layer = struct {
     app: *App,
     const Self = @This();
-    fn getLayer(self: *Self, args: modules.Args) !layershell.Layer {
-        const id = try args.uInteger(0);
-        const w = self.app.getWebview(id).?;
+    fn getWebview(self: *Self, args: Args) !*Webview {
+        const id = args.uInteger(0) catch unreachable;
+        const w = self.app.getWebview(id) catch unreachable;
+        if (w.type != .Layer) {
+            return error.WebviewIsNotALayer;
+        }
+        return w;
+    }
+    fn getLayer(self: *Self, args: Args) !layershell.Layer {
+        const id = args.uInteger(0) catch unreachable;
+        const w = self.app.getWebview(id) catch unreachable;
         if (w.type != .Layer) {
             return error.WebviewIsNotALayer;
         }
         const layer = layershell.Layer.init(w.container);
         return layer;
     }
-    pub fn init(self: *Self, args: modules.Args, _: *modules.Result) !void {
-        const id = try args.uInteger(0);
-        const w = self.app.getWebview(id).?;
+    pub fn init(self: *Self, args: Args, _: *Result) !void {
+        const id = args.uInteger(0) catch unreachable;
+        const w = self.app.getWebview(id) catch unreachable;
         if (w.type == .Window) {
             // 已经被初始化为 Window, 无法再次初始化为 Layer
             return error.WebviewIsAlreadyAWindow;
@@ -62,55 +73,64 @@ pub const Layer = struct {
             w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
         }
         if (!opt.hidden) {
-            // 使用 w._webview_container.present(); 会导致窗口大小异常
             w.container.asWidget().show();
         }
     }
-    pub fn show(self: *Self, args: modules.Args, _: *modules.Result) !void {
-        const layer = try self.getLayer(args);
-        layer.window.present();
+    pub fn getId(_: *Self, args: Args, result: *Result) !void {
+        const id = args.uInteger(0) catch unreachable;
+        try result.commit(id);
     }
-    pub fn hide(self: *Self, args: modules.Args, _: *modules.Result) !void {
-        const layer = try self.getLayer(args);
-        layer.window.asWidget().hide();
+    pub fn show(self: *Self, args: Args, _: *Result) !void {
+        const w = self.getWebview(args) catch unreachable;
+        if (w.container.asWidget().getVisible()) return error.LayerIsAlreadyVisible;
+        w.show();
     }
-    pub fn resetAnchor(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn hide(self: *Self, args: Args, _: *Result) !void {
+        const w = self.getWebview(args) catch unreachable;
+        if (!w.container.asWidget().getVisible()) return error.LayerIsAlreadyHidden;
+        w.hide();
+    }
+    pub fn close(self: *Self, args: Args, _: *Result) !void {
+        const w = self.getWebview(args) catch unreachable;
+        w.close();
+    }
+    pub fn resetAnchor(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         layer.resetAnchor();
     }
-    pub fn setAnchor(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setAnchor(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const edge = try args.integer(1);
         const anchor = try args.bool(2);
         layer.setAnchor(@enumFromInt(edge), anchor);
     }
-    pub fn setLayer(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setLayer(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const layer_type = try args.integer(1);
         layer.setLayer(@enumFromInt(layer_type));
     }
-    pub fn setKeyboardMode(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setKeyboardMode(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const mode = try args.integer(1);
         layer.setKeyboardMode(@enumFromInt(mode));
     }
-    pub fn setNamespace(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setNamespace(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const namespace = try args.string(1);
         layer.setNamespace(namespace);
     }
-    pub fn setMargin(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setMargin(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const edge = try args.integer(1);
         const margin = try args.integer(2);
         layer.setMargin(@enumFromInt(edge), @intCast(margin));
     }
-    pub fn setExclusiveZone(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn setExclusiveZone(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         const exclusiveZone = try args.integer(1);
         layer.setExclusiveZone(@intCast(exclusiveZone));
     }
-    pub fn autoExclusiveZoneEnable(self: *Self, args: modules.Args, _: *modules.Result) !void {
+    pub fn autoExclusiveZoneEnable(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         layer.autoExclusiveZoneEnable();
     }

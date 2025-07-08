@@ -1165,6 +1165,9 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
         defer for (argv) |arg| allocator.free(arg);
         if (!entry.terminal) {
             var child = std.process.Child.init(argv, allocator);
+            child.stderr_behavior = .Ignore;
+            child.stdin_behavior = .Ignore;
+            child.stdout_behavior = .Ignore;
             try child.spawn();
             try child.waitForSpawn();
         } else {
@@ -1177,6 +1180,9 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
             argv_[0] = terminal;
             std.mem.copyForwards([]const u8, argv_[1..], argv);
             var child = std.process.Child.init(argv_, allocator);
+            child.stderr_behavior = .Ignore;
+            child.stdin_behavior = .Ignore;
+            child.stdout_behavior = .Ignore;
             try child.spawn();
             try child.waitForSpawn();
         }

@@ -97,24 +97,27 @@ export function activateMenu(service: string, id: number): Promise<void> {
 }
 import { addEventListener, removeEventListener } from "./events";
 var listenerCount = 0;
-export function addListener(
-    name: "added" | "changed" | "removed",
-    callback: (service: string) => void,
-    once: boolean = false
-) {
+type Events = "added" | "changed" | "removed";
+
+function addListener(name: Events, callback: (service: string) => void, once: boolean = false) {
     const eventName = `tray-${name}`;
     if (listenerCount === 0) subscribe();
     listenerCount++;
     addEventListener(eventName, callback, once);
 }
-export function removeListener(
-    name: "added" | "changed" | "removed",
-    callback: (service: string) => void
-) {
+function removeListener(name: Events, callback: (service: string) => void) {
     removeEventListener(`tray-${name}`, callback);
     if (listenerCount === 0) unsubscribe();
 }
-
+export function on<T extends Events>(event: T, callback: (service: string) => void) {
+    addListener(event, callback, false);
+}
+export function off<T extends Events>(event: T, callback: (service: string) => void) {
+    removeListener(event, callback);
+}
+export function once<T extends Events>(event: T, callback: (service: string) => void) {
+    addListener(event, callback, true);
+}
 const proxied: Array<Record<string, Item>> = [];
 const onAdded = async (service: string) => {
     const item = await getItem(service);
@@ -136,9 +139,9 @@ const onRemoved = async (service: string) => {
 export function proxy(data: Record<string, Item>) {
     proxied.push(data);
     if (proxied.length > 0) {
-        addListener("added", onAdded);
-        addListener("changed", onChanged);
-        addListener("removed", onRemoved);
+        on("added", onAdded);
+        on("changed", onChanged);
+        on("removed", onRemoved);
     }
 }
 export function unproxy(data: Record<string, Item>) {
@@ -147,8 +150,8 @@ export function unproxy(data: Record<string, Item>) {
         proxied.splice(index, 1);
     }
     if (proxied.length === 0) {
-        removeListener("added", onAdded);
-        removeListener("changed", onChanged);
-        removeListener("removed", onRemoved);
+        off("added", onAdded);
+        off("changed", onChanged);
+        off("removed", onRemoved);
     }
 }

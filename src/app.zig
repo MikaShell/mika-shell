@@ -116,16 +116,39 @@ pub const Webview = struct {
             .uri = self.impl.getUri(),
         };
     }
+    pub fn close(self: *Webview) void {
+        const id = self.impl.getPageId();
+        self.emitEvent(events.Mika.tryClose, id);
+    }
     pub fn show(self: *Webview) void {
-        self.container.present();
+        if (self.container.asWidget().getVisible()) {
+            self.forceShow();
+            return;
+        }
+        const id = self.impl.getPageId();
+        self.emitEvent(events.Mika.tryShow, id);
     }
     pub fn hide(self: *Webview) void {
-        self.container.asWidget().hide();
+        if (!self.container.asWidget().getVisible()) return;
+        const id = self.impl.getPageId();
+        self.emitEvent(events.Mika.tryHide, id);
     }
-    pub fn close(self: *Webview) void {
+    pub fn forceClose(self: *Webview) void {
         self.allocator.free(self.name);
         self.container.destroy();
         self.allocator.destroy(self);
+    }
+    pub fn forceShow(self: *Webview) void {
+        // 对于 Layer 类型的 Webview, 在不可见的情况下使用 present() 可能会导致窗口大小异常
+        // 所以先判断是否可见再调用 present()
+        if (self.container.asWidget().getVisible()) {
+            self.container.present();
+        } else {
+            self.container.asWidget().show();
+        }
+    }
+    pub fn forceHide(self: *Webview) void {
+        self.container.asWidget().hide();
     }
 };
 const dbus = @import("dbus");
@@ -242,14 +265,23 @@ pub const App = struct {
         const modules = app.modules;
 
         modules.register(mika, "mika.open", Mika.open);
+        modules.register(mika, "mika.close", Mika.close);
+        modules.register(mika, "mika.show", Mika.show);
+        modules.register(mika, "mika.hide", Mika.hide);
+        modules.register(mika, "mika.forceClose", Mika.forceClose);
+        modules.register(mika, "mika.forceShow", Mika.forceShow);
+        modules.register(mika, "mika.forceHide", Mika.forceHide);
 
         modules.register(window, "window.init", Window.init);
         modules.register(window, "window.show", Window.show);
         modules.register(window, "window.hide", Window.hide);
+        modules.register(window, "window.getId", Window.getId);
 
         modules.register(layer, "layer.init", Layer.init);
+        modules.register(layer, "layer.getId", Layer.getId);
         modules.register(layer, "layer.show", Layer.show);
         modules.register(layer, "layer.hide", Layer.hide);
+        modules.register(layer, "layer.close", Layer.close);
         modules.register(layer, "layer.resetAnchor", Layer.resetAnchor);
         modules.register(layer, "layer.setAnchor", Layer.setAnchor);
         modules.register(layer, "layer.setLayer", Layer.setLayer);
@@ -324,8 +356,17 @@ pub const App = struct {
         defer cssProvider.free();
         cssProvider.loadFromString("window {background-color: transparent;}");
         webview.container.asWidget().getStyleContext().addCssProvider(cssProvider);
-
-        webview.impl.asWidget().connect(.Destroy, &struct {
+        webview.container.connect(.closeRequest, struct {
+            fn f(w: *gtk.Window, data: ?*anyopaque) callconv(.c) c_int {
+                const wb = w.asWidget().getFirstChild().?.as(webkit.WebView);
+                const a: *App = @ptrCast(@alignCast(data));
+                const targetID = wb.getPageId();
+                const target = a.getWebview(targetID) catch unreachable;
+                target.emitEvent(events.Mika.tryClose, targetID);
+                return 1;
+            }
+        }.f, self);
+        webview.impl.asWidget().connect(.destroy, &struct {
             fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const target: *webkit.WebView = @ptrCast(widget);
                 const a: *App = @ptrCast(@alignCast(data));
@@ -336,19 +377,38 @@ pub const App = struct {
                         break;
                     }
                 }
+                a.emitEvent(events.Mika.close, targetID);
+            }
+        }.f, self);
+        webview.container.asWidget().connect(.show, struct {
+            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const wb = w.getFirstChild().?.as(webkit.WebView);
+                const a: *App = @ptrCast(@alignCast(data));
+                const targetID = wb.getPageId();
+                const target = a.getWebview(targetID) catch unreachable;
+                target.emitEvent(events.Mika.show, targetID);
+            }
+        }.f, self);
+        webview.container.asWidget().connect(.hide, struct {
+            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const wb = w.getFirstChild().?.as(webkit.WebView);
+                const a: *App = @ptrCast(@alignCast(data));
+                const targetID = wb.getPageId();
+                const target = a.getWebview(targetID) catch unreachable;
+                target.emitEvent(events.Mika.hide, targetID);
             }
         }.f, self);
         const info = webview.getInfo();
-        self.emitEventIgnore(info.id, events.Mika.Open, info);
+        self.emitEventIgnore(info.id, events.Mika.open, info);
         return webview;
     }
-    pub fn getWebview(self: *App, id: u64) ?*Webview {
+    pub fn getWebview(self: *App, id: u64) !*Webview {
         for (self.webviews.items) |webview| {
             if (webview.impl.getPageId() == id) {
                 return webview;
             }
         }
-        return null;
+        return Error.WebviewNotExists;
     }
     /// 发送事件，忽略指定 id 的 webview
     pub fn emitEventIgnore(self: *App, ignore: u64, name: []const u8, data: anytype) void {
@@ -364,24 +424,6 @@ pub const App = struct {
         for (self.webviews.items) |webview| {
             webview.emitEvent(name, data);
         }
-    }
-    pub fn show(self: *App, id: u64) !void {
-        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
-        webview.show();
-        const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mika.Show, info);
-    }
-    pub fn hide(self: *App, id: u64) !void {
-        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
-        webview.hide();
-        const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mika.Hide, info);
-    }
-    pub fn close(self: *App, id: u64) !void {
-        const webview = self.getWebview(id) orelse return Error.WebviewNotExists;
-        webview.close();
-        const info = webview.getInfo();
-        self.emitEventIgnore(id, events.Mika.Close, info);
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell

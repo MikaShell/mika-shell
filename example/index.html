@@ -71,9 +71,15 @@
             }
         </style>
         <script type="module">
-            window.mikaShell.mika.addListener("open", (data) => {
-                console.log("Open Event Received:", data);
-            });
+            const mika = window.mikaShell.mika;
+            mika.on("open", (id) => console.log("Open Event Received, id:", id));
+            mika.on("close", (id) => console.log("Close Event Received, id:", id));
+            mika.on("show", (id) => console.log("Show Event Received, id:", id));
+            mika.on("hide", (id) => console.log("Hide Event Received, id:", id));
+            import tray from "./tray.js";
+            tray.mount("tray");
+        </script>
+        <script>
             const layerInit = () => {
                 window.mikaShell.layer.init({
                     anchor: ["top"],
@@ -92,10 +98,15 @@
             windowInit();
             // or
             // layerInit();
-            import tray from "./tray.js";
-            tray.mount("tray");
+            window.mikaShell.window.on("close", () => {
+                const result = confirm("Are you sure to close this window?");
+                if (result) {
+                    return true;
+                }
+                return false;
+            });
         </script>
-        <script type="module">
+        <script>
             const mikaSHell = window.mikaShell;
             mikaSHell.os.execWithOutput("date").then((date) => console.log(date));
             mikaShell.os.getInfo().then((info) => {
@@ -132,7 +143,7 @@
                 }
             });
         </script>
-        <script type="module">
+        <script>
             const os = window.mikaShell.os;
             async function listenHyprland() {
                 const xdgRuntimeDir = await os.getEnv("XDG_RUNTIME_DIR");
@@ -143,7 +154,10 @@
                     const parts = (buffer + event.data).split("\n");
                     buffer = parts.pop();
                     const message = parts.shift();
-                    console.log("Received from server:", message);
+                    console.log("Hyprland Event:", {
+                        name: message.split(">>")[0],
+                        args: message.split(">>")[1].split(","),
+                    });
                 };
             }
             listenHyprland();

@@ -21,20 +21,27 @@ pub const Widget = extern struct {
     const Self = @This();
     parent_instance: *anyopaque,
     pub const Signal = enum {
-        Destroy,
-    };
-    pub const Callback = struct {
-        pub const Destroy = *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) void;
+        destroy,
+        hide,
+        show,
     };
     extern fn gtk_widget_show(widget: *Widget) void;
     extern fn gtk_widget_hide(widget: *Widget) void;
     extern fn gtk_widget_get_style_context(widget: *Widget) *StyleContext;
     extern fn gtk_widget_get_visible(widget: *Widget) c.gboolean;
+    extern fn gtk_widget_get_first_child(widget: *Widget) ?*Widget;
+    extern fn gtk_widget_get_last_child(widget: *Widget) ?*Widget;
     pub fn show(self: *Self) void {
         gtk_widget_show(self);
     }
     pub fn hide(self: *Self) void {
         gtk_widget_hide(self);
+    }
+    pub fn getFirstChild(self: *Self) ?*Widget {
+        return gtk_widget_get_first_child(self);
+    }
+    pub fn getLastChild(self: *Self) ?*Widget {
+        return gtk_widget_get_last_child(self);
     }
     pub fn as(self: *Self, comptime T: type) *T {
         return @ptrCast(self);
@@ -48,13 +55,13 @@ pub const Widget = extern struct {
     pub fn connect(
         self: *Self,
         comptime signal: Signal,
-        callback: switch (signal) {
-            .Destroy => Callback.Destroy,
-        },
+        callback: *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) void,
         data: ?*anyopaque,
     ) void {
         const s = switch (signal) {
-            .Destroy => "destroy",
+            .destroy => "destroy",
+            .hide => "hide",
+            .show => "show",
         };
         _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
     }
@@ -76,6 +83,12 @@ pub const CssProvider = extern struct {
 };
 pub const Window = extern struct {
     const Self = @This();
+    pub const Signal = enum {
+        closeRequest,
+    };
+    pub const Callback = struct {
+        pub const CloseRequest = *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) c_int;
+    };
     parent_instance: *anyopaque,
     extern fn gtk_window_new() *Widget;
     extern fn gtk_window_present(window: *Window) void;
@@ -101,5 +114,18 @@ pub const Window = extern struct {
     }
     pub fn setResizable(self: *Self, resizable: bool) void {
         gtk_window_set_resizable(self, @intFromBool(resizable));
+    }
+    pub fn connect(
+        self: *Self,
+        comptime signal: Signal,
+        callback: switch (signal) {
+            .closeRequest => Callback.CloseRequest,
+        },
+        data: ?*anyopaque,
+    ) void {
+        const s = switch (signal) {
+            .closeRequest => "close-request",
+        };
+        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(s), @ptrCast(callback), data, null, 0);
     }
 };
