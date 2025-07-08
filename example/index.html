@@ -12,6 +12,7 @@
                 justify-content: start;
                 align-items: start;
                 flex-direction: column;
+                padding: 12px;
             }
             .tray-icon {
                 width: 32px;
@@ -55,6 +56,19 @@
                 height: 32px;
                 border-radius: 8px;
             }
+            #os-info {
+                display: flex;
+                justify-content: start;
+                align-items: center;
+                gap: 8px;
+            }
+            .os-info-content {
+                display: flex;
+                justify-content: start;
+                align-items: start;
+                flex-direction: column;
+                gap: 8px;
+            }
         </style>
         <script type="module">
             window.mikaShell.mika.addListener("open", (data) => {
@@ -82,21 +96,26 @@
             tray.mount("tray");
         </script>
         <script type="module">
-            window.mikaShell.icon
-                .lookup("folder_color_default_desktop", 128)
-                .then((src) => {
-                    document.getElementById("icon-desktop").src = src;
-                })
-                .catch((err) => {});
-
-            window.mikaShell.apps.list().then((apps) => {
+            const mikaSHell = window.mikaShell;
+            mikaSHell.os.execWithOutput("date").then((date) => console.log(date));
+            mikaShell.os.getInfo().then((info) => {
+                console.log("OS Info:", info);
+                mikaShell.icon.lookup(info.logo, 128).then((src) => {
+                    document.getElementById("os-logo").src = src;
+                });
+                document.getElementById("os-hostname-prettyname").textContent =
+                    info.hostname + " - " + info.prettyName;
+                document.getElementById("os-kernel-uptime").textContent =
+                    "Kernel: " + info.kernel + " Uptime: " + (info.uptime / 3600).toFixed(2) + "h";
+            });
+            mikaShell.apps.list().then((apps) => {
                 const appList = document.getElementById("apps");
                 apps = apps.filter((app) => app.noDisplay !== true);
                 for (const app of apps) {
                     const div = document.createElement("div");
                     div.classList.add("app-entry");
                     const img = document.createElement("img");
-                    window.mikaShell.icon
+                    mikaShell.icon
                         .lookup(app.icon, 256)
                         .then((src) => (img.src = src))
                         .catch((err) => {});
@@ -133,16 +152,20 @@
     <body>
         <h1>Welcome</h1>
         <p>This is a test website for MikaShell.</p>
-        <div id="icons">
-            <img id="icon-desktop" alt="Desktop" />
+        <div id="os-info">
+            <img id="os-logo" alt="Logo" />
+            <div class="os-info-content">
+                <span id="os-hostname-prettyname"></span>
+                <span id="os-kernel-uptime"></span>
+            </div>
         </div>
         <div
             style="
                 width: 100%;
-                box-sizing: border-box;
-                height: 180px;
+                height: 210px;
                 overflow: scroll;
                 border: solid 2px rgb(116, 116, 116);
+                margin: 12px auto;
             "
         >
             <div id="apps"></div>

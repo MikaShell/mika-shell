@@ -175,7 +175,7 @@ pub const App = struct {
         window.* = Window{ .app = app };
         layer.* = Layer{ .app = app };
         icon.* = Icon{};
-        os.* = OS{};
+        os.* = OS{ .allocator = allocator };
         apps.* = Apps{ .allocator = allocator };
 
         const tray = Tray.init(allocator, app, bus) catch unreachable;
@@ -222,6 +222,9 @@ pub const App = struct {
         modules.register(icon, "icon.lookup", Icon.lookup);
 
         modules.register(os, "os.getEnv", OS.getEnv);
+        modules.register(os, "os.getInfo", OS.getInfo);
+        modules.register(os, "os.exec", OS.exec);
+        modules.register(os, "os.execWithOutput", OS.execWithOutput);
 
         modules.register(apps, "apps.list", Apps.list);
         modules.register(apps, "apps.activate", Apps.activate);
