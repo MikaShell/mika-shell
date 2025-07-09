@@ -215,6 +215,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
     const reply = Message.newMethodReturn(msg);
     defer reply.deinit();
     var callError: CallError = undefined;
+    callError.isSet = false;
     const iter = libdbus.MessageIter.init(service.allocator);
     defer iter.deinit();
     handler: {
@@ -653,7 +654,7 @@ const testing = std.testing;
 const print = std.debug.print;
 
 pub const CallError = struct {
-    isSet: bool = false,
+    isSet: bool,
     name: []const u8,
     message: []const u8,
     pub fn set(self: *@This(), name: []const u8, message: []const u8) void {
