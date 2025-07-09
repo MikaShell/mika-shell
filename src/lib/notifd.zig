@@ -373,5 +373,5 @@ test {
     try notifd.publish();
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
-    glib.timeoutMainLoop(5_000);
+    glib.timeoutMainLoop(200);
 }

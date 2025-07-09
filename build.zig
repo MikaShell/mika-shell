@@ -60,6 +60,12 @@ pub fn build(b: *std.Build) void {
         glib_mod.linkSystemLibrary("glib-2.0", dynamic_link_opts);
         glib_mod.linkSystemLibrary("gio-2.0", dynamic_link_opts);
     }
+    // EXAMPLE
+    const example_mod = b.createModule(.{
+        .root_source_file = b.path("example/example.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     // EXE
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -89,6 +95,7 @@ pub fn build(b: *std.Build) void {
     const zigcli = b.dependency("zig-cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
 
+    exe_mod.addImport("example", example_mod);
     exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("zig-cli", zigcli.module("zig-cli"));
     exe_mod.addImport("ini", ini.module("ini"));
@@ -120,6 +127,14 @@ pub fn build(b: *std.Build) void {
             });
             const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
             test_step.dependOn(&run_exe_unit_tests.step);
+        }
+        // EXAMPLE
+        {
+            const example_unit_tests = b.addTest(.{
+                .root_module = example_mod,
+            });
+            const run_example_unit_tests = b.addRunArtifact(example_unit_tests);
+            test_step.dependOn(&run_example_unit_tests.step);
         }
         // MODULES
         {

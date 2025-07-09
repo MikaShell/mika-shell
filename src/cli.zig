@@ -222,6 +222,13 @@ pub fn daemon() !void {
     defer allocator.free(configDir);
     std.log.debug("ConfigDir: {s}", .{configDir});
 
+    std.fs.accessAbsolute(configDir, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            try @import("example").write(configDir);
+        },
+        else => return err,
+    };
+
     var assetsserver = try assets.Server.init(allocator, configDir);
     defer {
         assetsserver.stop();

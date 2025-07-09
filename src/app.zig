@@ -180,6 +180,7 @@ pub const Config = struct {
     startup: [][]const u8 = &.{},
     pub fn load(allocator: Allocator, configDir: []const u8) !Config {
         const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
+        defer allocator.free(config_path);
         const file = try std.fs.openFileAbsolute(config_path, .{});
         defer file.close();
         const configJson = try file.readToEndAlloc(allocator, 1024 * 1024);
@@ -237,7 +238,9 @@ pub const App = struct {
     notifd: *Notifd,
     pub fn init(allocator: Allocator, configDir: []const u8) !*App {
         const app = try allocator.create(App);
+        errdefer allocator.destroy(app);
         app.config = try Config.load(allocator, configDir);
+        errdefer app.config.deinit(allocator);
         app.modules = Modules.init(allocator);
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
