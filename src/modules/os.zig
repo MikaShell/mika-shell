@@ -26,9 +26,8 @@ pub const OS = struct {
     pub fn exec(self: *Self, args: Args, result: *Result) !void {
         const allocator = self.allocator;
         const argvJson = try args.value(1);
-        switch (argvJson) {
-            .array => {},
-            else => return error.InvalidArgs,
+        if (argvJson != .array) {
+            return error.InvalidArgs;
         }
         var argv = try allocator.alloc([]const u8, argvJson.array.items.len);
         defer allocator.free(argv);

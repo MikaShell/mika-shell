@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Notifd</title>
+        <link rel="stylesheet" href="styles.css" />
+
+        <script type="module">
+            window.mikaShell.window.init({
+                title: "MikaShell Test",
+                backgroundTransparent: true,
+                resizable: false,
+            });
+            const notifd = window.mikaShell.notifd;
+            const lookupIcon = window.mikaShell.icon.lookup;
+            const arrayToUrl = (arr) => {
+                const uint8Array = new Uint8Array(arr);
+                const blob = new Blob([uint8Array], { type: "image/png" });
+                const imageUrl = URL.createObjectURL(blob);
+                return imageUrl;
+            };
+            async function update(n) {
+                console.log("notification-updated", n);
+                const box = document.querySelector("#notifications");
+
+                const setup = async (node) => {
+                    var image = null;
+
+                    if (n.hints.imageData) {
+                        image = arrayToUrl(n.hints.imageData.webp);
+                    } else if (n.hints.imagePath) {
+                        try {
+                            image = await lookupIcon(n.hints.imagePath, 64);
+                        } catch {}
+                    }
+                    if (image == null) {
+                        var name = n.appIcon;
+                        if (name === "") name = "application-x-executable";
+                        try {
+                            image = await lookupIcon(name, 64);
+                        } catch {}
+                    }
+                    if (image == null) {
+                        try {
+                            appIcon = await lookupIcon(n.appName, 64);
+                        } catch {}
+                    }
+                    if (image) node.querySelector(".image").src = image;
+                    node.querySelector(".app").textContent = n.appName;
+                    node.querySelector(".summary").textContent = n.summary;
+                    node.querySelector(".body").innerHTML = n.body
+                        .replace(/ /g, "&nbsp;")
+                        .replace(/\n/g, "<br>");
+                };
+                const node = box.querySelector(`[data-id="${n.id}"]`);
+                if (node !== null) {
+                    await setup(node);
+                } else {
+                    const template = document.querySelector("#notification-template");
+                    const notification = template.content.cloneNode(true);
+                    const node = notification.querySelector(".notification");
+                    node.dataset.id = n.id;
+                    node.addEventListener("click", () => {
+                        notifd.activate(n.id);
+                        notifd.dismiss(n.id);
+                    });
+                    box.appendChild(notification);
+                    await setup(node);
+                }
+                box.scrollTop = box.scrollHeight;
+            }
+            function remove(id) {
+                console.log("notification-removed", id);
+                const box = document.querySelector("#notifications");
+                const notification = box.querySelector(`[data-id="${id}"]`);
+                box.removeChild(notification);
+            }
+            const notifications = new Proxy([], {
+                get: (target, prop, receiver) => {
+                    const original = Reflect.get(target, prop, receiver);
+                    if (prop === "splice") {
+                        return function (...args) {
+                            const [start, deleteCount] = args;
+                            const removedItems = target.slice(start, start + deleteCount);
+                            removedItems.forEach((item, i) => remove(item.id));
+                            return original.apply(target, args);
+                        };
+                    }
+                    return original;
+                },
+                set: (target, prop, value, receiver) => {
+                    const isIndex = String(Number(prop)) === prop;
+                    if (isIndex) update(value);
+                    return Reflect.set(target, prop, value, receiver);
+                },
+            });
+
+            notifd.proxy(notifications);
+            notifd.getAll().then((ns_) => {
+                ns_.forEach((n) => notifications.push(n));
+            });
+            window.mikaShell.window.on("close", () => {
+                notifd.unproxy(notifications);
+            });
+            window.dismiss = (id) => {
+                notifd.dismiss(parseInt(id));
+            };
+        </script>
+        <style>
+            #notifications {
+                display: flex;
+                flex-direction: column;
+                padding: 8px;
+                width: 100%;
+                height: 380px;
+                overflow: scroll;
+                border: solid 2px rgb(116, 116, 116);
+                margin: 12px auto;
+                box-sizing: border-box;
+                gap: 8px;
+                scroll-behavior: smooth;
+            }
+            .notification {
+                display: flex;
+                flex-direction: column;
+                align-items: start;
+                gap: 8px;
+                padding: 8px;
+                background-color: #28567d;
+                border-radius: 4px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+            .info {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+            }
+            .summary-container {
+                display: flex;
+                flex-direction: column;
+                flex-grow: 1;
+                gap: 4px;
+            }
+            .body-container {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .body {
+                display: inline;
+            }
+            .image {
+                height: 64px;
+                width: 64px;
+                border-radius: 8px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Notifd</h1>
+        <template id="notification-template">
+            <div class="notification">
+                <div class="info">
+                    <img class="image" />
+                    <div class="summary-container">
+                        <span class="app"></span>
+                        <span class="summary"></span>
+                    </div>
+                    <button
+                        onclick="mikaShell.notifd.dismiss(parseInt(this.parentNode.parentNode.dataset.id))"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+                <div class="body-container">
+                    <span class="body"></span>
+                </div>
+            </div>
+        </template>
+        <div id="notifications"></div>
+    </body>
+</html>

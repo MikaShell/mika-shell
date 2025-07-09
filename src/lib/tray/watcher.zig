@@ -14,7 +14,10 @@ pub const Watcher = struct {
             .allocator = allocator,
             .items = std.ArrayList([]const u8).init(allocator),
             .hosts = std.ArrayList([]const u8).init(allocator),
-            .service = try bus.owner("org.kde.StatusNotifierWatcher", .DoNotQueue),
+            .service = bus.owner("org.kde.StatusNotifierWatcher", .DoNotQueue) catch |err| {
+                bus.err.reset();
+                return err;
+            },
             .emiter = undefined,
         };
         return self;

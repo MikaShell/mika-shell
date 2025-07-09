@@ -14,3 +14,7 @@ pub const Tray = struct {
     pub const removed = "tray-removed";
     pub const changed = "tray-changed";
 };
+pub const Notifd = struct {
+    pub const added = "notifd-added";
+    pub const removed = "notifd-removed";
+};

@@ -17,6 +17,7 @@ pub fn timeoutMainLoop(timeout_ms: u32) void {
 pub fn mainIteration() bool {
     return c.g_main_context_iteration(null, 1) == 1;
 }
+// OTOD: 优化这个玩意
 pub fn FdWatch(T: type) type {
     return struct {
         const Callback = if (T == void) *const fn () bool else *const fn (*T) bool;
@@ -43,13 +44,17 @@ pub fn FdWatch(T: type) type {
                 .result = true,
             };
             const source = c.g_io_add_watch(ch, c.G_IO_IN, @ptrCast(&Wrapper.f), wrapper);
+            if (source == 0) {
+                std.heap.page_allocator.destroy(wrapper);
+                return error.FailedToAddWatch;
+            }
             return .{
                 .source = source,
                 .wrapper = wrapper,
             };
         }
         pub fn deinit(self: @This()) void {
-            if (self.wrapper.result == true) {
+            if (self.wrapper.result) {
                 _ = c.g_source_remove(self.source);
             }
             std.heap.page_allocator.destroy(self.wrapper);
@@ -120,6 +125,44 @@ pub const FileMonitor = struct {
     }
     pub fn deinit(self: @This()) void {
         c.g_object_unref(self.monitor);
+        std.heap.page_allocator.destroy(self.wrapper);
+    }
+};
+
+pub const Timeout = struct {
+    const Callback = *const fn (?*anyopaque) bool;
+    const Wrapper = struct {
+        d: ?*anyopaque,
+        c: Callback,
+        result: bool,
+        fn f(w: *@This()) callconv(.c) c_int {
+            w.result = w.c(w.d);
+            return @intFromBool(w.result);
+        }
+    };
+    wrapper: *Wrapper,
+    source: c_uint,
+    pub fn add(timeout_ms: u32, callback: Callback, data: ?*anyopaque) !@This() {
+        const wrapper = try std.heap.page_allocator.create(Wrapper);
+        wrapper.* = .{
+            .d = data,
+            .c = callback,
+            .result = true,
+        };
+        const source = c.g_timeout_add(timeout_ms, @ptrCast(&Wrapper.f), @ptrCast(wrapper));
+        if (source == 0) {
+            std.heap.page_allocator.destroy(wrapper);
+            return error.FailedToAddTimeout;
+        }
+        return .{
+            .wrapper = wrapper,
+            .source = source,
+        };
+    }
+    pub fn deinit(self: @This()) void {
+        if (self.wrapper.result) {
+            _ = c.g_source_remove(self.source);
+        }
         std.heap.page_allocator.destroy(self.wrapper);
     }
 };

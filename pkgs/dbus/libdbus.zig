@@ -472,10 +472,12 @@ pub const MessageIter = struct {
                 );
             },
             .string, .signature, .object_path => {
+                const str = try self.allocator.dupeZ(u8, value);
+                defer self.allocator.free(str);
                 ok = dbus_message_iter_append_basic(
                     &self.wrapper,
                     @intFromEnum(T.tag),
-                    @ptrCast(&value.ptr),
+                    @ptrCast(&str.ptr),
                 );
             },
             .array => {

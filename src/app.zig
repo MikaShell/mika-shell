@@ -164,6 +164,7 @@ const Icon = @import("modules/icon.zig").Icon;
 const OS = @import("modules/os.zig").OS;
 const Apps = @import("modules/apps.zig").Apps;
 const Monitor = @import("modules/monitor.zig").Monitor;
+const Notifd = @import("modules/notifd.zig").Notifd;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -233,6 +234,7 @@ pub const App = struct {
     os: *OS,
     apps: *Apps,
     monitor: *Monitor,
+    notifd: *Notifd,
     pub fn init(allocator: Allocator, configDir: []const u8) !*App {
         const app = try allocator.create(App);
         app.config = try Config.load(allocator, configDir);
@@ -263,6 +265,7 @@ pub const App = struct {
         monitor.* = Monitor{ .allocator = allocator };
 
         const tray = try Tray.init(allocator, app, bus);
+        const notifd = try Notifd.init(allocator, app, bus);
 
         app.mika = mika;
         app.window = window;
@@ -272,6 +275,7 @@ pub const App = struct {
         app.os = os;
         app.apps = apps;
         app.monitor = monitor;
+        app.notifd = notifd;
 
         const modules = app.modules;
 
@@ -328,6 +332,13 @@ pub const App = struct {
 
         modules.register(monitor, "monitor.list", Monitor.list);
 
+        modules.register(notifd, "notifd.subscribe", Notifd.subscribe);
+        modules.register(notifd, "notifd.unsubscribe", Notifd.unsubscribe);
+        modules.register(notifd, "notifd.get", Notifd.get);
+        modules.register(notifd, "notifd.dismiss", Notifd.dismiss);
+        modules.register(notifd, "notifd.activate", Notifd.activate);
+        modules.register(notifd, "notifd.getAll", Notifd.getAll);
+
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
@@ -341,6 +352,7 @@ pub const App = struct {
         self.modules.deinit();
 
         self.tray.deinit();
+        self.notifd.deinit();
         self.bus.deinit();
 
         self.apps.deinit();
