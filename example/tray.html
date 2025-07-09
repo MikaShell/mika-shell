@@ -20,16 +20,69 @@
                 gap: 4px;
             }
         </style>
-        <script type="module">
-            import tray from "./tray.js";
+        <script>
             window.mikaShell.window.init({
                 title: "MikaShell Test",
                 backgroundTransparent: true,
                 resizable: false,
             });
-            tray.mount("tray");
+            const tray = window.mikaShell.tray;
+
+            const arrayToUrl = (arr) => {
+                const uint8Array = new Uint8Array(arr);
+                const blob = new Blob([uint8Array], { type: "image/png" });
+                const imageUrl = URL.createObjectURL(blob);
+                return imageUrl;
+            };
+            function updata(item) {
+                const div = document.getElementById("tray");
+                item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
+                const imageUrl = arrayToUrl(item.icon.pixmap[0].webp);
+                for (let i = 0; i < div.children.length; i++) {
+                    const img = div.children[i];
+                    if (img.dataset.service !== item.service) continue;
+                    URL.revokeObjectURL(img.src);
+                    img.src = imageUrl;
+                    return;
+                }
+
+                const img = document.createElement("img");
+                img.src = imageUrl;
+                img.className = "tray-icon";
+                img.dataset["service"] = item.service;
+                img.addEventListener("contextmenu", function (e) {
+                    e.preventDefault();
+                    tray.getMenu(item.service).then((menu) => {
+                        console.log("tray-menu", menu);
+                    });
+                });
+                img.onclick = () => tray.activate(item.service, 0, 0);
+                div.appendChild(img);
+            }
+            const proxy = new Proxy(
+                {},
+                {
+                    get: (target, prop) => {
+                        return target[prop];
+                    },
+                    set: (target, prop, value) => {
+                        target[prop] = value;
+                        updata(value);
+                        return true;
+                    },
+                    deleteProperty: (target, prop) => {
+                        delete target[prop];
+                        console.log("tray-removed", prop);
+                        const div = document.getElementById("tray");
+                        const img = div.querySelector(`img[data-service="${prop}"]`);
+                        if (img) div.removeChild(img);
+                        return true;
+                    },
+                }
+            );
+            tray.proxy(proxy);
             window.mikaShell.window.on("close", () => {
-                tray.unmount("tray");
+                tray.unproxy(proxy);
             });
         </script>
     </head>
