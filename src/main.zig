@@ -6,6 +6,7 @@ pub fn main() !void {
 test {
     _ = @import("lib/tray.zig");
     _ = @import("lib/notifd.zig");
+    _ = @import("lib/network.zig");
     _ = @import("modules/modules.zig");
     _ = @import("modules/apps.zig");
     _ = @import("modules/icon.zig");

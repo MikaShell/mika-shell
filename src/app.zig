@@ -170,6 +170,7 @@ const OS = @import("modules/os.zig").OS;
 const Apps = @import("modules/apps.zig").Apps;
 const Monitor = @import("modules/monitor.zig").Monitor;
 const Notifd = @import("modules/notifd.zig").Notifd;
+const Network = @import("modules/network.zig").Network;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -230,8 +231,10 @@ pub const App = struct {
     webviews: std.ArrayList(*Webview),
     allocator: Allocator,
     config: Config,
-    bus: *dbus.Bus,
-    busWatcher: dbus.GLibWatch,
+    sessionBus: *dbus.Bus,
+    systemBus: *dbus.Bus,
+    sessionBusWatcher: dbus.GLibWatch,
+    systemBusWatcher: dbus.GLibWatch,
     mika: *Mika,
     window: *Window,
     layer: *Layer,
@@ -241,6 +244,7 @@ pub const App = struct {
     apps: *Apps,
     monitor: *Monitor,
     notifd: *Notifd,
+    network: *Network,
     pub fn init(allocator: Allocator, configDir: []const u8) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
@@ -249,13 +253,21 @@ pub const App = struct {
         app.modules = Modules.init(allocator);
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
-        const bus = dbus.Bus.init(allocator, .Session) catch {
-            @panic("can not connect to dbus");
+        const sessionBus = dbus.Bus.init(allocator, .Session) catch {
+            @panic("can not connect to session dbus");
         };
-        app.bus = bus;
-        app.busWatcher = dbus.withGLibLoop(bus) catch {
-            @panic("can not watch dbus loop");
+        const systemBus = dbus.Bus.init(allocator, .System) catch {
+            @panic("can not connect to system dbus");
         };
+        app.sessionBus = sessionBus;
+        app.systemBus = systemBus;
+        app.sessionBusWatcher = dbus.withGLibLoop(sessionBus) catch {
+            @panic("can not watch session dbus loop");
+        };
+        app.systemBusWatcher = dbus.withGLibLoop(systemBus) catch {
+            @panic("can not watch system dbus loop");
+        };
+
         const mika = try allocator.create(Mika);
         const window = try allocator.create(Window);
         const layer = try allocator.create(Layer);
@@ -272,8 +284,9 @@ pub const App = struct {
         apps.* = Apps{ .allocator = allocator };
         monitor.* = Monitor{ .allocator = allocator };
 
-        const tray = try Tray.init(allocator, app, bus);
-        const notifd = try Notifd.init(allocator, app, bus);
+        const tray = try Tray.init(allocator, app, sessionBus);
+        const notifd = try Notifd.init(allocator, app, sessionBus);
+        const network = try Network.init(allocator, systemBus);
 
         app.mika = mika;
         app.window = window;
@@ -284,6 +297,7 @@ pub const App = struct {
         app.apps = apps;
         app.monitor = monitor;
         app.notifd = notifd;
+        app.network = network;
 
         const modules = app.modules;
 
@@ -348,6 +362,16 @@ pub const App = struct {
         modules.register(notifd, "notifd.getAll", Notifd.getAll);
         modules.register(notifd, "notifd.setDontDisturb", Notifd.setDontDisturb);
 
+        modules.register(network, "network.getDevices", Network.getDevices);
+        modules.register(network, "network.getState", Network.getState);
+        modules.register(network, "network.isEnabled", Network.isEnabled);
+        modules.register(network, "network.enable", Network.enable);
+        modules.register(network, "network.disable", Network.disable);
+        modules.register(network, "network.getConnections", Network.getConnections);
+        modules.register(network, "network.getPrimaryConnection", Network.getPrimaryConnection);
+        modules.register(network, "network.getActiveConnections", Network.getActiveConnections);
+        modules.register(network, "network.getWirelessPsk", Network.getWirelessPsk);
+
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
@@ -355,14 +379,18 @@ pub const App = struct {
     }
     pub fn deinit(self: *App) void {
         for (self.webviews.items) |webview| webview.close();
-        self.busWatcher.deinit();
+        self.sessionBusWatcher.deinit();
+        self.systemBusWatcher.deinit();
 
         self.webviews.deinit();
         self.modules.deinit();
 
         self.tray.deinit();
         self.notifd.deinit();
-        self.bus.deinit();
+        self.network.deinit();
+
+        self.sessionBus.deinit();
+        self.systemBus.deinit();
 
         self.apps.deinit();
 

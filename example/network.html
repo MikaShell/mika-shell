@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Tray</title>
+        <link rel="stylesheet" href="style.css" />
+        <style></style>
+        <script>
+            window.mikaShell.window.init({
+                title: "MikaShell Test",
+                backgroundTransparent: true,
+                resizable: false,
+            });
+            const network = window.mikaShell.network;
+            network.getDevices().then((devices) => {
+                console.log("Network Devices:", devices);
+            });
+            network.getState().then((state) => {
+                console.log("Network State:", state);
+            });
+            network.isEnabled().then((enabled) => {
+                console.log("Network Enabled:", enabled);
+            });
+            network.getConnections().then((connections) => {
+                console.log("Network Connections:", connections);
+            });
+            network.getPrimaryConnection().then((conn) => {
+                console.log("Network Primary Connection:", conn);
+            });
+            network.getActiveConnections().then((connection) => {
+                console.log("Network Active Connections:", connection);
+            });
+        </script>
+    </head>
+    <body>
+        <h1>Network</h1>
+    </body>
+</html>

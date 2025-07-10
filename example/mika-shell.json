@@ -24,6 +24,10 @@
             "path": "/notifd.html"
         },
         {
+            "name": "network",
+            "path": "/network.html"
+        },
+        {
             "name": "404",
             "description": "This page is used to test the built-in 404 page",
             "path": "/unknown.html"

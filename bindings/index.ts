@@ -8,6 +8,7 @@ import * as layer from "./layer";
 import * as apps from "./apps";
 import * as monitor from "./monitor";
 import * as notifd from "./notifd";
+import * as network from "./network";
 function socket(path: string) {
     return new WebSocket(["ws://localhost:6797", path].join("/"));
 }
@@ -23,6 +24,7 @@ const mikaShell = {
     apps,
     monitor,
     notifd,
+    network,
 };
 // @ts-ignore
 window.mikaShell = mikaShell;
