@@ -599,7 +599,7 @@ pub const Apps = struct {
             self.needReload = false;
         }
         const entrys = self.entrys.?;
-        try result.commit(entrys);
+        result.commit(entrys);
     }
     fn init(self: *Self) !void {
         const allocator = self.allocator;
@@ -670,7 +670,7 @@ pub const Apps = struct {
 };
 const dbus = @import("dbus");
 fn activateAppWithDBus(allocator: Allocator, entry: Entry, action: ?Action, urls: []const []const u8) !void {
-    const err = dbus.Error.init();
+    var err = dbus.Error.init();
     defer err.deinit();
     const conn = try dbus.Connection.get(.Session, err);
     defer conn.close();

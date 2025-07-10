@@ -15,6 +15,7 @@ pub const Notifd = struct {
     bus: *dbus.Bus,
     subscriber: std.ArrayList(u64),
     notifd: ?*notification.Notifd,
+    dontDisturb: bool = false,
     pub fn init(allocator: Allocator, app: *App, bus: *dbus.Bus) !*Self {
         const self = try allocator.create(Self);
         self.* = Self{
@@ -22,6 +23,7 @@ pub const Notifd = struct {
             .allocator = allocator,
             .bus = bus,
             .subscriber = std.ArrayList(u64).init(allocator),
+            .dontDisturb = false,
             .notifd = null,
         };
         return self;
@@ -57,7 +59,7 @@ pub const Notifd = struct {
             webview.emitEvent(Events.removed, id);
         }
     }
-    fn setup(self: *Self) !void {
+    fn initNotifd(self: *Self) !void {
         if (self.notifd == null) {
             const notifd = try notification.Notifd.init(self.allocator, self.bus);
             errdefer notifd.deinit();
@@ -68,9 +70,22 @@ pub const Notifd = struct {
             self.notifd = notifd;
         }
     }
-    pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
+    fn setup(self: *Self, result: *Result) !void {
+        self.initNotifd() catch |err| {
+            if (err == error.NameExists) {
+                return result.errors("another notification service is running, cannot initialize Notifd module", .{});
+            }
+            return result.errors("failed to initialize notifd: {s}", .{@errorName(err)});
+        };
+    }
+    pub fn setDontDisturb(self: *Self, args: Args, _: *Result) !void {
+        const enable = try args.bool(1);
+        self.dontDisturb = enable;
+    }
+
+    pub fn subscribe(self: *Self, args: Args, result: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
-        try self.setup();
+        try self.setup(result);
         for (self.subscriber.items) |id_| {
             if (id == id_) {
                 return;
@@ -78,9 +93,9 @@ pub const Notifd = struct {
         }
         try self.subscriber.append(id);
     }
-    pub fn unsubscribe(self: *Self, args: Args, _: *Result) !void {
+    pub fn unsubscribe(self: *Self, args: Args, result: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
-        try self.setup();
+        try self.setup(result);
         for (self.subscriber.items, 0..) |id_, i| {
             if (id == id_) {
                 _ = self.subscriber.swapRemove(i);
@@ -90,33 +105,33 @@ pub const Notifd = struct {
     }
     pub fn get(self: *Self, args: Args, result: *Result) !void {
         const id = try args.uInteger(1);
-        try self.setup();
+        try self.setup(result);
         const notifd = self.notifd.?;
         if (notifd.items.get(@intCast(id))) |n| {
-            try result.commit(n);
+            result.commit(n);
         } else {
             return error.NotificationNotFound;
         }
     }
     pub fn getAll(self: *Self, _: Args, result: *Result) !void {
-        try self.setup();
+        try self.setup(result);
         const notifd = self.notifd.?;
         var items = std.ArrayList(notification.Notification).init(self.allocator);
         defer items.deinit();
         var iter = notifd.items.iterator();
         while (iter.next()) |kv| try items.append(kv.value_ptr.*);
-        try result.commit(items.items);
+        result.commit(items.items);
     }
-    pub fn activate(self: *Self, args: Args, _: *Result) !void {
-        try self.setup();
+    pub fn activate(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const id = try args.uInteger(1);
         const action = try args.string(2);
         const notifd = self.notifd.?;
         notifd.invokeAction(@intCast(id), action);
     }
-    pub fn dismiss(self: *Self, args: Args, _: *Result) !void {
+    pub fn dismiss(self: *Self, args: Args, result: *Result) !void {
         const id = try args.uInteger(1);
-        try self.setup();
+        try self.setup(result);
         const notifd = self.notifd.?;
         notifd.dismiss(@intCast(id));
     }

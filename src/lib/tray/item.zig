@@ -117,7 +117,6 @@ pub const Item = struct {
         const path = try allocator.dupe(u8, service[split.?..]);
         defer allocator.free(path);
         const item = bus.proxy(name, path, "org.kde.StatusNotifierItem") catch {
-            bus.err.reset();
             return error.CannotConnectToItem;
         };
         self._allocator = allocator;
@@ -128,7 +127,6 @@ pub const Item = struct {
         // id
         blk: {
             const id = item.get("Id", dbus.String) catch {
-                item.err.reset();
                 self.data.id = "";
                 break :blk;
             };
@@ -138,7 +136,6 @@ pub const Item = struct {
         // category
         blk: {
             const category = item.get("Category", dbus.String) catch {
-                item.err.reset();
                 self.data.category = "";
                 break :blk;
             };
@@ -148,7 +145,6 @@ pub const Item = struct {
         // isMenu
         blk: {
             const isMenu = item.get("ItemIsMenu", dbus.Boolean) catch {
-                item.err.reset();
                 self.data.ItemIsMenu = false;
                 break :blk;
             };
@@ -158,7 +154,6 @@ pub const Item = struct {
         // menu
         blk: {
             const menu = item.get("Menu", dbus.ObjectPath) catch {
-                item.err.reset();
                 self.data.menu = "";
                 break :blk;
             };
@@ -261,39 +256,28 @@ pub const Item = struct {
         }
     }
     pub fn activate(self: *Self, x: i32, y: i32) void {
-        self._object.callN(
-            "Activate",
-            .{ dbus.Int32, dbus.Int32 },
-            .{ x, y },
-        ) catch {
-            self._object.err.reset();
-        };
+        _ = self._object.callN("Activate", .{ dbus.Int32, dbus.Int32 }, .{ x, y }) catch {};
     }
     pub fn secondaryActivate(self: *Self, x: i32, y: i32) void {
-        self._object.callN(
-            "SecondaryActivate",
-            .{ dbus.Int32, dbus.Int32 },
-            .{ x, y },
-        ) catch self._object.err.reset();
+        _ = self._object.callN("SecondaryActivate", .{ dbus.Int32, dbus.Int32 }, .{ x, y }) catch {};
     }
     pub fn scrool(self: *Self, delta: i32, orientation: enum { vertical, horizontal }) void {
-        self._object.callN(
+        _ = self._object.callN(
             "Scroll",
             .{ dbus.Int32, dbus.String },
             .{ delta, @tagName(orientation) },
-        ) catch self._object.err.reset();
+        ) catch {};
     }
     pub fn provideXdgActivationToken(self: *Self, token: []const u8) void {
-        self._object.callN(
+        _ = self._object.callN(
             "ProvideXdgActivationToken",
             .{dbus.String},
             .{token},
-        ) catch self._object.err.reset();
+        ) catch {};
     }
     fn loadTitle(self: *Self) void {
         self._allocator.free(self.data.title);
         const title = self._object.get("Title", dbus.String) catch {
-            self._object.err.reset();
             self.data.title = self._allocator.dupe(u8, "") catch unreachable;
             return;
         };
@@ -303,7 +287,6 @@ pub const Item = struct {
     fn loadStatus(self: *Self) void {
         self._allocator.free(self.data.status);
         const status = self._object.get("Status", dbus.String) catch {
-            self._object.err.reset();
             self.data.status = self._allocator.dupe(u8, "") catch unreachable;
             return;
         };
@@ -324,7 +307,6 @@ pub const Item = struct {
         self.data.attention.iconPixmap = &.{};
         blk: {
             const iconName = item.get("AttentionIconName", dbus.String) catch {
-                item.err.reset();
                 break :blk;
             };
             defer iconName.deinit();
@@ -332,14 +314,12 @@ pub const Item = struct {
         }
         blk: {
             const movieName = item.get("AttentionMovieName", dbus.String) catch {
-                item.err.reset();
                 break :blk;
             };
             defer movieName.deinit();
             self.data.attention.movieName = allocator.dupe(u8, movieName.value) catch unreachable;
         }
         const iconPixmap = item.get("AttentionIconPixmap", DBusPixmap) catch {
-            item.err.reset();
             return;
         };
         defer iconPixmap.deinit();
@@ -367,25 +347,16 @@ pub const Item = struct {
         self.data.icon.pixmap = &.{};
 
         blk: {
-            const iconName = item.get("IconName", dbus.String) catch {
-                item.err.reset();
-                break :blk;
-            };
+            const iconName = item.get("IconName", dbus.String) catch break :blk;
             defer iconName.deinit();
             self.data.icon.name = allocator.dupe(u8, iconName.value) catch unreachable;
         }
         blk: {
-            const themePath = item.get("IconThemePath", dbus.String) catch {
-                item.err.reset();
-                break :blk;
-            };
+            const themePath = item.get("IconThemePath", dbus.String) catch break :blk;
             defer themePath.deinit();
             self.data.icon.themePath = allocator.dupe(u8, themePath.value) catch unreachable;
         }
-        const iconPixmap = item.get("IconPixmap", DBusPixmap) catch {
-            item.err.reset();
-            return;
-        };
+        const iconPixmap = item.get("IconPixmap", DBusPixmap) catch return;
         defer iconPixmap.deinit();
         const pixmaps = allocator.alloc(Pixmap, iconPixmap.value.len) catch unreachable;
         for (pixmaps, 0..) |*pixmap, i| {
@@ -415,18 +386,12 @@ pub const Item = struct {
         self.data.overlay.iconName = "";
         self.data.overlay.iconPixmap = &.{};
         blk: {
-            const iconName = item.get("OverlayIconName", dbus.String) catch {
-                item.err.reset();
-                break :blk;
-            };
+            const iconName = item.get("OverlayIconName", dbus.String) catch break :blk;
             defer iconName.deinit();
             self.data.overlay.iconName = allocator.dupe(u8, iconName.value) catch unreachable;
         }
 
-        const iconPixmap = item.get("OverlayIconPixmap", DBusPixmap) catch {
-            item.err.reset();
-            return;
-        };
+        const iconPixmap = item.get("OverlayIconPixmap", DBusPixmap) catch return;
         defer iconPixmap.deinit();
         var pixmaps = allocator.alloc(Pixmap, iconPixmap.value.len) catch unreachable;
         for (iconPixmap.value, 0..) |pixmap, i| {
@@ -457,10 +422,7 @@ pub const Item = struct {
             DBusPixmap,
             dbus.String,
             dbus.String,
-        })) catch {
-            item.err.reset();
-            return;
-        };
+        })) catch return;
         defer tooltip.deinit();
         self.data.tooltip.iconName = allocator.dupe(u8, tooltip.value[0]) catch unreachable;
         const pixmaps = allocator.alloc(Pixmap, tooltip.value[1].len) catch unreachable;

@@ -122,9 +122,7 @@ pub const Object = struct {
     listeners: std.ArrayList(common.Listener),
     pub fn deinit(self: *Self) void {
         for (self.listeners.items) |listener| {
-            self.disconnect(listener.signal, listener.handler, listener.data) catch {
-                self.err.reset();
-            };
+            self.disconnect(listener.signal, listener.handler, listener.data) catch continue;
         }
         self.err.deinit();
         self.listeners.deinit();
@@ -181,7 +179,7 @@ pub const Object = struct {
             resultType,
         );
     }
-    /// 发送但不接收回复
+    /// 发送但不接收回复, 此函数不会返回 error.DBusError
     pub fn callN(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType)) !void {
         const request = libdbus.Message.newMethodCall(self.name, self.path, self.iface, name);
         defer request.deinit();
@@ -209,6 +207,56 @@ pub const Object = struct {
             .{Type.Variant},
         );
         return .{ .result = resp, .value = try resp.values.?[0].get(ResultTyep) };
+    }
+    pub fn get2(self: *Object, name: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
+        switch (ResultTyep) {
+            Type.Byte,
+            Type.Boolean,
+            Type.Int16,
+            Type.Int32,
+            Type.Int64,
+            Type.UInt16,
+            Type.UInt32,
+            Type.UInt64,
+            Type.Double,
+            => {},
+            else => {
+                @panic("get2 only support basic type");
+            },
+        }
+        const resp = try self.callWithSelf(
+            self.name,
+            self.path,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            .{ Type.String, Type.String },
+            .{ self.iface, name },
+            .{Type.Variant},
+        );
+        defer resp.deinit();
+        pointer.* = try resp.values.?[0].get(ResultTyep);
+    }
+    pub fn get2Alloc(self: *Object, allocator: Allocator, name: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
+        switch (ResultTyep) {
+            Type.String,
+            Type.ObjectPath,
+            Type.Signature,
+            => {},
+            else => {
+                @panic("get2 only support string, objectpath, signature");
+            },
+        }
+        const resp = try self.callWithSelf(
+            self.name,
+            self.path,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            .{ Type.String, Type.String },
+            .{ self.iface, name },
+            .{Type.Variant},
+        );
+        defer resp.deinit();
+        pointer.* = try allocator.dupe(u8, try resp.values.?[0].get(ResultTyep));
     }
     /// 设置属性值
     pub fn set(self: *Object, name: []const u8, Value: type, value: Value.Type) !void {
@@ -250,7 +298,6 @@ pub const Object = struct {
     /// 调用 Ping 方法
     pub fn ping(self: *Object) bool {
         const r = self.callWithSelf(self.name, self.path, "org.freedesktop.DBus.Peer", "Ping", .{}, null, .{}) catch {
-            self.err.reset();
             return false;
         };
         defer r.deinit();
@@ -262,7 +309,6 @@ pub const Object = struct {
     pub fn connect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         if (self.listeners.items.len == 0) {
             if (!try self.bus.addFilter(.{ .type = .signal }, signalHandler, self)) {
-                self.bus.err.reset();
                 return error.AddFilterFailed;
             }
         }
@@ -292,9 +338,7 @@ pub const Object = struct {
                         return;
                     }
                 }
-                self.bus.err.reset();
                 self.bus.removeMatch(.{ .type = .signal, .sender = self.uniqueName, .interface = self.iface, .member = signal, .path = self.path }) catch {
-                    self.bus.err.reset();
                     return error.RemoveMatchFailed;
                 };
                 return;

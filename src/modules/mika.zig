@@ -11,7 +11,7 @@ pub const Mika = struct {
         const pageName = try args.string(1);
         const webview = try self.app.open(pageName);
         const id = webview.impl.getPageId();
-        try result.commit(id);
+        result.commit(id);
     }
     pub fn close(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);

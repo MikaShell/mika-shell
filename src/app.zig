@@ -84,13 +84,18 @@ pub const Webview = struct {
                     .items = args.items,
                 };
                 std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv.impl.getPageId(), v.toJson(0) });
-                wv._modules.call(method.?.string, value, &result) catch |err| {
+                wv._modules.call(method.?.string, value, &result) catch |err| blk: {
+                    if (result.err != null) break :blk;
                     const msg = std.fmt.allocPrint(alc, "Failed to call method {s}: {s}", .{ method.?.string, @errorName(err) }) catch unreachable;
                     defer alc.free(msg);
                     reply.errorMessage(msg);
                     return 0;
                 };
-                reply.value(result.toJSCValue(v.getContext()));
+                if (result.err) |msg| {
+                    reply.errorMessage(msg);
+                } else {
+                    reply.value(result.toJSCValue(v.getContext()));
+                }
                 return 0;
             }
         }.f, w);
@@ -341,6 +346,7 @@ pub const App = struct {
         modules.register(notifd, "notifd.dismiss", Notifd.dismiss);
         modules.register(notifd, "notifd.activate", Notifd.activate);
         modules.register(notifd, "notifd.getAll", Notifd.getAll);
+        modules.register(notifd, "notifd.setDontDisturb", Notifd.setDontDisturb);
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);

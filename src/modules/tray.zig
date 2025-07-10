@@ -40,12 +40,12 @@ pub const Tray = struct {
         _ = try std.Thread.spawn(.{}, trayWatcherThread, .{});
         return self;
     }
-    fn setup(self: *Self) !void {
+    fn setup(self: *Self, result: *Result) !void {
         const allocator = self.allocator;
         const bus = self.bus;
         if (self.host == null) {
-            self.host = tray.Host.init(allocator, bus) catch {
-                return error.FailedToInitTrayHost;
+            self.host = tray.Host.init(allocator, bus) catch |err| {
+                return result.errors("failed to init tray host {s}", .{@errorName(err)});
             };
             try self.host.?.addListener(onItemUpdated, self);
         }
@@ -75,7 +75,8 @@ pub const Tray = struct {
             webview.emitEvent(event, service);
         }
     }
-    pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
+    pub fn subscribe(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const id = args.uInteger(0) catch unreachable;
         blk: {
             for (self.subscriber.items) |id_| {
@@ -85,7 +86,6 @@ pub const Tray = struct {
             }
             try self.subscriber.append(id);
         }
-        try self.setup();
         const webview = self.app.getWebview(id) catch unreachable;
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -102,33 +102,32 @@ pub const Tray = struct {
         }
     }
     pub fn getItems(self: *Self, _: Args, result: *Result) !void {
-        try self.setup();
+        try self.setup(result);
         const host = self.host.?;
 
         const items = try self.allocator.alloc(tray.Item.Data, host.items.items.len);
         for (items, 0..) |*it, i| {
             it.* = host.items.items[i].data;
         }
-        try result.commit(items);
+        result.commit(items);
     }
     pub fn getItem(self: *Self, args: Args, result: *Result) !void {
-        try self.setup();
+        try self.setup(result);
         const host = self.host.?;
         const service = try args.string(1);
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
-                try result.commit(item.data);
+                result.commit(item.data);
                 return;
             }
         }
     }
-    pub fn activate(self: *Self, args: Args, _: *Result) !void {
+    pub fn activate(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
         const x = try args.integer(2);
         const y = try args.integer(3);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
+
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
@@ -137,13 +136,12 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn secondaryActivate(self: *Self, args: Args, _: *Result) !void {
+    pub fn secondaryActivate(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
         const x = try args.integer(2);
         const y = try args.integer(3);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
+
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
@@ -152,12 +150,11 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn provideXdgActivationToken(self: *Self, args: Args, _: *Result) !void {
+    pub fn provideXdgActivationToken(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
         const token = try args.string(2);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
+
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
@@ -166,20 +163,18 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn scroll(self: *Self, args: Args, _: *Result) !void {
+    pub fn scroll(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
         const delta = try args.integer(2);
         const orientationStr = try args.string(3);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
         var orientation: u8 = undefined;
         if (std.mem.eql(u8, orientationStr, "vertical")) {
             orientation = 0;
         } else if (std.mem.eql(u8, orientationStr, "horizontal")) {
             orientation = 1;
         } else {
-            return error.InvalidOrientation;
+            return result.errors("invalid orientation {s}, only 'horizontal' or'vertical' is allowed", .{orientationStr});
         }
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -190,26 +185,24 @@ pub const Tray = struct {
         }
     }
     pub fn getMenu(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
+
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
                 const menu = try tray.Menu.new(self.allocator, self.bus, item.owner, item.data.menu);
                 defer menu.deinit(self.allocator);
-                try result.commit(menu);
+                result.commit(menu);
                 return;
             }
         }
     }
-    pub fn activateMenu(self: *Self, args: Args, _: *Result) !void {
+    pub fn activateMenu(self: *Self, args: Args, result: *Result) !void {
+        try self.setup(result);
         const service = try args.string(1);
         const id = try args.integer(2);
-        if (self.host == null) {
-            return error.TrayHostNotInitlized;
-        }
+
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {

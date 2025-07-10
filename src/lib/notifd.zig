@@ -133,7 +133,6 @@ pub const Notifd = struct {
         self.onRemoved = null;
         self.allocator = allocator;
         self.service = bus.owner("org.freedesktop.Notifications", .DoNotQueue) catch |err| {
-            bus.err.reset();
             return err;
         };
         return self;
@@ -148,7 +147,6 @@ pub const Notifd = struct {
 
     pub fn publish(self: *Self) !void {
         self.service.publish(Notifd, "/org/freedesktop/Notifications", Interface, self, &self.emitter) catch {
-            self.service.err.reset();
             return error.FailedToPublishNtificationsService;
         };
     }
@@ -368,7 +366,10 @@ test {
     const allocator = testing.allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
     defer bus.deinit();
-    var notifd = try Notifd.init(allocator, bus);
+    var notifd = Notifd.init(allocator, bus) catch |err| {
+        std.debug.print("src/lib/notifd.zig: Failed to init Notifd {any}\n", .{err});
+        return;
+    };
     defer notifd.deinit();
     try notifd.publish();
     const watch = try dbus.withGLibLoop(bus);

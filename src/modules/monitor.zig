@@ -12,6 +12,6 @@ pub const Monitor = struct {
         const monitors = try gtk.Monitor.get(allocator);
         defer allocator.free(monitors);
         defer for (monitors) |monitor| monitor.deinit(allocator);
-        try result.commit(monitors);
+        result.commit(monitors);
     }
 };

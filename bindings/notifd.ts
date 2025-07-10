@@ -93,6 +93,9 @@ export function unsubscribe(): Promise<void> {
 export function activate(id: number, action: string = "default"): Promise<void> {
     return call("notifd.activate", id, action);
 }
+export function setDontDisturb(value: boolean): Promise<void> {
+    return call("notifd.setDontDisturb", value);
+}
 var listenerCount = 0;
 type Events = "added" | "removed";
 

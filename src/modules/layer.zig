@@ -83,7 +83,7 @@ pub const Layer = struct {
     }
     pub fn getId(_: *Self, args: Args, result: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
-        try result.commit(id);
+        result.commit(id);
     }
     pub fn show(self: *Self, args: Args, _: *Result) !void {
         const w = self.getWebview(args) catch unreachable;

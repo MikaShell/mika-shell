@@ -11,17 +11,17 @@ pub const OS = struct {
         const allocator = self.allocator;
         const value = try std.process.getEnvVarOwned(allocator, key);
         defer allocator.free(value);
-        _ = try result.commit(value);
+        result.commit(value);
     }
     pub fn getSystemInfo(self: *Self, _: Args, result: *Result) !void {
         const info = try SystemInfo.init(self.allocator);
         defer info.deinit(self.allocator);
-        _ = try result.commit(info);
+        result.commit(info);
     }
     pub fn getUserInfo(self: *Self, _: Args, result: *Result) !void {
         const info = try UserInfo.init(self.allocator);
         defer info.deinit(self.allocator);
-        _ = try result.commit(info);
+        result.commit(info);
     }
     pub fn exec(self: *Self, args: Args, result: *Result) !void {
         const allocator = self.allocator;
@@ -45,7 +45,7 @@ pub const OS = struct {
             defer stdout.close();
             const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024);
             defer allocator.free(stdoutBuf);
-            _ = try result.commit(stdoutBuf);
+            result.commit(stdoutBuf);
         }
     }
 };

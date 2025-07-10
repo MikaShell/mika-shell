@@ -219,8 +219,6 @@ pub const Bus = struct {
     ///
     /// 底层使用 libdbus 的 `dbus_bus_get_private()` 函数获取 bus 连接.
     /// 在调用 Bus 的函数时,如果捕获到 `dbus.DBusError` 错误,可以从 err 字段中获取错误信息,
-    /// 无论你是否使用 err 字段,都应当调用 `err.reset()` 函数重置错误.
-    /// 即使不是 `dbus.DBusError` 错误,你也可以安全地调用 `err.reset()` .
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
         var err = Error.init();
         const conn = try libdbus.Connection.get(bus_type, err);
@@ -249,7 +247,6 @@ pub const Bus = struct {
                     if (std.mem.eql(u8, obj.uniqueName, "")) {
                         if (isNewService) {
                             const resp = bus_.dbus.call("GetNameOwner", .{Type.String}, .{obj.name}, .{Type.String}) catch {
-                                bus_.dbus.err.reset();
                                 continue;
                             };
                             defer resp.deinit();

@@ -30,7 +30,6 @@ pub const Host = struct {
             "/StatusNotifierWatcher",
             "org.kde.StatusNotifierWatcher",
         ) catch {
-            bus.err.reset();
             return error.FailedToConnectToStatusNotifierWatcher;
         };
         if (!watcher.ping()) {
@@ -38,12 +37,10 @@ pub const Host = struct {
         }
         self.watcher = watcher;
         const registerResult = watcher.call("RegisterStatusNotifierHost", .{dbus.String}, .{bus.uniqueName}, .{}) catch {
-            watcher.err.reset();
             return error.FailedToRegisterStatusNotifierHost;
         };
         defer registerResult.deinit();
         const allItems = watcher.get("RegisteredStatusNotifierItems", dbus.Array(dbus.String)) catch {
-            watcher.err.reset();
             return error.FailedToGetRegisteredStatusNotifierItems;
         };
         defer allItems.deinit();
@@ -54,20 +51,16 @@ pub const Host = struct {
         }
         watcher.connect("StatusNotifierItemRegistered", onStatusNotifierItemRegistered, self) catch |e| {
             if (e != dbus.DBusError) return e;
-            watcher.err.reset();
             return error.FailedToConnectToStatusNotifierItemRegistered;
         };
         watcher.connect("StatusNotifierItemUnregistered", onStatusNotifierItemUnregistered, self) catch |e| {
             if (e != dbus.DBusError) return e;
-            watcher.err.reset();
             return error.FailedToConnectToStatusNotifierItemUnregistered;
         };
         self.dbus = dbus.freedesktopDBus(bus) catch {
-            bus.err.reset();
             return error.FailedToConnectToDBus;
         };
         self.dbus.connect("NameLost", onItemNameLost, self) catch {
-            bus.dbus.err.reset();
             return error.FailedToConnectToNameLost;
         };
         return self;
@@ -134,7 +127,6 @@ pub const Host = struct {
         if (self.watcher) |w| {
             blk: {
                 const r = w.call("UnregisterStatusNotifierHost", .{dbus.String}, .{self.bus.uniqueName}, .{}) catch {
-                    w.err.reset();
                     break :blk;
                 };
                 r.deinit();

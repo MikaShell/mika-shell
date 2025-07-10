@@ -15,7 +15,6 @@ pub const Watcher = struct {
             .items = std.ArrayList([]const u8).init(allocator),
             .hosts = std.ArrayList([]const u8).init(allocator),
             .service = bus.owner("org.kde.StatusNotifierWatcher", .DoNotQueue) catch |err| {
-                bus.err.reset();
                 return err;
             },
             .emiter = undefined,
@@ -154,7 +153,7 @@ test "tray-watcher" {
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
     const watcher = Watcher.init(allocator, bus) catch |err| {
-        print("src/lib/tray/watcher.zig: cannot init watcher: {any}\n", .{err});
+        print("src/lib/tray/watcher.zig: Cannot init Watcher: {any}\n", .{err});
         return;
     };
     defer watcher.deinit();

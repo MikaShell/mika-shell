@@ -7,6 +7,12 @@ DBusError *dbus_error_new(void)
     return err;
 }
 
+void dbus_error_reset(DBusError *err)
+{
+    dbus_error_free(err);
+    dbus_error_init(err);
+}
+
 void dbus_error_destroy(DBusError *err)
 {
     dbus_error_free(err);

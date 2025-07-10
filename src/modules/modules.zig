@@ -62,22 +62,31 @@ pub const Args = struct {
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
-    buffer: std.ArrayList(u8),
+    buffer: ?std.ArrayList(u8) = null,
+    err: ?[]const u8 = null,
     pub fn init(allocator: std.mem.Allocator) Result {
         return .{
             .allocator = allocator,
-            .buffer = std.ArrayList(u8).init(allocator),
         };
     }
     pub fn deinit(self: *Result) void {
-        self.buffer.deinit();
+        if (self.buffer) |b| b.deinit();
+        if (self.err) |e| self.allocator.free(e);
     }
-    pub fn commit(self: *Result, value: anytype) !void {
-        try std.json.stringify(value, .{}, self.buffer.writer());
+    pub fn commit(self: *Result, value: anytype) void {
+        if (self.buffer != null) @panic("commit twice");
+        self.buffer = std.ArrayList(u8).init(self.allocator);
+        std.json.stringify(value, .{}, self.buffer.?.writer()) catch @panic("OOM");
+    }
+    /// 总是返回一个 error.HasError, 切勿捕获该错误, 应该直接返回给 Webview 处理
+    pub fn errors(self: *Result, comptime fmt: []const u8, args: anytype) anyerror {
+        self.err = std.fmt.allocPrint(self.allocator, fmt, args) catch @panic("OOM");
+        return error.HasError;
     }
     pub fn toJSCValue(self: *Result, ctx: *webkit.JSCContext) *webkit.JSCValue {
-        if (self.buffer.items.len == 0) return ctx.newUndefined();
-        const str = self.allocator.dupeZ(u8, self.buffer.items) catch @panic("OOM");
+        if (self.err != null) @panic("error message is not null, cannot convert to JSCValue");
+        if (self.buffer == null) return ctx.newUndefined();
+        const str = self.allocator.dupeZ(u8, self.buffer.?.items) catch @panic("OOM");
         defer self.allocator.free(str);
         return ctx.newFromJson(str);
     }
@@ -140,7 +149,7 @@ pub const Modules = struct {
 };
 const TestModule = struct {
     pub fn show(_: *TestModule, _: Args, result: *Result) !void {
-        try result.commit("Hello, world!");
+        result.commit("Hello, world!");
     }
     pub fn throw(_: *TestModule, _: Args, _: *Result) !void {
         return error.TestError;
@@ -181,7 +190,7 @@ test "register and call" {
     var result = Result.init(allocator);
     defer result.deinit();
     try m.call("show", value, &result);
-    try std.testing.expectEqualStrings("\"Hello, world!\"", result.buffer.items);
+    try std.testing.expectEqualStrings("\"Hello, world!\"", result.buffer.?.items);
     const ctx = webkit.JSCContext.new();
     const jsvalue = result.toJSCValue(ctx);
     try std.testing.expectEqualStrings("\"Hello, world!\"", jsvalue.toJson(0));

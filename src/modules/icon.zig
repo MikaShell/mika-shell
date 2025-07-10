@@ -437,7 +437,7 @@ pub const Icon = struct {
             break :blk makeHtmlImg(allocator, name) catch return err;
         };
         defer allocator.free(img);
-        try result.commit(img);
+        result.commit(img);
     }
 };
 fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]const u8 {
