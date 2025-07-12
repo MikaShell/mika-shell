@@ -1,58 +1,48 @@
 const c = @cImport({
     @cInclude("dbus/dbus.h");
-    @cInclude("dbus.h");
 });
 
 const std = @import("std");
 pub const Types = @import("types.zig");
 const Allocator = std.mem.Allocator;
-pub const DBusError = error.DBusError;
-/// `Error` 是一个 `DBusError` 的容器，内部包含一个指向 `c.DBusError` 的指针。
-/// 该结构体可以安全地被复制，但是只能被使用一次。
-/// 每当错误被设置 (`Error.isSet() == true`), 你必须调用 `Error.reset()` 才能使 `Error` 再次可用。
-/// 不再使用时必须调用 `Error.deinit()` 释放内存。
-///
-/// English:
-/// `Error` is a container of `DBusError` pointer. It can be safely copied, but can only be used once.
-/// When an error is set (`Error.isSet() == true`), you must call `Error.reset()` to make `Error` available again.
-/// When no longer needed, you must call `Error.deinit()` to release memory.
-pub const Error = extern struct {
-    ptr: *c.DBusError,
-    extern fn dbus_error_is_set(@"error": *const c.DBusError) c.dbus_bool_t;
-    extern fn dbus_error_new() *c.DBusError;
-    extern fn dbus_error_destroy(err: *c.DBusError) void;
-    extern fn dbus_error_reset(err: *c.DBusError) void;
-    extern fn dbus_error_get_name(err: *c.DBusError) [*c]const u8;
-    extern fn dbus_error_get_message(err: *c.DBusError) [*c]const u8;
-    pub fn init() Error {
-        return .{ .ptr = dbus_error_new() };
-    }
-    pub fn deinit(err: Error) void {
-        dbus_error_destroy(err.ptr);
-    }
-    pub fn reset(err: Error) void {
-        if (!err.isSet()) return;
-        dbus_error_reset(err.ptr);
-    }
-    pub fn name(err: Error) ?[]const u8 {
-        const name_ = dbus_error_get_name(err.ptr);
-        if (name_ == null) return null;
-        return std.mem.sliceTo(name_, 0);
-    }
-    pub fn message(err: Error) ?[]const u8 {
-        const msg = dbus_error_get_message(err.ptr);
-        if (msg == null) return null;
-        return std.mem.sliceTo(msg, 0);
-    }
-    pub fn isSet(err: Error) bool {
-        return dbus_error_is_set(err.ptr) != 0;
-    }
-};
+pub const Errors = error{DBusError};
 pub const BusType = enum(c_uint) {
     Session,
     System,
     Starter,
 };
+pub const Error = extern struct {
+    const Self = @This();
+    _name: ?[*:0]const u8,
+    _message: ?[*:0]const u8,
+    _: [16]u8,
+    extern fn dbus_error_is_set(err: *const Self) c.dbus_bool_t;
+    extern fn dbus_error_init(*Self) void;
+    extern fn dbus_error_free(*Self) void;
+    pub fn name(self: Self) []const u8 {
+        return std.mem.span(self._name.?);
+    }
+    pub fn message(self: Self) []const u8 {
+        return std.mem.span(self._message.?);
+    }
+    pub fn reset(self: *Self) void {
+        if (!self.isSet()) return;
+        dbus_error_free(self);
+        dbus_error_init(self);
+    }
+    pub fn init(self: *Self) void {
+        dbus_error_init(self);
+    }
+
+    pub fn deinit(self: *Self) void {
+        dbus_error_free(self);
+    }
+
+    pub fn isSet(self: *const Self) bool {
+        return dbus_error_is_set(self) != 0;
+    }
+};
+
 pub const HandlerResult = enum(c_int) {
     Handled = c.DBUS_HANDLER_RESULT_HANDLED,
     NotYetHandled = c.DBUS_HANDLER_RESULT_NOT_YET_HANDLED,
@@ -69,7 +59,7 @@ extern fn dbus_get_local_machine_id() [*c]u8;
 pub fn getLocalMachineId() []const u8 {
     const id = dbus_get_local_machine_id();
     if (id == null) return "";
-    return std.mem.sliceTo(id, 0);
+    return std.mem.span(id);
 }
 
 pub const MessageHandler = *const fn (*Connection, ?*Message, ?*anyopaque) HandlerResult;
@@ -77,10 +67,10 @@ pub const FreeFunction = *const fn (?*anyopaque) void;
 pub const Connection = extern struct {
     const Self = @This();
     pub const Rule = struct {};
-    extern fn dbus_bus_get(@"type": BusType, @"error": ?*c.DBusError) *Connection;
-    extern fn dbus_connection_send_with_reply_and_block(connection: *Connection, message: *Message, timeout_milliseconds: c_int, @"error": ?*c.DBusError) ?*Message;
-    extern fn dbus_bus_add_match(connection: *Connection, rule: [*c]const u8, @"error": ?*c.DBusError) void;
-    extern fn dbus_bus_remove_match(connection: *Connection, rule: [*c]const u8, @"error": ?*c.DBusError) void;
+    extern fn dbus_bus_get(@"type": BusType, @"error": *Error) *Connection;
+    extern fn dbus_connection_send_with_reply_and_block(connection: *Connection, message: *Message, timeout_milliseconds: c_int, @"error": *Error) ?*Message;
+    extern fn dbus_bus_add_match(connection: *Connection, rule: [*c]const u8, @"error": *Error) void;
+    extern fn dbus_bus_remove_match(connection: *Connection, rule: [*c]const u8, @"error": *Error) void;
     extern fn dbus_connection_flush(connection: *Connection) void;
     extern fn dbus_connection_close(connection: *Connection) void;
     extern fn dbus_connection_read_write(connection: *Connection, timeout_milliseconds: c_int) c.dbus_bool_t;
@@ -92,33 +82,29 @@ pub const Connection = extern struct {
     extern fn dbus_bus_get_unique_name(connection: *Connection) [*c]const u8;
     extern fn dbus_connection_unref(connection: *Connection) void;
     extern fn dbus_connection_send(connection: *Connection, message: ?*Message, client_serial: ?*c_uint) c.dbus_bool_t;
-    extern fn dbus_bus_request_name(connection: *Connection, name: [*c]const u8, flags: c_uint, @"error": ?*c.DBusError) c_int;
-    extern fn dbus_bus_release_name(connection: *Connection, name: [*c]const u8, @"error": ?*c.DBusError) c_int;
-    extern fn dbus_bus_get_private(@"type": BusType, @"error": ?*c.DBusError) *Connection;
-    pub fn get(bus_type: BusType, err: Error) !*Connection {
-        err.reset();
-        const conn = dbus_bus_get_private(bus_type, err.ptr);
-        if (err.isSet()) return DBusError;
+    extern fn dbus_bus_request_name(connection: *Connection, name: [*c]const u8, flags: c_uint, @"error": *Error) c_int;
+    extern fn dbus_bus_release_name(connection: *Connection, name: [*c]const u8, @"error": *Error) c_int;
+    extern fn dbus_bus_get_private(@"type": BusType, @"error": *Error) *Connection;
+    pub fn get(bus_type: BusType, err: *Error) Errors!*Connection {
+        const conn = dbus_bus_get_private(bus_type, err);
+        if (err.isSet()) return error.DBusError;
         return conn;
     }
-    pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: Error) !*Message {
-        err.reset();
-        const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err.ptr);
-        if (err.isSet()) return DBusError;
+    pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: *Error) Errors!*Message {
+        const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err);
+        if (err.isSet()) return error.DBusError;
         return reply.?;
     }
     pub fn send(self: *Self, message: *Message, client_serial: ?*c_uint) bool {
         return dbus_connection_send(self, message, client_serial) != 0;
     }
-    pub fn addMatch(self: *Self, rule: []const u8, err: Error) !void {
-        err.reset();
-        dbus_bus_add_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return DBusError;
+    pub fn addMatch(self: *Self, rule: []const u8, err: *Error) Errors!void {
+        dbus_bus_add_match(self, rule.ptr, err);
+        if (err.isSet()) return error.DBusError;
     }
-    pub fn removeMatch(self: *Self, rule: []const u8, err: Error) !void {
-        err.reset();
-        dbus_bus_remove_match(self, rule.ptr, err.ptr);
-        if (err.isSet()) return DBusError;
+    pub fn removeMatch(self: *Self, rule: []const u8, err: *Error) Errors!void {
+        dbus_bus_remove_match(self, rule.ptr, err);
+        if (err.isSet()) return error.DBusError;
     }
     pub fn flush(self: *Self) void {
         dbus_connection_flush(self);
@@ -148,7 +134,7 @@ pub const Connection = extern struct {
         return fd;
     }
     pub fn getUniqueName(self: *Self) []const u8 {
-        return std.mem.sliceTo(dbus_bus_get_unique_name(self), 0);
+        return std.mem.span(dbus_bus_get_unique_name(self));
     }
     pub const NameFlag = enum(c_int) {
         AllowReplacement = c.DBUS_NAME_FLAG_ALLOW_REPLACEMENT,
@@ -166,16 +152,14 @@ pub const Connection = extern struct {
         NonExistent = c.DBUS_RELEASE_NAME_REPLY_NON_EXISTENT,
         NotOwner = c.DBUS_RELEASE_NAME_REPLY_NOT_OWNER,
     };
-    pub fn requestName(self: *Self, name: []const u8, flags: NameFlag, err: Error) !RequestNameReply {
-        err.reset();
-        const r = dbus_bus_request_name(self, name.ptr, @intCast(@intFromEnum(flags)), err.ptr);
-        if (err.isSet()) return DBusError;
+    pub fn requestName(self: *Self, name: []const u8, flags: NameFlag, err: *Error) Errors!RequestNameReply {
+        const r = dbus_bus_request_name(self, name.ptr, @intCast(@intFromEnum(flags)), err);
+        if (err.isSet()) return error.DBusError;
         return @enumFromInt(r);
     }
-    pub fn releaseName(self: *Self, name: []const u8, err: Error) !ReleaseNameReply {
-        err.reset();
-        const r = dbus_bus_release_name(self, name.ptr, err.ptr);
-        if (err.isSet()) return DBusError;
+    pub fn releaseName(self: *Self, name: []const u8, err: *Error) Errors!ReleaseNameReply {
+        const r = dbus_bus_release_name(self, name.ptr, err);
+        if (err.isSet()) return error.DBusError;
         return @enumFromInt(r);
     }
 };
@@ -236,32 +220,32 @@ pub const Message = extern struct {
     pub fn getPath(message: *Message) ?[]const u8 {
         const path = dbus_message_get_path(message);
         if (path == null) return null;
-        return std.mem.sliceTo(path, 0);
+        return std.mem.span(path);
     }
     pub fn getInterface(message: *Message) ?[]const u8 {
         const iface = dbus_message_get_interface(message);
         if (iface == null) return null;
-        return std.mem.sliceTo(iface, 0);
+        return std.mem.span(iface);
     }
     pub fn getMember(message: *Message) ?[]const u8 {
         const member = dbus_message_get_member(message);
         if (member == null) return null;
-        return std.mem.sliceTo(member, 0);
+        return std.mem.span(member);
     }
     pub fn getDestination(message: *Message) ?[]const u8 {
         const dest = dbus_message_get_destination(message);
         if (dest == null) return null;
-        return std.mem.sliceTo(dest, 0);
+        return std.mem.span(dest);
     }
     pub fn getSender(message: *Message) []const u8 {
         const sender = dbus_message_get_sender(message);
         if (sender == null) unreachable;
-        return std.mem.sliceTo(sender, 0);
+        return std.mem.span(sender);
     }
     pub fn getSignature(message: *Message) []const u8 {
         const sig = dbus_message_get_signature(message);
         if (sig == null) unreachable;
-        return std.mem.sliceTo(sig, 0);
+        return std.mem.span(sig);
     }
     pub fn getNoReply(message: *Message) bool {
         return dbus_message_get_no_reply(message) != 0;
@@ -323,7 +307,7 @@ pub fn VariantIter(T: type) type {
         pub fn init(parent: *MessageIter) !Self {
             return Self{
                 .parent = parent,
-                .iter = try parent.openContainer(.variant, Types.signature(T)),
+                .iter = try parent.openContainer(Types.Variant),
             };
         }
         pub fn store(self: Self, value: T.Type) !void {
@@ -343,7 +327,7 @@ pub fn DictIter(comptime K: type, comptime V: type) type {
         pub fn init(parent: *MessageIter) !Self {
             return Self{
                 .parent = parent,
-                .iter = try parent.openContainerS(.array, Types.signature(Dict)[1..]),
+                .iter = try parent.openContainer(Dict),
             };
         }
         pub fn append(self: *Self, key: K.Type, value: V.Type) !void {
@@ -352,7 +336,7 @@ pub fn DictIter(comptime K: type, comptime V: type) type {
         }
         pub fn appendKey(self: *Self, key: K.Type) !void {
             if (self.currentEntry != null) @panic("current entry has not appended a value");
-            const entry = try self.iter.openContainer(.dict, null);
+            const entry = try self.iter.openContainer(Dict.ArrayElement);
             errdefer entry.deinit();
             try entry.append(K, key);
             self.currentEntry = entry;
@@ -401,6 +385,11 @@ pub fn DictIter(comptime K: type, comptime V: type) type {
 // 对于从 MessageIter 中获取的值，无需调用者手动 free, 在调用 MessageIter.deinit() 时自动释放所有资源
 pub const MessageIter = struct {
     const Self = @This();
+    pub const IterError = error{
+        AppendFailed,
+        OpenContainerFailed,
+        CloseContainerFailed,
+    } || Allocator.Error;
     allocator: Allocator,
     arena: Allocator,
     wrapper: c.DBusMessageIter = undefined,
@@ -452,7 +441,7 @@ pub const MessageIter = struct {
     pub fn fromAppend(self: *Self, message: *Message) void {
         dbus_message_iter_init_append(message, &self.wrapper);
     }
-    pub fn append(self: *Self, comptime T: type, value: T.Type) !void {
+    pub fn append(self: *Self, comptime T: type, value: T.Type) IterError!void {
         var ok: c_uint = 1;
         switch (T.tag) {
             .byte,
@@ -478,16 +467,18 @@ pub const MessageIter = struct {
                 );
             },
             .string, .signature, .object_path => {
-                const str = try self.allocator.dupeZ(u8, value);
-                defer self.allocator.free(str);
+                const isCStr = @import("common.zig").isCStr;
+                var str_c: ?[]const u8 = null;
+                if (!isCStr(value)) str_c = try self.allocator.dupeZ(u8, value);
+                defer if (str_c) |s| self.allocator.free(s);
                 ok = dbus_message_iter_append_basic(
                     &self.wrapper,
                     @intFromEnum(T.tag),
-                    @ptrCast(&str.ptr),
+                    @ptrCast(if (str_c != null) &str_c.?.ptr else &value.ptr),
                 );
             },
             .array => {
-                const sub = try self.openContainer(.array, @enumFromInt(@intFromEnum(T.ArrayElement.tag)));
+                const sub = try self.openContainer(T);
                 defer sub.deinit();
                 if (T.ArrayElement.tag == .byte) {
                     ok = dbus_message_iter_append_fixed_array(&sub.wrapper, Types.Tags.byte.asInt(), @ptrCast(&value.ptr), @intCast(value.len));
@@ -500,10 +491,14 @@ pub const MessageIter = struct {
                 try self.closeContainer(sub);
             },
             .variant => {
-                try value.store(value, self);
+                if (T == Types.AnyVariant) @panic("AnyVariant do not support append");
+                const sub = try self.openContainer(T);
+                defer sub.deinit();
+                try sub.append(T.ValueType, value.value);
+                try self.closeContainer(sub);
             },
             .@"struct" => {
-                const sub = try self.openContainer(.@"struct", null);
+                const sub = try self.openContainer(T);
                 defer sub.deinit();
                 inline for (value, 0..) |item, i| {
                     try sub.append(T.StructFields[i], item);
@@ -511,16 +506,10 @@ pub const MessageIter = struct {
                 try self.closeContainer(sub);
             },
             .dict => {
-                const sub = try self.openContainerS(.array, Types.signature(T)[1..]);
+                const sub = try self.openContainer(T);
                 defer sub.deinit();
-                for (value) |v| {
-                    const item = try sub.openContainer(.dict, null);
-                    defer item.deinit();
-                    errdefer _ = sub.closeContainer(item) catch {};
-                    try item.append(T.DictKey, v.key);
-                    try item.append(T.DictValue, v.value);
-                    try sub.closeContainer(item);
-                }
+                try sub.append(T.DictKey, value.key);
+                try sub.append(T.DictValue, value.value);
                 try self.closeContainer(sub);
             },
             else => unreachable,
@@ -548,8 +537,22 @@ pub const MessageIter = struct {
         try sub.append(Value, value);
         try self.closeContainer(sub);
     }
-    pub fn openContainer(self: *Self, t: Types.Tags, elementType: ?Types.Tags) !*MessageIter {
-        return self.openContainerS(t, if (elementType) |et| et.asString() else null);
+    pub fn openContainer(self: *Self, comptime T: type) (error{OpenContainerFailed} || Allocator.Error)!*MessageIter {
+        switch (T.tag) {
+            .array => {
+                return self.openContainerS(T.tag, Types.signature(T.ArrayElement));
+            },
+            .dict => {
+                return self.openContainerS(T.tag, null);
+            },
+            .@"struct" => {
+                return self.openContainerS(.@"struct", null);
+            },
+            .variant => {
+                return self.openContainerS(T.tag, Types.signature(T.ValueType));
+            },
+            else => @compileError("only Array, Dict, Struct, Variant can be opened as container"),
+        }
     }
     pub fn openContainerS(self: *Self, t: Types.Tags, elementType: ?[]const u8) !*MessageIter {
         const sub = MessageIter.init(self.allocator);
@@ -569,7 +572,7 @@ pub const MessageIter = struct {
         }
         return sub;
     }
-    pub fn closeContainer(self: *Self, sub: *MessageIter) !void {
+    pub fn closeContainer(self: *Self, sub: *MessageIter) error{CloseContainerFailed}!void {
         if (dbus_message_iter_close_container(&self.wrapper, &sub.wrapper) == 0) {
             return error.CloseContainerFailed;
         }
@@ -625,15 +628,14 @@ pub const MessageIter = struct {
                 var strPtr: [*c]const u8 = undefined;
                 self.getBasic(@ptrCast(&strPtr));
                 _ = dbus_message_iter_next(&self.wrapper);
-                return std.mem.sliceTo(strPtr, 0);
+                return std.mem.span(strPtr);
             },
             .variant => {
+                if (T != Types.AnyVariant) @panic("variant type must be Types.AnyVariant");
                 var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                var result: T.Type = undefined;
-                result.tag = @enumFromInt(@intFromEnum(sub.getArgType()));
-                result.iter = sub;
+                const result: T.Type = .{ .iter = sub, .tag = sub.getArgType(), .value = undefined };
                 _ = dbus_message_iter_next(&self.wrapper);
                 return result;
             },
@@ -641,7 +643,19 @@ pub const MessageIter = struct {
                 var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                if (T.ArrayElement.tag == .byte) {
+                if (T.ArrayElement.tag == .dict) {
+                    const Struct = Types.Struct(.{ T.ArrayElement.DictKey, T.ArrayElement.DictValue });
+                    const entrys = self.arena.alloc(T.ArrayElement.Type, self.getElementCount()) catch @panic("OOM");
+                    for (entrys) |*entry| {
+                        const e = sub.next(Struct).?;
+                        entry.* = .{
+                            .key = e[0],
+                            .value = e[1],
+                        };
+                    }
+                    _ = dbus_message_iter_next(&self.wrapper);
+                    return entrys;
+                } else if (T.ArrayElement.tag == .byte) {
                     var arr: [*c]const u8 = undefined;
                     var len: c_int = undefined;
                     dbus_message_iter_get_fixed_array(&sub.wrapper, @ptrCast(&arr), &len);
@@ -660,18 +674,9 @@ pub const MessageIter = struct {
                 var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const info = @typeInfo(T.Type);
-                const EntryType = info.pointer.child;
-                const entrys = self.arena.alloc(EntryType, self.getElementCount()) catch @panic("OOM");
-                for (entrys) |*entry| {
-                    const e = sub.next(Types.Struct(.{ T.DictKey, T.DictValue })).?;
-                    entry.* = EntryType{
-                        .key = e[0],
-                        .value = e[1],
-                    };
-                }
+                const entry = sub.next(Types.Struct(.{ T.DictKey, T.DictValue })).?;
                 _ = dbus_message_iter_next(&self.wrapper);
-                return entrys;
+                return entry;
             },
             .@"struct" => {
                 var sub = MessageIter.init(self.arena);
@@ -687,7 +692,7 @@ pub const MessageIter = struct {
         }
     }
 
-    pub fn getAll(self: *Self, t: anytype) !Types.getTupleTypes(t) {
+    pub fn getAll(self: *Self, t: anytype) Types.getTupleTypes(t) {
         const Result = Types.getTupleTypes(t);
         var result: Result = undefined;
         inline for (t, 0..) |T, i| {
@@ -703,7 +708,7 @@ pub const MessageIter = struct {
     }
     pub fn getSignature(self: *Self) []const u8 {
         const sig = dbus_message_iter_get_signature(&self.wrapper).?;
-        return std.mem.sliceTo(sig, 0);
+        return std.mem.span(sig);
     }
     fn getBasic(self: *Self, pointer: *anyopaque) void {
         dbus_message_iter_get_basic(&self.wrapper, pointer);
@@ -731,12 +736,12 @@ fn test_method_call(name: []const u8) *Message {
         name,
     );
 }
-
 test "method-call-result" {
-    var err = Error.init();
+    var err: Error = undefined;
+    err.init();
     defer err.deinit();
-    const conn = Connection.get(.Session, err) catch {
-        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
+    const conn = Connection.get(.Session, &err) catch {
+        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
         return;
     };
     defer conn.close();
@@ -745,7 +750,7 @@ test "method-call-result" {
     var helper = struct {
         conn: *Connection,
         iter: *MessageIter,
-        err: Error,
+        err: *Error,
         req: ?*Message = null,
         res: ?*Message = null,
         fn call(self: *@This(), name: []const u8, comptime T: type) T.Type {
@@ -763,7 +768,7 @@ test "method-call-result" {
         }
     }{
         .conn = conn,
-        .err = err,
+        .err = &err,
         .iter = iter,
     };
     defer helper.deinit();
@@ -819,7 +824,7 @@ test "method-call-result" {
     // GetNothing
     {
         const req = test_method_call("GetNothing");
-        const res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        const res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(false, iter.fromResult(res));
@@ -839,16 +844,16 @@ test "method-call-result" {
     }
     // GetVariant
     {
-        const r = helper.call("GetVariant", Types.Variant);
+        const r = helper.call("GetVariant", Types.AnyVariant);
         try testing.expectEqual(Types.Tags.int32, r.tag);
-        try testing.expectEqual(123, try r.get(Types.Int32));
+        try testing.expectEqual(123, r.as(Types.Int32));
     }
     // GetArrayVariant
     {
-        const r = helper.call("GetArrayVariant", Types.Array(Types.Variant));
-        try testing.expectEqualStrings("foo", try r[0].get(Types.String));
-        try testing.expectEqual(123, try r[1].get(Types.Int32));
-        try testing.expectEqual(true, try r[2].get(Types.Boolean));
+        const r = helper.call("GetArrayVariant", Types.Array(Types.AnyVariant));
+        try testing.expectEqualStrings("foo", r[0].as(Types.String));
+        try testing.expectEqual(123, r[1].as(Types.Int32));
+        try testing.expectEqual(true, r[2].as(Types.Boolean));
     }
     // GetDict1
     {
@@ -886,45 +891,45 @@ test "method-call-result" {
     }
     // GetDict3
     {
-        const r = helper.call("GetDict3", Types.Dict(Types.String, Types.Variant));
+        const r = helper.call("GetDict3", Types.Dict(Types.String, Types.AnyVariant));
         try testing.expectEqualStrings("name", r[0].key);
         try testing.expectEqualStrings("home", r[1].key);
         try testing.expectEqual(Types.Tags.string, r[0].value.tag);
         try testing.expectEqual(Types.Tags.int32, r[1].value.tag);
-        try testing.expectEqualStrings("foo", try r[0].value.get(Types.String));
-        try testing.expectEqual(489, try r[1].value.get(Types.Int32));
+        try testing.expectEqualStrings("foo", r[0].value.as(Types.String));
+        try testing.expectEqual(489, r[1].value.as(Types.Int32));
     }
     // GetDict3
     {
         const req = test_method_call("GetDict3");
-        const res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        const res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
-        const r = (try iter.getAll(.{Types.Dict(Types.String, Types.Variant)}))[0];
+        const r = iter.getAll(.{Types.Dict(Types.String, Types.AnyVariant)})[0];
         try testing.expectEqualStrings("name", r[0].key);
         try testing.expectEqualStrings("home", r[1].key);
         try testing.expectEqual(Types.Tags.string, r[0].value.tag);
         try testing.expectEqual(Types.Tags.int32, r[1].value.tag);
-        try testing.expectEqualStrings("foo", try r[0].value.get(Types.String));
-        try testing.expectEqual(489, try r[1].value.get(Types.Int32));
+        try testing.expectEqualStrings("foo", r[0].value.as(Types.String));
+        try testing.expectEqual(489, r[1].value.as(Types.Int32));
     }
     // GetError
     {
         const req = test_method_call("GetError");
         defer req.deinit();
-        _ = conn.sendWithReplyAndBlock(req, -1, err) catch {};
-        defer err.reset();
-        try testing.expectEqualStrings("ATestError", err.message().?);
+        _ = conn.sendWithReplyAndBlock(req, -1, &err) catch {};
+        try testing.expectEqualStrings("ATestError", err.message());
         try testing.expectEqual(true, conn.send(req, null));
     }
 }
 
 test "method-call-with-args" {
-    var err = Error.init();
+    var err: Error = undefined;
+    err.init();
     defer err.deinit();
-    const conn = Connection.get(.Session, err) catch {
-        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message().?});
+    const conn = Connection.get(.Session, &err) catch {
+        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
         return;
     };
     var req: *Message = undefined;
@@ -937,7 +942,7 @@ test "method-call-with-args" {
         iter.fromAppend(req);
         try iter.append(Types.Int32, 1);
         try iter.append(Types.Int32, 2);
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
@@ -952,7 +957,7 @@ test "method-call-with-args" {
             "Hello",
             "World",
         });
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
@@ -965,7 +970,7 @@ test "method-call-with-args" {
         iter.fromAppend(req);
         const bytes: [5160]u8 = [_]u8{'k'} ** 5160;
         try iter.append(Types.Array(Types.Byte), &bytes);
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
@@ -977,8 +982,9 @@ test "method-call-with-args" {
         req = test_method_call("CallWithVariant");
         iter.fromAppend(req);
 
-        try iter.append(Types.Variant, Types.Variant.init(Types.Int32, 114514));
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        const Variant = Types.Variant(Types.Int32);
+        try iter.append(Variant, Variant.init(114514));
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
@@ -993,7 +999,7 @@ test "method-call-with-args" {
             Types.Struct(.{ Types.String, Types.Int32, Types.Boolean }),
             .{ "foo", 123, true },
         );
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));
@@ -1008,7 +1014,7 @@ test "method-call-with-args" {
             .{ .key = "name", .value = "foo" },
             .{ .key = "home", .value = "bar" },
         });
-        res = conn.sendWithReplyAndBlock(req, -1, err) catch unreachable;
+        res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();
         try testing.expectEqual(true, iter.fromResult(res));

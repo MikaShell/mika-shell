@@ -1,7 +1,6 @@
 const std = @import("std");
 const c = @cImport({
     @cInclude("dbus/dbus.h");
-    @cInclude("dbus.h");
 });
 const libdbus = @import("libdbus.zig");
 pub fn getTupleTypes(t: anytype) type {
@@ -48,17 +47,16 @@ pub fn Dict(comptime Key: type, comptime Value: type) type {
     } else {
         @compileError("key type not allowed in dictionary: " ++ @typeName(Key));
     }
-    return struct {
+    return Array(struct {
         pub const tag: Tags = .dict;
         pub const typeCode = 'e';
         pub const DictKey = Key;
         pub const DictValue = Value;
-        pub const Entry = struct {
+        pub const Type = struct {
             key: Key.Type,
             value: Value.Type,
         };
-        pub const Type = []const Entry;
-    };
+    });
 }
 pub fn Struct(comptime sub: anytype) type {
     const info = @typeInfo(@TypeOf(sub));
@@ -79,38 +77,41 @@ pub fn Struct(comptime sub: anytype) type {
         pub const Type = std.meta.Tuple(&types);
     };
 }
-pub const Variant = struct {
-    pub const tag: Tags = .variant;
-    pub const typeCode = 'v';
-    pub fn init(comptime T: type, value: T.Type) Type {
-        const v = std.heap.page_allocator.create(T.Type) catch @panic("OOM");
-        v.* = value;
-        return .{
-            .iter = undefined,
-            .tag = T.tag,
-            .value = @ptrCast(v),
-            .store = struct {
-                fn f(self: Type, parent: *libdbus.MessageIter) !void {
-                    const iter = try parent.openContainerS(.variant, signature(T));
-                    defer iter.deinit();
-                    defer parent.closeContainer(iter) catch {};
-                    const vv: *T.Type = @ptrCast(@alignCast(self.value));
-                    defer std.heap.page_allocator.destroy(vv);
-                    try iter.append(T, vv.*);
-                }
-            }.f,
-        };
-    }
-    pub const Type = struct {
-        tag: Tags,
-        iter: *libdbus.MessageIter,
-        value: *anyopaque,
-        store: *const fn (Type, *libdbus.MessageIter) anyerror!void,
-        pub fn get(self: Type, T: type) !T.Type {
-            return self.iter.next(T).?;
+
+/// 在没法确定 Variant 的值类型时，可以用 `AnyVariant` 来表示。
+pub fn Variant(comptime Sub_: type) type {
+    return struct {
+        const Self = @This();
+        const Sub = if (Sub_ == void) Invalid else Sub_;
+        pub const tag: Tags = .variant;
+        pub const typeCode = 'v';
+        pub const ValueType = Sub;
+        pub fn init(value: Sub.Type) Type {
+            if (Sub == Invalid) @compileError("AnyVariant cannot be initialized with init() method");
+            return Type{
+                .iter = undefined,
+                .tag = Sub.tag,
+                .value = value,
+            };
         }
+        pub const Type = struct {
+            tag: Tags,
+            iter: *libdbus.MessageIter,
+            value: if (Sub == void) void else Sub.Type,
+            /// 用于 Variant(T) 类型，获取其中的值。
+            pub fn get(self: @This()) Sub.Type {
+                if (Sub == Invalid) @compileError("AnyVariant should use as() method to get the actual type");
+                return self.iter.next(Sub).?;
+            }
+            /// 用于 AnyVariant 类型，获取其中的值, T 为 dbus 类型。
+            pub fn as(self: @This(), T: type) T.Type {
+                if (Sub != Invalid) @compileError("as() method can only be used with AnyVariant");
+                return self.iter.next(T).?;
+            }
+        };
     };
-};
+}
+pub const AnyVariant = Variant(void);
 pub const Invalid = struct {
     pub const tag: Tags = .invalid;
     pub const typeCode = '\x00';
@@ -181,42 +182,57 @@ pub const UnixFd = struct {
     pub const typeCode = 'h';
     pub const Type = std.os.linux.fd_t;
 };
-pub fn signature(comptime T: type) []const u8 {
+fn count(comptime T: type) usize {
+    return switch (T.tag) {
+        .invalid => 0,
+        .array => 1 + count(T.ArrayElement),
+        .dict => 2 + count(T.DictKey) + count(T.DictValue),
+        .@"struct" => 2 + blk: {
+            var sum: usize = 0;
+            for (T.StructFields) |field| {
+                sum += count(field);
+            }
+            break :blk sum;
+        },
+        else => 1,
+    };
+}
+fn sSignature(comptime T: type) *const [count(T):0]u8 {
     return switch (T.tag) {
         .invalid => @compileError("invalid type has no signature"),
         .array => comptime blk: {
-            const subSig = signature(T.ArrayElement);
+            const subSig = sSignature(T.ArrayElement);
             break :blk std.fmt.comptimePrint("a{s}", .{subSig});
         },
         .dict => comptime blk: {
-            const keySig = signature(T.DictKey);
-            const valueSig = signature(T.DictValue);
-            break :blk std.fmt.comptimePrint("a{{{s}{s}}}", .{ keySig, valueSig });
+            const keySig = sSignature(T.DictKey);
+            const valueSig = sSignature(T.DictValue);
+            break :blk std.fmt.comptimePrint("{{{s}{s}}}", .{ keySig, valueSig });
         },
-        .@"struct" => blk: {
+        .@"struct" => comptime blk: {
             const fields = T.StructFields;
-            comptime var len: usize = 0;
-            comptime {
-                for (fields) |field| {
-                    const s = signature(field);
-                    len += s.len;
-                }
-            }
-            var sig: [len + 2]u8 = undefined;
-            sig[0] = '(';
-            sig[len + 1] = ')';
+            const size = count(T);
+            var buffer: [size:0]u8 = undefined;
+            buffer[0] = '(';
+            buffer[size - 1] = ')';
+            buffer[size] = 0;
             var i: usize = 1;
-            inline for (fields) |field| {
-                const s = signature(field);
-                std.mem.copyBackwards(u8, sig[i .. i + s.len], s);
-                i += s.len;
+            for (fields) |field| {
+                const len = count(field);
+                @memcpy(buffer[i .. i + len], sSignature(field));
+                i += len;
             }
-            break :blk &sig;
+            const copy = buffer;
+            break :blk &copy;
         },
-        else => &[_]u8{T.typeCode},
+        else => blk: {
+            break :blk &[_:0]u8{T.typeCode};
+        },
     };
 }
-
+pub fn signature(comptime T: type) []const u8 {
+    return sSignature(T)[0..];
+}
 pub const Tags = enum(c_int) {
     invalid = c.DBUS_TYPE_INVALID,
     byte = c.DBUS_TYPE_BYTE,
@@ -287,7 +303,7 @@ test "signature" {
         .{ .typ = Array(Array(Byte)), .signature = "aay" },
         .{ .typ = Dict(String, Int32), .signature = "a{si}" },
         .{ .typ = Dict(String, Array(Byte)), .signature = "a{say}" },
-        .{ .typ = Variant, .signature = "v" },
+        .{ .typ = AnyVariant, .signature = "v" },
         .{ .typ = Struct(.{ String, Int32 }), .signature = "(si)" },
         .{ .typ = Struct(.{ String, Array(Byte) }), .signature = "(say)" },
         .{ .typ = Struct(.{ String, Dict(String, Int32) }), .signature = "(sa{si})" },

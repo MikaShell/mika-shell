@@ -6,9 +6,9 @@ const Allocator = std.mem.Allocator;
 const DBusNode = dbus.Struct(.{
     dbus.Int32,
     DBusProperties,
-    dbus.Array(dbus.Variant),
+    dbus.Array(dbus.AnyVariant),
 });
-const DBusProperties = dbus.Dict(dbus.String, dbus.Variant);
+const DBusProperties = dbus.Dict(dbus.String, dbus.AnyVariant);
 const Node = struct {
     id: i32,
     properties: Properties,
@@ -20,7 +20,7 @@ const Node = struct {
             .children = blk: {
                 const children = try allocator.alloc(Node, dbusValue[2].len);
                 for (children, 0..) |*child, i| {
-                    child.* = try Node.init(allocator, try dbusValue[2][i].get(DBusNode));
+                    child.* = try Node.init(allocator, dbusValue[2][i].as(DBusNode));
                 }
                 break :blk children;
             },
@@ -64,39 +64,39 @@ const Properties = struct {
         var self: Properties = .{};
         const eql = std.mem.eql;
         for (props) |v| {
-            const value: dbus.Variant.Type = v.value;
+            const value: dbus.AnyVariant.Type = v.value;
             if (eql(u8, v.key, "label")) {
-                self.label = try allocator.dupe(u8, try value.get(dbus.String));
+                self.label = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "visible")) {
-                self.visible = try value.get(dbus.Boolean);
+                self.visible = value.as(dbus.Boolean);
                 continue;
             }
             if (eql(u8, v.key, "enabled")) {
-                self.enabled = try value.get(dbus.Boolean);
+                self.enabled = value.as(dbus.Boolean);
                 continue;
             }
             if (eql(u8, v.key, "icon-name")) {
-                self.iconName = try allocator.dupe(u8, try value.get(dbus.String));
+                self.iconName = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "icon-data")) {
                 // TODO: 尝试解析其他格式的 icon-data
                 if (value.tag != .string) @panic("icon-data must be a string, other types not supported");
-                self.iconData = try allocator.dupe(u8, try value.get(dbus.String));
+                self.iconData = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "icon-size")) {
-                self.iconSize = try value.get(dbus.Int32);
+                self.iconSize = value.as(dbus.Int32);
                 continue;
             }
             if (eql(u8, v.key, "children-display")) {
-                self.childrenDisplay = try allocator.dupe(u8, try value.get(dbus.String));
+                self.childrenDisplay = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "toggle-type")) {
-                const t = try value.get(dbus.String);
+                const t = value.as(dbus.String);
                 if (eql(u8, t, "checkmark")) {
                     self.toggleType = .checkmark;
                 } else if (eql(u8, t, "radio")) {
@@ -105,7 +105,7 @@ const Properties = struct {
                 continue;
             }
             if (eql(u8, v.key, "toggle-state")) {
-                const t = try value.get(dbus.Int32);
+                const t = value.as(dbus.Int32);
                 if (t == 0) {
                     self.toggleState = .unchecked;
                 } else if (t == 1) {
@@ -116,11 +116,11 @@ const Properties = struct {
                 continue;
             }
             if (eql(u8, v.key, "group")) {
-                self.group = try allocator.dupe(u8, try value.get(dbus.String));
+                self.group = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "shortcut")) {
-                const shortcut = try value.get(dbus.Array(dbus.String));
+                const shortcut = value.as(dbus.Array(dbus.String));
                 const st = try allocator.alloc([]const u8, shortcut.len);
                 for (st, 0..) |*s, i| {
                     s.* = try allocator.dupe(u8, shortcut[i]);
@@ -129,19 +129,19 @@ const Properties = struct {
                 continue;
             }
             if (eql(u8, v.key, "shortcut-label")) {
-                self.shortcutLabel = try allocator.dupe(u8, try value.get(dbus.String));
+                self.shortcutLabel = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "tooltip")) {
-                self.tooltip = try allocator.dupe(u8, try value.get(dbus.String));
+                self.tooltip = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "type")) {
-                self.type = try allocator.dupe(u8, try value.get(dbus.String));
+                self.type = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
             if (eql(u8, v.key, "children-types")) {
-                const types = try value.get(dbus.Array(dbus.String));
+                const types = value.as(dbus.Array(dbus.String));
                 const ct = try allocator.alloc([]const u8, types.len);
                 for (ct, 0..) |*t, i| {
                     t.* = try allocator.dupe(u8, types[i]);
@@ -150,7 +150,7 @@ const Properties = struct {
                 continue;
             }
             if (eql(u8, v.key, "action")) {
-                self.action = try allocator.dupe(u8, try value.get(dbus.String));
+                self.action = try allocator.dupe(u8, value.as(dbus.String));
                 continue;
             }
         }
@@ -188,38 +188,36 @@ const Properties = struct {
 //     try activate(allocator, bus, ":1.1198", "/MenuBar", 201);
 // }
 pub fn new(allocator: Allocator, bus: *dbus.Bus, owner: []const u8, path: []const u8) !Node {
-    var err = dbus.Error.init();
-    defer err.deinit();
-    const result = try dbus.baseCall(
+    const result = try dbus.call(
         allocator,
         bus.conn,
-        err,
+        bus.err,
         owner,
         path,
         "com.canonical.dbusmenu",
         "GetLayout",
         .{ dbus.Int32, dbus.Int32, dbus.Array(dbus.String) },
         .{ 0, -1, &.{} },
-        .{ dbus.UInt32, DBusNode },
     );
 
     defer result.deinit();
-    return try Node.init(allocator, result.values.?[1]);
+    return try Node.init(allocator, result.as(.{ dbus.UInt32, DBusNode })[1]);
 }
 pub fn activate(allocator: Allocator, bus: *dbus.Bus, owner: []const u8, path: []const u8, id: i32) !void {
-    var err = dbus.Error.init();
+    var err: dbus.Error = undefined;
+    err.init();
     defer err.deinit();
-    const result = try dbus.baseCall(
+    const Variant = dbus.Variant(dbus.Dict(dbus.String, dbus.AnyVariant));
+    const result = try dbus.call(
         allocator,
         bus.conn,
-        err,
+        &err,
         owner,
         path,
         "com.canonical.dbusmenu",
         "Event",
-        .{ dbus.Int32, dbus.String, dbus.Variant, dbus.UInt32 },
-        .{ id, "clicked", dbus.Variant.init(dbus.Dict(dbus.String, dbus.Variant), &.{}), 0 },
-        .{},
+        .{ dbus.Int32, dbus.String, Variant, dbus.UInt32 },
+        .{ id, "clicked", Variant.init(&.{}), 0 },
     );
     defer result.deinit();
 }

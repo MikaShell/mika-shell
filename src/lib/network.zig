@@ -51,21 +51,19 @@ pub const Network = struct {
         return v;
     }
     pub fn enable(self: Network) !void {
-        const result = try self.manager.call("Enable", .{dbus.Boolean}, .{true}, .{});
+        const result = try self.manager.call("Enable", .{dbus.Boolean}, .{true});
         result.deinit();
     }
     pub fn disable(self: Network) !void {
-        const result = try self.manager.call("Enable", .{dbus.Boolean}, .{false}, .{});
+        const result = try self.manager.call("Enable", .{dbus.Boolean}, .{false});
         result.deinit();
     }
     pub fn getConnections(self: Self, allocator: Allocator) ![]structs.Connection {
-        const result = try self.settings.call("ListConnections", .{}, .{}, .{
-            dbus.Array(dbus.ObjectPath),
-        });
+        const result = try self.settings.call("ListConnections", .{}, .{});
         defer result.deinit();
         var cs = std.ArrayList(structs.Connection).init(allocator);
         defer cs.deinit();
-        for (result.values.?[0]) |path| {
+        for (result.next(dbus.Array(dbus.ObjectPath))) |path| {
             const c = try structs.Connection.init(allocator, self.bus, path);
             errdefer c.deinit(allocator);
             if (c.type == .@"802-11-wireless" or c.type == .@"802-3-ethernet") {
@@ -116,23 +114,22 @@ pub const Network = struct {
             "GetSecrets",
             .{dbus.String},
             .{"802-11-wireless-security"},
-            .{dbus.Dict(
-                dbus.String,
-                dbus.Dict(
-                    dbus.String,
-                    dbus.Variant,
-                ),
-            )},
         );
         defer result.deinit();
-        const secrets = result.values.?[0];
+        const secrets = result.next(dbus.Dict(
+            dbus.String,
+            dbus.Dict(
+                dbus.String,
+                dbus.AnyVariant,
+            ),
+        ));
         const eql = std.mem.eql;
         for (secrets) |secret| {
             if (!eql(u8, secret.key, "802-11-wireless-security")) continue;
             for (secret.value) |sec| {
                 const key = sec.key;
                 if (eql(u8, key, "psk")) {
-                    const psk = try sec.value.get(dbus.String);
+                    const psk = sec.value.as(dbus.String);
                     return try allocator.dupe(u8, psk);
                 }
             }

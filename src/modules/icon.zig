@@ -448,7 +448,7 @@ fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]
     if (icon == null) return error.IconNotFound;
     defer c.g_object_unref(icon);
     const gotIconName_c = c.gtk_icon_paintable_get_icon_name(icon);
-    const gotIconName = std.mem.sliceTo(gotIconName_c, 0);
+    const gotIconName = std.mem.span(gotIconName_c);
     if (std.mem.eql(u8, gotIconName, "image-missing")) {
         return error.IconNotFound;
     }
@@ -457,7 +457,7 @@ fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]
     const path_c = c.g_file_get_path(file);
     if (path_c == null) return error.IconMissing;
     defer c.g_free(path_c);
-    const path = std.mem.sliceTo(path_c, 0);
+    const path = std.mem.span(path_c);
     return try makeHtmlImg(allocator, path);
 }
 fn makeHtmlImg(allocator: Allocator, filePath: []const u8) ![]const u8 {

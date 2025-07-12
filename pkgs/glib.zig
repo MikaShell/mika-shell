@@ -87,8 +87,8 @@ pub const FileMonitor = struct {
             defer if (file_c) |fc| c.g_free(fc);
             const otherFile_c = if (otherFile) |ofc| c.g_file_get_path(ofc) else null;
             defer if (otherFile_c) |ofc| c.g_free(ofc);
-            if (file_c) |fc| file_ = std.mem.sliceTo(fc, 0);
-            if (otherFile_c) |ofc| otherFile_ = std.mem.sliceTo(ofc, 0);
+            if (file_c) |fc| file_ = std.mem.span(fc);
+            if (otherFile_c) |ofc| otherFile_ = std.mem.span(ofc);
             const event_: Event = @enumFromInt(event);
             w.c(w.d, file_, otherFile_, event_);
         }

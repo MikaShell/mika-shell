@@ -10,7 +10,7 @@ pub const WebsiteDataManager = extern struct {
     extern fn webkit_website_data_manager_get_base_data_directory(self: *Self) [*c]const u8;
     extern fn webkit_website_data_manager_is_ephemeral(self: *Self) gboolean;
     pub fn getBaseDataDirectory(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_website_data_manager_get_base_data_directory(self), 0);
+        return std.mem.span(webkit_website_data_manager_get_base_data_directory(self));
     }
     pub fn isEphemeral(self: *Self) bool {
         return boolFromGboolean(webkit_website_data_manager_is_ephemeral(self));
@@ -77,10 +77,10 @@ pub const WebView = extern struct {
     pub fn getTitle(self: *Self) ?[]const u8 {
         const title = webkit_web_view_get_title(self);
         if (title == null) return null;
-        return std.mem.sliceTo(title, 0);
+        return std.mem.span(title);
     }
     pub fn getUri(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_web_view_get_uri(self), 0);
+        return std.mem.span(webkit_web_view_get_uri(self));
     }
     pub fn loadUri(self: *Self, uri: []const u8) void {
         const uri_ = std.heap.page_allocator.dupeZ(u8, uri) catch unreachable;
@@ -138,7 +138,7 @@ pub const JSCValue = extern struct {
     extern fn jsc_value_get_context(self: *Self) *JSCContext;
     pub const getContext = jsc_value_get_context;
     pub fn toJson(self: *Self, indent: u32) []const u8 {
-        return std.mem.sliceTo(jsc_value_to_json(self, indent), 0);
+        return std.mem.span(jsc_value_to_json(self, indent));
     }
 };
 pub const ScriptMessageReply = extern struct {
@@ -319,16 +319,16 @@ pub const URISchemeRequest = extern struct {
     pub const finishWithResponse = webkit_uri_scheme_request_finish_with_response;
     pub const finishError = webkit_uri_scheme_request_finish_error;
     pub fn getSchema(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_uri_scheme_request_get_scheme(self), 0);
+        return std.mem.span(webkit_uri_scheme_request_get_scheme(self));
     }
     pub fn getUri(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_uri_scheme_request_get_uri(self), 0);
+        return std.mem.span(webkit_uri_scheme_request_get_uri(self));
     }
     pub fn getPath(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_uri_scheme_request_get_path(self), 0);
+        return std.mem.span(webkit_uri_scheme_request_get_path(self));
     }
     pub fn getHttpMethod(self: *Self) []const u8 {
-        return std.mem.sliceTo(webkit_uri_scheme_request_get_http_method(self), 0);
+        return std.mem.span(webkit_uri_scheme_request_get_http_method(self));
     }
     pub fn finish(self: *Self, stream: *GInputStream, stream_length: c_long, content_type: []const u8) void {
         webkit_uri_scheme_request_finish(self, stream, stream_length, content_type.ptr);

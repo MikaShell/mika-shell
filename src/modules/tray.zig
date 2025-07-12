@@ -14,7 +14,10 @@ fn trayWatcherThread() !void {
     defer bus.deinit();
     const watcher = tray.Watcher.init(allocator, bus) catch return;
     defer watcher.deinit();
-    watcher.publish() catch @panic("failed to publish tray watcher");
+    watcher.publish() catch |err| {
+        std.log.err("failed to publish tray watcher: {any}", .{err});
+        return;
+    };
 
     while (true) {
         if (!bus.conn.readWrite(-1)) return;
@@ -197,6 +200,7 @@ pub const Tray = struct {
                 return;
             }
         }
+        return result.errors("item service not found: {s}", .{service});
     }
     pub fn activateMenu(self: *Self, args: Args, result: *Result) !void {
         try self.setup(result);

@@ -670,9 +670,10 @@ pub const Apps = struct {
 };
 const dbus = @import("dbus");
 fn activateAppWithDBus(allocator: Allocator, entry: Entry, action: ?Action, urls: []const []const u8) !void {
-    var err = dbus.Error.init();
+    var err: dbus.Error = undefined;
+    err.init();
     defer err.deinit();
-    const conn = try dbus.Connection.get(.Session, err);
+    const conn = try dbus.Connection.get(.Session, &err);
     defer conn.close();
     const dbusName = try allocator.dupeZ(u8, entry.dbusName.?);
     defer allocator.free(dbusName);
@@ -688,46 +689,43 @@ fn activateAppWithDBus(allocator: Allocator, entry: Entry, action: ?Action, urls
     try path.append('\x00');
     if (action == null) {
         if (urls.len > 0) {
-            const result = try dbus.baseCall(
+            const result = try dbus.call(
                 allocator,
                 conn,
-                err,
+                &err,
                 dbusName,
                 path.items,
                 "org.freedesktop.Application",
                 "Open",
-                .{ dbus.Array(dbus.String), dbus.Dict(dbus.String, dbus.Variant) },
+                .{ dbus.Array(dbus.String), dbus.Dict(dbus.String, dbus.AnyVariant) },
                 .{ urls, &.{} },
-                .{},
             );
             result.deinit();
         } else {
-            const result = try dbus.baseCall(
+            const result = try dbus.call(
                 allocator,
                 conn,
-                err,
+                &err,
                 dbusName,
                 path.items,
                 "org.freedesktop.Application",
                 "Activate",
-                .{dbus.Dict(dbus.String, dbus.Variant)},
+                .{dbus.Dict(dbus.String, dbus.AnyVariant)},
                 .{&.{}},
-                .{},
             );
             result.deinit();
         }
     } else {
-        const result = try dbus.baseCall(
+        const result = try dbus.call(
             allocator,
             conn,
-            err,
+            &err,
             dbusName,
             path.items,
             "org.freedesktop.Application",
             "ActivateAction",
-            .{ dbus.String, dbus.Array(dbus.String), dbus.Dict(dbus.String, dbus.Variant) },
+            .{ dbus.String, dbus.Array(dbus.String), dbus.Dict(dbus.String, dbus.AnyVariant) },
             .{ action.?.name, urls, &.{} },
-            .{},
         );
         result.deinit();
     }

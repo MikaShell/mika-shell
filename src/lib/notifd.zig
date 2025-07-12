@@ -113,11 +113,11 @@ pub const Notifd = struct {
         closed = 3,
         unknown = 4,
     };
+    bus: *dbus.Bus,
     emitter: dbus.Emitter,
     allocator: Allocator,
     id: u32,
     items: std.AutoHashMap(u32, Notification),
-    service: *dbus.Service,
     mutex: std.Thread.Mutex = .{},
     listener: ?*anyopaque,
     onAdded: ?*const fn (listener: ?*anyopaque, id: u32) void,
@@ -127,26 +127,26 @@ pub const Notifd = struct {
         errdefer allocator.destroy(self);
         self.items = std.AutoHashMap(u32, Notification).init(allocator);
         errdefer self.items.deinit();
+        self.bus = bus;
         self.id = 0;
         self.listener = null;
         self.onAdded = null;
         self.onRemoved = null;
         self.allocator = allocator;
-        self.service = bus.owner("org.freedesktop.Notifications", .DoNotQueue) catch |err| {
-            return err;
-        };
         return self;
     }
     pub fn deinit(self: *Self) void {
         var iter = self.items.iterator();
         while (iter.next()) |kv| kv.value_ptr.deinit(self.allocator);
         self.items.deinit();
-        self.service.deinit();
+        _ = self.bus.releaseName("org.freedesktop.Notifications") catch {};
+        self.bus.unpublish("/org/freedesktop/Notifications", Interface.name);
         self.allocator.destroy(self);
     }
 
     pub fn publish(self: *Self) !void {
-        self.service.publish(Notifd, "/org/freedesktop/Notifications", Interface, self, &self.emitter) catch {
+        try self.bus.requestName("org.freedesktop.Notifications", .DoNotQueue);
+        self.bus.publish(Notifd, "/org/freedesktop/Notifications", Interface, self, &self.emitter) catch {
             return error.FailedToPublishNtificationsService;
         };
     }
@@ -157,7 +157,7 @@ pub const Notifd = struct {
     pub fn activationToken(self: *Notifd, id: u32, activation_token: []const u8) void {
         self.emitter.emit("ActivationToken", .{ dbus.UInt32, dbus.String }, .{ id, activation_token });
     }
-    fn getCapabilities(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn getCapabilities(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
         try out.append(dbus.Array(dbus.String), &.{
             "action-icons",
             "actions",
@@ -184,7 +184,7 @@ pub const Notifd = struct {
     pub fn dismiss(self: *Self, id: u32) void {
         self.closeNotification_(id, .dismissed);
     }
-    fn closeNotificationDBus(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn closeNotificationDBus(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
         const id = in.next(dbus.UInt32) orelse return error.InvalidArgs;
         if (id == 0) return error.InvalidArgs; // 0 is not a valid notification ID
         self.closeNotification_(id, .closed);
@@ -201,14 +201,14 @@ pub const Notifd = struct {
         }
         if (self.onAdded) |f| f(self.listener, n.id);
     }
-    fn notify(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn notify(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
         const app_name = in.next(dbus.String) orelse return error.InvalidArgs;
         const replaces_id = in.next(dbus.UInt32) orelse return error.InvalidArgs;
         const app_icon = in.next(dbus.String) orelse return error.InvalidArgs;
         const summary = in.next(dbus.String) orelse return error.InvalidArgs;
         const body = in.next(dbus.String) orelse return error.InvalidArgs;
         const actions = in.next(dbus.Array(dbus.String)) orelse return error.InvalidArgs;
-        const hints = in.next(dbus.Dict(dbus.String, dbus.Variant)) orelse return error.InvalidArgs;
+        const hints = in.next(dbus.Dict(dbus.String, dbus.AnyVariant)) orelse return error.InvalidArgs;
         const expire_timeout = in.next(dbus.Int32) orelse return error.InvalidArgs;
         const allocator = self.allocator;
         var n: Notification = undefined;
@@ -236,13 +236,13 @@ pub const Notifd = struct {
             const variant = hints[i].value;
             const eql = std.mem.eql;
             if (eql(u8, key, "action-icons")) {
-                hint.* = Hint{ .actionIcons = try variant.get(dbus.Boolean) };
+                hint.* = Hint{ .actionIcons = variant.as(dbus.Boolean) };
             } else if (eql(u8, key, "category")) {
-                hint.* = Hint{ .category = try allocator.dupe(u8, try variant.get(dbus.String)) };
+                hint.* = Hint{ .category = try allocator.dupe(u8, variant.as(dbus.String)) };
             } else if (eql(u8, key, "desktop-entry")) {
-                hint.* = Hint{ .desktopEntry = try allocator.dupe(u8, try variant.get(dbus.String)) };
+                hint.* = Hint{ .desktopEntry = try allocator.dupe(u8, variant.as(dbus.String)) };
             } else if (eql(u8, key, "image-data")) {
-                const data = try variant.get(dbus.Struct(.{
+                const data = variant.as(dbus.Struct(.{
                     dbus.Int32, // width
                     dbus.Int32, // height
                     dbus.Int32, // rowstride
@@ -262,26 +262,26 @@ pub const Notifd = struct {
                     .webp = webp,
                 } };
             } else if (eql(u8, key, "image-path")) {
-                hint.* = Hint{ .imagePath = try allocator.dupe(u8, try variant.get(dbus.String)) };
+                hint.* = Hint{ .imagePath = try allocator.dupe(u8, variant.as(dbus.String)) };
             } else if (eql(u8, key, "resident")) {
-                hint.* = Hint{ .resident = try variant.get(dbus.Boolean) };
+                hint.* = Hint{ .resident = variant.as(dbus.Boolean) };
             } else if (eql(u8, key, "sound-file")) {
-                hint.* = Hint{ .soundFile = try allocator.dupe(u8, try variant.get(dbus.String)) };
+                hint.* = Hint{ .soundFile = try allocator.dupe(u8, variant.as(dbus.String)) };
             } else if (eql(u8, key, "sound-name")) {
-                hint.* = Hint{ .soundName = try allocator.dupe(u8, try variant.get(dbus.String)) };
+                hint.* = Hint{ .soundName = try allocator.dupe(u8, variant.as(dbus.String)) };
             } else if (eql(u8, key, "suppress-sound")) {
-                hint.* = Hint{ .suppressSound = try variant.get(dbus.Boolean) };
+                hint.* = Hint{ .suppressSound = variant.as(dbus.Boolean) };
             } else if (eql(u8, key, "transient")) {
-                hint.* = Hint{ .transient = try variant.get(dbus.Boolean) };
+                hint.* = Hint{ .transient = variant.as(dbus.Boolean) };
             } else if (eql(u8, key, "x")) {
-                hint.* = Hint{ .x = try variant.get(dbus.Int32) };
+                hint.* = Hint{ .x = variant.as(dbus.Int32) };
             } else if (eql(u8, key, "y")) {
-                hint.* = Hint{ .y = try variant.get(dbus.Int32) };
+                hint.* = Hint{ .y = variant.as(dbus.Int32) };
             } else if (eql(u8, key, "urgency")) {
-                const u = try variant.get(dbus.Byte);
+                const u = variant.as(dbus.Byte);
                 hint.* = Hint{ .urgency = @enumFromInt(u) };
             } else if (eql(u8, key, "sender-pid")) {
-                hint.* = Hint{ .senderPID = try variant.get(dbus.Int64) };
+                hint.* = Hint{ .senderPID = variant.as(dbus.Int64) };
             }
         }
         self.id += 1;
@@ -291,7 +291,7 @@ pub const Notifd = struct {
         try self.setupNotification(n);
         try out.append(dbus.UInt32, id);
     }
-    fn getServerInformation(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn getServerInformation(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
         try out.append(dbus.String, "notifd");
         try out.append(dbus.String, "mika-shell");
         try out.append(dbus.String, "0.1");
@@ -331,7 +331,7 @@ const Interface = dbus.Interface(Notifd){
                 .{ .name = "summary", .type = dbus.String, .direction = .in },
                 .{ .name = "body", .type = dbus.String, .direction = .in },
                 .{ .name = "actions", .type = dbus.Array(dbus.String), .direction = .in },
-                .{ .name = "hints", .type = dbus.Dict(dbus.String, dbus.Variant), .direction = .in },
+                .{ .name = "hints", .type = dbus.Dict(dbus.String, dbus.AnyVariant), .direction = .in },
                 .{ .name = "expire_timeout", .type = dbus.Int32, .direction = .in },
                 .{ .name = "id", .type = dbus.UInt32, .direction = .out },
             },
@@ -366,12 +366,12 @@ test {
     const allocator = testing.allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
     defer bus.deinit();
-    var notifd = Notifd.init(allocator, bus) catch |err| {
+    var notifd = try Notifd.init(allocator, bus);
+    defer notifd.deinit();
+    notifd.publish() catch |err| {
         std.debug.print("src/lib/notifd.zig: Failed to init Notifd {any}\n", .{err});
         return;
     };
-    defer notifd.deinit();
-    try notifd.publish();
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
     glib.timeoutMainLoop(200);

@@ -36,13 +36,13 @@ pub const Window = struct {
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
-        const ownedClass = try std.heap.page_allocator.dupe(u8, opt.class);
+        const ownedClass = try std.heap.page_allocator.dupeZ(u8, opt.class);
         if (w.type == .None) {
             // 这个回调只会执行一次
             w.container.asWidget().connect(.map, struct {
                 fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                     const class: [*:0]const u8 = @ptrCast(data);
-                    const class_ = std.mem.sliceTo(class, 0);
+                    const class_ = std.mem.span(class);
                     defer std.heap.page_allocator.free(class_);
                     widget.as(gtk.Window).setClass(class_);
                 }

@@ -69,7 +69,7 @@ pub const Layer = struct {
         gtk_layer_set_namespace(self.window, namespace.ptr);
     }
     pub fn getNamespace(self: Layer) []const u8 {
-        return std.mem.sliceTo(gtk_layer_get_namespace(self.window), 0);
+        return std.mem.span(gtk_layer_get_namespace(self.window));
     }
     pub fn setLayer(self: Layer, layer: Layers) void {
         gtk_layer_set_layer(self.window, layer);

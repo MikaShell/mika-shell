@@ -6,7 +6,7 @@ pub const Connection = libdbus.Connection;
 pub const Message = libdbus.Message;
 pub const MessageIter = libdbus.MessageIter;
 pub const Error = libdbus.Error;
-pub const DBusError = libdbus.DBusError;
+pub const DBusError = libdbus.Errors.DBusError;
 pub usingnamespace libdbus.Types;
 pub usingnamespace @import("service.zig");
 pub usingnamespace @import("object.zig");

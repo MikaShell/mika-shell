@@ -36,7 +36,7 @@ pub const Host = struct {
             return error.FailedToPingStatusNotifierWatcher;
         }
         self.watcher = watcher;
-        const registerResult = watcher.call("RegisterStatusNotifierHost", .{dbus.String}, .{bus.uniqueName}, .{}) catch {
+        const registerResult = watcher.call("RegisterStatusNotifierHost", .{dbus.String}, .{bus.uniqueName}) catch {
             return error.FailedToRegisterStatusNotifierHost;
         };
         defer registerResult.deinit();
@@ -126,7 +126,7 @@ pub const Host = struct {
         self.items.deinit();
         if (self.watcher) |w| {
             blk: {
-                const r = w.call("UnregisterStatusNotifierHost", .{dbus.String}, .{self.bus.uniqueName}, .{}) catch {
+                const r = w.call("UnregisterStatusNotifierHost", .{dbus.String}, .{self.bus.uniqueName}) catch {
                     break :blk;
                 };
                 r.deinit();

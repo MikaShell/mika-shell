@@ -1,12 +1,62 @@
 const dbus = @import("dbus");
 const Allocator = std.mem.Allocator;
+const Interface = dbus.Interface(Watcher){
+    .name = "org.kde.StatusNotifierWatcher",
+    .getter = Watcher.get,
+    .method = &.{
+        dbus.Method(Watcher){
+            .name = "RegisterStatusNotifierItem",
+            .func = Watcher.registerItem,
+            .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
+        },
+        dbus.Method(Watcher){
+            .name = "RegisterStatusNotifierHost",
+            .func = Watcher.registerHost,
+            .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
+        },
+    },
+    .property = &.{
+        dbus.Property{
+            .name = "ProtocolVersion",
+            .type = dbus.Int32,
+            .access = .read,
+        },
+        dbus.Property{
+            .name = "RegisteredStatusNotifierItems",
+            .type = dbus.Array(dbus.String),
+            .access = .read,
+        },
+        dbus.Property{
+            .name = "IsStatusNotifierHostRegistered",
+            .type = dbus.Boolean,
+            .access = .read,
+        },
+    },
+    .signal = &.{
+        dbus.Signal{
+            .name = "StatusNotifierItemRegistered",
+            .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
+        },
+        dbus.Signal{
+            .name = "StatusNotifierItemUnregistered",
+            .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
+        },
+        dbus.Signal{
+            .name = "StatusNotifierHostRegistered",
+        },
+        dbus.Signal{
+            .name = "StatusNotifierHostUnregistered",
+        },
+    },
+};
 pub const Watcher = struct {
     const Self = @This();
     allocator: Allocator,
     emiter: dbus.Emitter,
     items: std.ArrayList([]const u8),
     hosts: std.ArrayList([]const u8),
-    service: *dbus.Service,
+    bus: *dbus.Bus,
+
     pub fn init(allocator: Allocator, bus: *dbus.Bus) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -14,14 +64,15 @@ pub const Watcher = struct {
             .allocator = allocator,
             .items = std.ArrayList([]const u8).init(allocator),
             .hosts = std.ArrayList([]const u8).init(allocator),
-            .service = bus.owner("org.kde.StatusNotifierWatcher", .DoNotQueue) catch |err| {
-                return err;
-            },
+            .bus = bus,
             .emiter = undefined,
         };
         return self;
     }
     pub fn deinit(self: *Self) void {
+        _ = self.bus.releaseName("org.kde.StatusNotifierWatcher") catch {};
+        _ = self.bus.dbus.disconnect("NameOwnerChanged", Watcher.onNameOwnerChanged, self) catch {};
+        self.bus.unpublish("/StatusNotifierWatcher", Interface.name);
         for (self.items.items) |item| {
             self.allocator.free(item);
         }
@@ -30,63 +81,14 @@ pub const Watcher = struct {
         }
         self.items.deinit();
         self.hosts.deinit();
-        self.service.deinit();
         self.allocator.destroy(self);
     }
     pub fn publish(self: *Self) !void {
-        try self.service.publish(Watcher, "/StatusNotifierWatcher", dbus.Interface(Watcher){
-            .name = "org.kde.StatusNotifierWatcher",
-            .getter = Watcher.get,
-            .method = &.{
-                dbus.Method(Watcher){
-                    .name = "RegisterStatusNotifierItem",
-                    .func = Watcher.registerItem,
-                    .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
-                },
-                dbus.Method(Watcher){
-                    .name = "RegisterStatusNotifierHost",
-                    .func = Watcher.registerHost,
-                    .args = &.{dbus.MethodArgs{ .name = "service", .direction = .in, .type = dbus.String }},
-                },
-            },
-            .property = &.{
-                dbus.Property{
-                    .name = "ProtocolVersion",
-                    .type = dbus.Int32,
-                    .access = .read,
-                },
-                dbus.Property{
-                    .name = "RegisteredStatusNotifierItems",
-                    .type = dbus.Array(dbus.String),
-                    .access = .read,
-                },
-                dbus.Property{
-                    .name = "IsStatusNotifierHostRegistered",
-                    .type = dbus.Boolean,
-                    .access = .read,
-                },
-            },
-            .signal = &.{
-                dbus.Signal{
-                    .name = "StatusNotifierItemRegistered",
-                    .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
-                },
-                dbus.Signal{
-                    .name = "StatusNotifierItemUnregistered",
-                    .args = &.{dbus.SignalArgs{ .name = "service", .type = dbus.String }},
-                },
-                dbus.Signal{
-                    .name = "StatusNotifierHostRegistered",
-                },
-                dbus.Signal{
-                    .name = "StatusNotifierHostUnregistered",
-                },
-            },
-        }, self, &self.emiter);
-
-        try self.service.bus.dbus.connect("NameOwnerChanged", Watcher.onNameOwnerChanged, self);
+        try self.bus.requestName("org.kde.StatusNotifierWatcher", .DoNotQueue);
+        try self.bus.publish(Watcher, "/StatusNotifierWatcher", Interface, self, &self.emiter);
+        try self.bus.dbus.connect("NameOwnerChanged", Watcher.onNameOwnerChanged, self);
     }
-    fn registerItem(self: *Self, sender: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn registerItem(self: *Self, sender: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
         const service = in.next(dbus.String).?;
         var busName: []const u8 = service;
         var path: []const u8 = "/StatusNotifierItem";
@@ -98,12 +100,12 @@ pub const Watcher = struct {
         try self.items.append(item);
         self.emiter.emit("StatusNotifierItemRegistered", .{dbus.String}, .{item});
     }
-    fn registerHost(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn registerHost(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
         const host = in.next(dbus.String).?;
         try self.hosts.append(try self.allocator.dupe(u8, host));
         self.emiter.emit("StatusNotifierHostRegistered", .{}, null);
     }
-    fn get(self: *Self, name: []const u8, _: Allocator, out: *dbus.MessageIter, _: *dbus.CallError) !void {
+    fn get(self: *Self, name: []const u8, _: Allocator, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
         if (std.mem.eql(u8, name, "ProtocolVersion")) {
             try out.append(dbus.Int32, 0);
             return;
@@ -152,11 +154,11 @@ test "tray-watcher" {
     defer bus.deinit();
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
-    const watcher = Watcher.init(allocator, bus) catch |err| {
+    const watcher = try Watcher.init(allocator, bus);
+    defer watcher.deinit();
+    watcher.publish() catch |err| {
         print("src/lib/tray/watcher.zig: Cannot init Watcher: {any}\n", .{err});
         return;
     };
-    defer watcher.deinit();
-    try watcher.publish();
     glib.timeoutMainLoop(200);
 }

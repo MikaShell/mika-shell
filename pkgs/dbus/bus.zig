@@ -8,12 +8,9 @@ const Type = libdbus.Types;
 const Message = libdbus.Message;
 const object = @import("object.zig");
 const service = @import("service.zig");
-const DBusError = libdbus.DBusError;
-/// 仅包含 error.DBusError 和 error.OutOfMemory
-pub const Errors = error{
-    DBusError,
-    OutOfMemory,
-};
+const DBusError = libdbus.Errors;
+const call = common.call;
+
 pub fn readWrite(bus: *Bus, timeout_milliseconds: i32) bool {
     return bus.conn.readWrite(timeout_milliseconds);
 }
@@ -209,18 +206,23 @@ const FilterWrapper = struct {
 pub const Bus = struct {
     const Self = @This();
     conn: *libdbus.Connection,
+    ownerNames: std.ArrayList([]const u8),
     uniqueName: []const u8,
-    err: Error,
+    err: *Error,
     allocator: Allocator,
+    /// org.freedesktop.DBus 接口
     dbus: *object.Object,
     filters: std.ArrayList(*FilterWrapper),
     objects: std.ArrayList(*object.Object),
+    service: ?*service.Service,
     /// 获取 bus
     ///
     /// 底层使用 libdbus 的 `dbus_bus_get_private()` 函数获取 bus 连接.
     /// 在调用 Bus 的函数时,如果捕获到 `dbus.DBusError` 错误,可以从 err 字段中获取错误信息,
     pub fn init(allocator: Allocator, bus_type: libdbus.BusType) !*Bus {
-        var err = Error.init();
+        const err = try allocator.create(Error);
+        errdefer allocator.destroy(err);
+        err.init();
         const conn = try libdbus.Connection.get(bus_type, err);
         const bus = try allocator.create(Self);
         errdefer allocator.destroy(bus);
@@ -233,49 +235,12 @@ pub const Bus = struct {
             .allocator = allocator,
             .dbus = undefined,
             .objects = std.ArrayList(*object.Object).init(allocator),
+            .service = null,
             .filters = std.ArrayList(*FilterWrapper).init(allocator),
+            .ownerNames = std.ArrayList([]const u8).init(allocator),
         };
         bus.dbus = try common.freedesktopDBus(bus);
-        bus.dbus.connect("NameOwnerChanged", struct {
-            fn f(e: common.Event, data: ?*anyopaque) void {
-                const bus_: *Self = @ptrCast(@alignCast(data));
-                const values = e.iter.getAll(.{ Type.String, Type.String, Type.String }) catch unreachable;
-                const oldOwner = values[1];
-                const newOwner = values[2];
-                const isNewService = std.mem.eql(u8, oldOwner, "");
-                for (bus_.objects.items) |obj| {
-                    if (std.mem.eql(u8, obj.uniqueName, "")) {
-                        if (isNewService) {
-                            const resp = bus_.dbus.call("GetNameOwner", .{Type.String}, .{obj.name}, .{Type.String}) catch {
-                                continue;
-                            };
-                            defer resp.deinit();
-                            const uniqueName = resp.values.?[0];
-                            const uniqueName_ = obj.allocator.dupeZ(u8, uniqueName) catch @panic("OOM");
-                            if (std.mem.eql(u8, uniqueName_, newOwner)) {
-                                obj.uniqueName = uniqueName_;
-                                break;
-                            } else {
-                                obj.allocator.free(uniqueName_);
-                            }
-                        }
-                    } else if (std.mem.eql(u8, obj.uniqueName, oldOwner)) {
-                        const old = obj.uniqueName;
-                        obj.uniqueName = obj.allocator.dupeZ(u8, newOwner) catch @panic("OOM");
-                        obj.allocator.free(old);
-                    }
-                }
-            }
-        }.f, bus) catch {
-            bus.replaceError(&bus.dbus.err);
-            return error.DBusError;
-        };
         return bus;
-    }
-    fn replaceError(self: *Self, err: *Error) void {
-        const old = self.err.ptr;
-        self.err.ptr = err.ptr;
-        err.ptr = old;
     }
     pub fn deinit(self: *Self) void {
         for (self.objects.items) |item| {
@@ -285,10 +250,17 @@ pub const Bus = struct {
             self.conn.removeFilter(@ptrCast(&FilterWrapper.call), item);
             self.allocator.destroy(item);
         }
+        for (self.ownerNames.items) |item| {
+            self.allocator.free(item);
+        }
+        self.ownerNames.deinit();
         self.filters.deinit();
+        for (self.objects.items) |obj| obj.deinit();
         self.objects.deinit();
+        if (self.service) |s| s.deinit();
         self.conn.close();
         self.err.deinit();
+        self.allocator.destroy(self.err);
         self.allocator.destroy(self);
     }
     /// 获取指定名称的代理
@@ -296,59 +268,90 @@ pub const Bus = struct {
     /// 获得一个 dbus.Object 实例,该实例代表一个 dbus 服务.
     /// 如果你需要调用某个 dbus 服务的接口,你应该使用该函数获取对应的 dbus.Object 实例.
     pub fn proxy(self: *Self, name: []const u8, path: []const u8, iface: []const u8) !*object.Object {
-        const req = try object.baseCall(self.allocator, self.conn, self.err, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", .{Type.String}, .{name}, .{Type.String});
-        defer req.deinit();
-        const obj = try self.allocator.create(object.Object);
-        errdefer self.allocator.destroy(obj);
-        obj.* = .{
-            .bus = self,
-            .name = try self.allocator.dupeZ(u8, name),
-            .path = try self.allocator.dupeZ(u8, path),
-            .iface = try self.allocator.dupeZ(u8, iface),
-            .uniqueName = try self.allocator.dupeZ(u8, req.values.?[0]),
-            .err = Error.init(),
-            .listeners = std.ArrayList(common.Listener).init(self.allocator),
-            .allocator = self.allocator,
-        };
-        try self.objects.append(obj);
-        return obj;
+        const o = try object.Object.init(self, name, path, iface);
+        if (self.objects.items.len == 0) {
+            self.dbus.connect("NameOwnerChanged", struct {
+                fn f(e: common.Event, data: ?*anyopaque) void {
+                    const bus_: *Self = @ptrCast(@alignCast(data));
+                    const values = e.iter.getAll(.{ Type.String, Type.String, Type.String });
+                    const oldOwner = values[1];
+                    const newOwner = values[2];
+                    const isNewService = std.mem.eql(u8, oldOwner, "");
+                    for (bus_.objects.items) |obj| {
+                        if (std.mem.eql(u8, obj.uniqueName, "")) {
+                            if (isNewService) {
+                                const resp = bus_.dbus.call("GetNameOwner", .{Type.String}, .{obj.name}) catch {
+                                    continue;
+                                };
+                                defer resp.deinit();
+                                const uniqueName = resp.next(Type.String);
+                                const uniqueName_ = obj.allocator.dupeZ(u8, uniqueName) catch @panic("OOM");
+                                if (std.mem.eql(u8, uniqueName_, newOwner)) {
+                                    obj.uniqueName = uniqueName_;
+                                    break;
+                                } else {
+                                    obj.allocator.free(uniqueName_);
+                                }
+                            }
+                        } else if (std.mem.eql(u8, obj.uniqueName, oldOwner)) {
+                            const old = obj.uniqueName;
+                            obj.uniqueName = obj.allocator.dupeZ(u8, newOwner) catch @panic("OOM");
+                            obj.allocator.free(old);
+                        }
+                    }
+                }
+            }.f, self) catch {
+                return error.FailedToConnectToNameOwnerChangedSignal;
+            };
+        }
+        return o;
+    }
+    pub fn publish(
+        self: *Self,
+        comptime T: type,
+        comptime path: []const u8,
+        comptime interface: service.Interface(T),
+        instance: *T,
+        emitter: ?*service.Emitter,
+    ) !void {
+        if (self.service == null) {
+            self.service = try service.Service.init(self);
+        }
+        try service.publish(self.service.?, T, path, interface, instance, emitter);
+    }
+    pub fn unpublish(self: *Self, path: []const u8, interface: []const u8) void {
+        if (self.service == null) return;
+        service.unpublish(self.service.?, path, interface);
+        if (self.service.?.interfaces.items.len == 0) {
+            self.service.?.deinit();
+            self.service = null;
+        }
     }
     pub const OwnerError = error{
         NameInQueue,
         NameExists,
         NameAlreadyOwner,
-    } || Errors;
-    /// 获取名称并返回一个 service.Service 实例.
-    /// 如果你需要发布某个 dbus 服务,你应该使用该函数
-    pub fn owner(self: *Self, name: []const u8, flag: libdbus.Connection.NameFlag) OwnerError!*service.Service {
-        const allocator = self.allocator;
-        const s = try allocator.create(service.Service);
-        errdefer allocator.destroy(s);
-        s.* = service.Service{
-            .allocator = allocator,
-            .bus = self,
-            .name = name,
-            .interfaces = std.ArrayList(service.Service.Interface_).init(allocator),
-            .machineId = undefined,
-            .uniqueName = undefined,
-            .err = undefined,
-        };
-
-        var err = Error.init();
-        errdefer err.deinit();
-
-        s.uniqueName = self.conn.getUniqueName();
-        s.err = err;
-        s.machineId = libdbus.getLocalMachineId();
-
-        const r = try self.conn.requestName(name, flag, err);
+    } || DBusError || Allocator.Error;
+    pub fn requestName(self: *Self, name: []const u8, flag: libdbus.Connection.NameFlag) OwnerError!void {
+        const r = try self.conn.requestName(name, flag, self.err);
         switch (r) {
-            .PrimaryOwner => {},
+            .PrimaryOwner => {
+                try self.ownerNames.append(try self.allocator.dupe(u8, name));
+            },
             .InQueue => return error.NameInQueue,
             .Exists => return error.NameExists,
             .AlreadyOwner => return error.NameAlreadyOwner,
         }
-        return s;
+    }
+    pub fn releaseName(self: *Self, name: []const u8) DBusError!void {
+        _ = try self.conn.releaseName(name, self.err);
+        for (self.ownerNames.items) |owner| {
+            if (std.mem.eql(u8, owner, name)) {
+                _ = self.ownerNames.swapRemove(self.ownerNames.items.len - 1);
+                self.allocator.free(owner);
+                break;
+            }
+        }
     }
     /// 向 bus 添加过滤器, 过滤器会在收到 dbus 消息时调用.
     ///
@@ -380,12 +383,12 @@ pub const Bus = struct {
             }
         }
     }
-    pub fn addMatch(self: *Self, rule: MatchRule) Errors!void {
+    pub fn addMatch(self: *Self, rule: MatchRule) (DBusError || Allocator.Error)!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
         try self.conn.addMatch(match, self.err);
     }
-    pub fn removeMatch(self: *Self, rule: MatchRule) Errors!void {
+    pub fn removeMatch(self: *Self, rule: MatchRule) (DBusError || Allocator.Error)!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
         try self.conn.removeMatch(match, self.err);

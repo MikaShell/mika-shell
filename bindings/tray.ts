@@ -30,7 +30,7 @@ export interface Item {
     icon: Icon;
     id: string;
     ItemIsMenu: boolean;
-    menu: MenuNode;
+    menu: string;
     overlay: Overlay;
     status: string;
     title: string;

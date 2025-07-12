@@ -8,123 +8,70 @@ const Type = libdbus.Types;
 const Message = libdbus.Message;
 const Bus = @import("bus.zig").Bus;
 const Errors = @import("bus.zig").Errors;
-/// 啊这
-pub fn Result(T: type) type {
+const Result = common.Result;
+pub fn ResultGet(T: type) type {
     return struct {
-        response: *libdbus.Message,
-        iter: *libdbus.MessageIter,
-        values: ?T,
-        pub fn deinit(self: @This()) void {
-            self.response.deinit();
-            self.iter.deinit();
-        }
-    };
-}
-pub fn GetResult(T: type) type {
-    return struct {
-        result: Result(std.meta.Tuple(&.{Type.Variant.Type})),
-        value: T,
+        result: Result,
+        value: T.Type,
         pub fn deinit(self: @This()) void {
             self.result.deinit();
         }
     };
 }
-pub const GetAllResult = struct {
-    result: Result(Type.getTupleTypes(.{Type.Dict(Type.String, Type.Variant)})),
+pub const ResultGetAll = struct {
+    result: Result,
     allocator: Allocator,
-    map: *std.StringHashMap(Type.Variant.Type),
-    pub fn get(self: GetAllResult, key: []const u8, ValueType: type) ?ValueType.Type {
+    map: *std.StringHashMap(Type.AnyVariant.Type),
+    pub fn get(self: ResultGetAll, key: []const u8, ValueType: type) ?ValueType.Type {
         const val = self.map.get(key);
         if (val == null) return null;
-        return val.?.get(ValueType) catch return null;
+        return val.?.as(ValueType);
     }
-    pub fn deinit(self: GetAllResult) void {
+    pub fn deinit(self: ResultGetAll) void {
         self.result.deinit();
         self.map.deinit();
         self.allocator.destroy(self.map);
     }
 };
-/// 调用一个 dbus 方法, 并返回结果
-///
-/// argsType 和 resultType: 是方法的参数类型,接受一个 Tuple 描述方法调用的参数的类型
-///
-/// args 是实际传入的参数,根据 argsType 决定传入的参数类型:
-/// ```
-/// {dbus.String, dbus.Int32, dbus.Array(dbus.String)}
-/// ```
-/// 根据上方的类型, args 应当与 argsType 匹配:
-/// ```
-/// .{ "hello", 123, &.{ "world", "foo" } }
-/// ```
-///
-/// example:
-/// ```
-/// const result = try baseCall(
-///     allocator,
-///     conn,
-///     err,
-///     "org.freedesktop.DBus",
-///     "/",
-///     "org.freedesktop.DBus",
-///     "ListNames",
-///    .{},
-///     null,
-///    .{dbus.Array(dbus.String)},
-/// );
-/// defer result.deinit();
-/// ```
-/// 在 result 中可以获取返回值, resulr.value 会根据传入的 resulrType 进行类型转换.
-/// 在上面的调用中,result.value的类型是 `[][]const u8`
-pub fn baseCall(
-    allocator: Allocator,
-    conn: *libdbus.Connection,
-    err: Error,
-    name: []const u8,
-    path: []const u8,
-    iface: []const u8,
-    method: []const u8,
-    comptime argsType: anytype,
-    args: ?Type.getTupleTypes(argsType),
-    comptime resultType: anytype,
-) !Result(Type.getTupleTypes(resultType)) {
-    const args_info = @typeInfo(@TypeOf(argsType));
-    if (args_info != .@"struct" or !args_info.@"struct".is_tuple) {
-        @compileError("expected a tuple, found " ++ @typeName(@TypeOf(argsType)));
-    }
-    const request = libdbus.Message.newMethodCall(name, path, iface, method);
-    defer request.deinit();
-    const iter = libdbus.MessageIter.init(allocator);
-    errdefer iter.deinit();
-    iter.fromAppend(request);
-    if (args != null) {
-        inline for (args.?, 0..) |arg, i| {
-            try iter.append(argsType[i], arg);
-        }
-    }
-    const response = try conn.sendWithReplyAndBlock(request, -1, err);
-    const hasResult = iter.fromResult(response);
-    return .{
-        .response = response,
-        .iter = iter,
-        .values = if (hasResult) try iter.getAll(resultType) else null,
-    };
-}
 
 pub const Object = struct {
     const Self = @This();
-    name: [:0]const u8,
-    path: [:0]const u8,
-    iface: [:0]const u8,
-    uniqueName: [:0]const u8,
-    bus: *Bus,
+    name: []const u8,
+    path: []const u8,
+    iface: []const u8,
+    uniqueName: []const u8,
     allocator: Allocator,
-    err: Error,
+    err: *Error,
+    bus: *Bus,
     listeners: std.ArrayList(common.Listener),
+    pub fn init(bus: *Bus, name: []const u8, path: []const u8, iface: []const u8) !*Self {
+        const allocator = bus.allocator;
+        const req = try common.call(allocator, bus.conn, bus.err, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", .{Type.String}, .{name});
+        defer req.deinit();
+        const obj = try allocator.create(Object);
+        errdefer allocator.destroy(obj);
+        const err = try allocator.create(Error);
+        errdefer allocator.destroy(err);
+        err.init();
+        obj.* = .{
+            .bus = bus,
+            .name = try allocator.dupe(u8, name),
+            .path = try allocator.dupe(u8, path),
+            .iface = try allocator.dupe(u8, iface),
+            .uniqueName = try allocator.dupe(u8, req.next(Type.String)),
+            .listeners = std.ArrayList(common.Listener).init(allocator),
+            .allocator = allocator,
+            .err = err,
+        };
+        try bus.objects.append(obj);
+        return obj;
+    }
     pub fn deinit(self: *Self) void {
         for (self.listeners.items) |listener| {
             self.disconnect(listener.signal, listener.handler, listener.data) catch continue;
         }
         self.err.deinit();
+        self.allocator.destroy(self.err);
         self.listeners.deinit();
         self.allocator.free(self.name);
         self.allocator.free(self.path);
@@ -139,8 +86,9 @@ pub const Object = struct {
         }
         self.allocator.destroy(self);
     }
-    fn callWithSelf(self: *Self, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType), comptime resultType: anytype) !Result(Type.getTupleTypes(resultType)) {
-        return baseCall(
+    fn callWithSelf(self: *Self, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, comptime argsType: anytype, args: Type.getTupleTypes(argsType)) common.CallError!Result {
+        self.err.reset();
+        return common.call(
             self.allocator,
             self.bus.conn,
             self.err,
@@ -150,7 +98,6 @@ pub const Object = struct {
             method,
             argsType,
             args,
-            resultType,
         );
     }
     /// 调用一个 dbus 方法, 并返回结果
@@ -168,7 +115,7 @@ pub const Object = struct {
     /// `const result = object.call(xxx);`
     /// 从 result.values 中获取返回值, resulr.value 会根据传入的 resulrType 进行类型转换.
     /// 使用完成后,必须调用 result.deinit() 释放资源
-    pub fn call(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType), comptime resultType: anytype) !Result(Type.getTupleTypes(resultType)) {
+    pub fn call(self: *Object, name: []const u8, comptime argsType: anytype, args: Type.getTupleTypes(argsType)) common.CallError!Result {
         return self.callWithSelf(
             self.name,
             self.path,
@@ -176,27 +123,23 @@ pub const Object = struct {
             name,
             argsType,
             args,
-            resultType,
         );
     }
     /// 发送但不接收回复, 此函数不会返回 error.DBusError
-    pub fn callN(self: *Object, name: []const u8, comptime argsType: anytype, args: ?Type.getTupleTypes(argsType)) !void {
-        const request = libdbus.Message.newMethodCall(self.name, self.path, self.iface, name);
-        defer request.deinit();
-        const iter = libdbus.MessageIter.init(self.allocator);
-        defer iter.deinit();
-        iter.fromAppend(request);
-        if (args != null) {
-            inline for (args.?, 0..) |arg, i| {
-                try iter.append(argsType[i], arg);
-            }
-        }
-        if (!self.bus.conn.send(request, null)) {
-            return error.SendFailed;
-        }
+    pub fn callN(self: *Object, name: []const u8, comptime argsType: anytype, args: Type.getTupleTypes(argsType)) common.CallNError!void {
+        return common.callN(
+            self.allocator,
+            self.bus.conn,
+            self.name,
+            self.path,
+            self.iface,
+            name,
+            argsType,
+            args,
+        );
     }
     /// 获取属性值
-    pub fn get(self: *Object, name: []const u8, ResultTyep: type) !GetResult(ResultTyep.Type) {
+    pub fn get(self: *Object, name: []const u8, ResultTyep: type) !ResultGet(ResultTyep) {
         const resp = try self.callWithSelf(
             self.name,
             self.path,
@@ -204,9 +147,8 @@ pub const Object = struct {
             "Get",
             .{ Type.String, Type.String },
             .{ self.iface, name },
-            .{Type.Variant},
         );
-        return .{ .result = resp, .value = try resp.values.?[0].get(ResultTyep) };
+        return .{ .result = resp, .value = resp.next(Type.AnyVariant).as(ResultTyep) };
     }
     pub fn get2(self: *Object, name: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
         switch (ResultTyep) {
@@ -231,12 +173,11 @@ pub const Object = struct {
             "Get",
             .{ Type.String, Type.String },
             .{ self.iface, name },
-            .{Type.Variant},
         );
         defer resp.deinit();
-        pointer.* = try resp.values.?[0].get(ResultTyep);
+        pointer.* = resp.next(Type.AnyVariant).as(ResultTyep);
     }
-    pub fn get2Alloc(self: *Object, allocator: Allocator, name: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
+    pub fn get2Alloc(self: *Object, allocator: Allocator, name: []const u8, ResultTyep: type, str_ptr: *ResultTyep.Type) !void {
         switch (ResultTyep) {
             Type.String,
             Type.ObjectPath,
@@ -253,26 +194,25 @@ pub const Object = struct {
             "Get",
             .{ Type.String, Type.String },
             .{ self.iface, name },
-            .{Type.Variant},
         );
         defer resp.deinit();
-        pointer.* = try allocator.dupe(u8, try resp.values.?[0].get(ResultTyep));
+        str_ptr.* = try allocator.dupe(u8, resp.next(Type.AnyVariant).as(ResultTyep));
     }
     /// 设置属性值
     pub fn set(self: *Object, name: []const u8, Value: type, value: Value.Type) !void {
+        const Variant = Type.Variant(Value);
         const resp = try self.callWithSelf(
             self.name,
             self.path,
             "org.freedesktop.DBus.Properties",
             "Set",
-            .{ Type.String, Type.String, Type.Variant },
-            .{ self.iface, name, Type.Variant.init(Value, value) },
-            .{},
+            .{ Type.String, Type.String, Variant },
+            .{ self.iface, name, Variant.init(value) },
         );
         defer resp.deinit();
     }
     /// 获取所有属性值
-    pub fn getAll(self: *Object) !GetAllResult {
+    pub fn getAll(self: *Object) (error{NoResult} || common.CallError)!ResultGetAll {
         const resp = try self.callWithSelf(
             self.name,
             self.path,
@@ -280,16 +220,15 @@ pub const Object = struct {
             "GetAll",
             .{Type.String},
             .{self.iface},
-            .{Type.Dict(Type.String, Type.Variant)},
         );
-        const HashMap = std.StringHashMap(Type.Variant.Type);
+        const HashMap = std.StringHashMap(Type.AnyVariant.Type);
         const map = try self.allocator.create(HashMap);
         map.* = HashMap.init(self.allocator);
-        const dict = resp.values.?[0];
+        const dict = resp.next(Type.Dict(Type.String, Type.AnyVariant));
         for (dict) |entry| {
             try map.put(entry.key, entry.value);
         }
-        return GetAllResult{
+        return ResultGetAll{
             .allocator = self.allocator,
             .map = map,
             .result = resp,
@@ -297,7 +236,7 @@ pub const Object = struct {
     }
     /// 调用 Ping 方法
     pub fn ping(self: *Object) bool {
-        const r = self.callWithSelf(self.name, self.path, "org.freedesktop.DBus.Peer", "Ping", .{}, null, .{}) catch {
+        const r = self.callWithSelf(self.name, self.path, "org.freedesktop.DBus.Peer", "Ping", .{}, .{}) catch {
             return false;
         };
         defer r.deinit();
@@ -305,7 +244,7 @@ pub const Object = struct {
     }
     /// 监听信号
     ///
-    /// 在回调中无需处理 Event 中的 iter, iter 会在回调退出后自动释放
+    /// 在回调中无需释放 Event 中的 iter, iter 会在回调退出后自动释放
     pub fn connect(self: *Object, signal: []const u8, handler: *const fn (common.Event, ?*anyopaque) void, data: ?*anyopaque) !void {
         if (self.listeners.items.len == 0) {
             if (!try self.bus.addFilter(.{ .type = .signal }, signalHandler, self)) {
@@ -401,9 +340,9 @@ test "call" {
     defer watch.deinit();
     var proxy = try bus.proxy("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
     defer proxy.deinit();
-    const resp = try proxy.call("GetArrayString", .{}, null, .{Type.Array(Type.String)});
+    const resp = try proxy.call("GetArrayString", .{}, .{});
     defer resp.deinit();
-    const val = resp.values.?[0];
+    const val = resp.next(Type.Array(Type.String));
     try testing.expectEqualStrings("foo", val[0]);
     try testing.expectEqualStrings("bar", val[1]);
     try testing.expectEqualStrings("baz", val[2]);
@@ -449,7 +388,7 @@ test "set" {
 }
 fn test_on_signal1(event: common.Event, err_: ?*anyopaque) void {
     const err: *anyerror = @ptrCast(@alignCast(err_.?));
-    const value = event.iter.getAll(.{ Type.String, Type.Int32 }) catch unreachable;
+    const value = event.iter.getAll(.{ Type.String, Type.Int32 });
     err.* = error.OK;
     testing.expectEqualStrings("TestSignal", value[0]) catch |er| {
         err.* = er;
@@ -503,5 +442,5 @@ test "get-error" {
     defer watch.deinit();
     var proxy = try bus.proxy("com.example.MikaShell", "/com/example/MikaShell", "com.example.TestService");
     defer proxy.deinit();
-    try proxy.callN("GetError", .{}, null);
+    try proxy.callN("GetError", .{}, .{});
 }

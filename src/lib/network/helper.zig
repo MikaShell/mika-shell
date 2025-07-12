@@ -18,8 +18,8 @@ pub const DBusHelper = struct {
     fn parseError(self: Self, err: anyerror) anyerror {
         if (err != error.DBusError) return err;
         const eql = std.mem.eql;
-        const errName = self.object.err.name().?;
-        const errMsg = self.object.err.message().?;
+        const errName = self.object.err.name();
+        const errMsg = self.object.err.message();
         if (eql(u8, errName, "org.freedesktop.NetworkManager.AlreadyEnabledOrDisabled")) {
             return Error.AlreadyEnabledOrDisabled;
         } else {
@@ -27,7 +27,7 @@ pub const DBusHelper = struct {
             return err;
         }
     }
-    pub fn get(self: Self, prop: []const u8, ResultTyep: type) !dbus.GetResult(ResultTyep.Type) {
+    pub fn get(self: Self, prop: []const u8, ResultTyep: type) !dbus.ResultGet(ResultTyep) {
         return self.object.get(prop, ResultTyep) catch |err| return self.parseError(err);
     }
     pub fn get2(self: Self, prop: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
@@ -36,10 +36,10 @@ pub const DBusHelper = struct {
     pub fn get2Alloc(self: Self, alloctor: Allocator, prop: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
         return self.object.get2Alloc(alloctor, prop, ResultTyep, pointer) catch |err| return self.parseError(err);
     }
-    pub fn call(self: Self, name: []const u8, comptime argsType: anytype, args: ?dbus.getTupleTypes(argsType), comptime resultType: anytype) !dbus.Result(dbus.getTupleTypes(resultType)) {
-        return self.object.call(name, argsType, args, resultType) catch |err| return self.parseError(err);
+    pub fn call(self: Self, name: []const u8, comptime argsType: anytype, args: dbus.getTupleTypes(argsType)) !dbus.Result {
+        return self.object.call(name, argsType, args) catch |err| return self.parseError(err);
     }
-    pub fn callN(self: Self, name: []const u8, comptime argsType: anytype, args: ?dbus.getTupleTypes(argsType)) !void {
+    pub fn callN(self: Self, name: []const u8, comptime argsType: anytype, args: dbus.getTupleTypes(argsType)) !void {
         return self.object.callN(name, argsType, args) catch |err| return self.parseError(err);
     }
 };

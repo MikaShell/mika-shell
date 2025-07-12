@@ -103,32 +103,30 @@ pub const Connection = struct {
 
         try conn.get2Alloc(allocator, "Filename", dbus.String, &c.filename);
         errdefer allocator.free(c.filename);
-        const result = try conn.call("GetSettings", .{}, null, .{
+        const result = try conn.call("GetSettings", .{}, .{});
+        defer result.deinit();
+        const settings = result.next(dbus.Dict(
+            dbus.String,
             dbus.Dict(
                 dbus.String,
-                dbus.Dict(
-                    dbus.String,
-                    dbus.Variant,
-                ),
+                dbus.AnyVariant,
             ),
-        });
-        defer result.deinit();
-        const settings = result.values.?[0];
+        ));
         const eql = std.mem.eql;
         for (settings) |sett| {
             if (eql(u8, sett.key, "connection")) {
                 for (sett.value) |con| {
                     const key = con.key;
                     if (eql(u8, key, "id")) {
-                        c.id = try allocator.dupe(u8, try con.value.get(dbus.String));
+                        c.id = try allocator.dupe(u8, con.value.as(dbus.String));
                     } else if (eql(u8, key, "type")) {
-                        c.type = defines.ConnectionType.parse(try con.value.get(dbus.String));
+                        c.type = defines.ConnectionType.parse(con.value.as(dbus.String));
                     } else if (eql(u8, key, "zone")) {
-                        c.zone = try allocator.dupe(u8, try con.value.get(dbus.String));
+                        c.zone = try allocator.dupe(u8, con.value.as(dbus.String));
                     } else if (eql(u8, key, "autoconnect")) {
-                        c.autoconnect = try con.value.get(dbus.Boolean);
+                        c.autoconnect = con.value.as(dbus.Boolean);
                     } else if (eql(u8, key, "autoconnect-ports")) {
-                        const v = try con.value.get(dbus.Int32);
+                        const v = con.value.as(dbus.Int32);
                         if (v == -1) {
                             c.autoconnect_ports = .default;
                         } else if (v == 0) {
@@ -138,7 +136,7 @@ pub const Connection = struct {
                         } else @panic("unsupported autoconnect-ports value");
                     } else if (eql(u8, key, "metered")) {
                         // true/yes/on、false/no/off、default/unknown
-                        const v = try con.value.get(dbus.String);
+                        const v = con.value.as(dbus.String);
                         if (eql(u8, v, "true") or eql(u8, v, "yes") or eql(u8, v, "on")) {
                             c.metered = .yes;
                         } else if (eql(u8, v, "false") or eql(u8, v, "no") or eql(u8, v, "off")) {
@@ -147,10 +145,10 @@ pub const Connection = struct {
                             c.metered = .default;
                         } else @panic("unsupported metered value");
                     } else if (eql(u8, key, "autoconnect-priority")) {
-                        const v = try con.value.get(dbus.Int32);
+                        const v = con.value.as(dbus.Int32);
                         c.autoconnect_priority = v;
                     } else if (eql(u8, key, "controller")) {
-                        c.controller = try allocator.dupe(u8, try con.value.get(dbus.String));
+                        c.controller = try allocator.dupe(u8, con.value.as(dbus.String));
                     }
                 }
             } else if (eql(u8, sett.key, "802-11-wireless")) {
@@ -163,19 +161,19 @@ pub const Connection = struct {
                 for (sett.value) |wirl| {
                     const key = wirl.key;
                     if (eql(u8, key, "band")) {
-                        const band = try wirl.value.get(dbus.String);
+                        const band = wirl.value.as(dbus.String);
                         if (eql(u8, band, "bg")) {
                             wireless.band = .@"2.4GHz";
                         } else if (eql(u8, band, "a")) {
                             wireless.band = .@"5GHz";
                         } else @panic("unsupported band value");
                     } else if (eql(u8, key, "bssid")) {
-                        const bssid = try wirl.value.get(dbus.Array(dbus.Byte));
+                        const bssid = wirl.value.as(dbus.Array(dbus.Byte));
                         wireless.bssid = try allocator.dupe(u8, bssid);
                     } else if (eql(u8, key, "hidden")) {
-                        wireless.hidden = try wirl.value.get(dbus.Boolean);
+                        wireless.hidden = wirl.value.as(dbus.Boolean);
                     } else if (eql(u8, key, "mode")) {
-                        const mode = try wirl.value.get(dbus.String);
+                        const mode = wirl.value.as(dbus.String);
                         if (eql(u8, mode, "infrastructure")) {
                             wireless.mode = .infrastructure;
                         } else if (eql(u8, mode, "adhoc")) {
@@ -186,7 +184,7 @@ pub const Connection = struct {
                             wireless.mode = .mesh;
                         } else @panic("unsupported mode value");
                     } else if (eql(u8, key, "powersave")) {
-                        const powersave = try wirl.value.get(dbus.Int32);
+                        const powersave = wirl.value.as(dbus.Int32);
                         wireless.powersave = switch (powersave) {
                             0 => .default,
                             1 => .ignore,
@@ -195,7 +193,7 @@ pub const Connection = struct {
                             else => @panic("unsupported powersave value"),
                         };
                     } else if (eql(u8, key, "ssid")) {
-                        const ssid = try wirl.value.get(dbus.Array(dbus.Byte));
+                        const ssid = wirl.value.as(dbus.Array(dbus.Byte));
                         wireless.ssid = try allocator.dupe(u8, ssid);
                     }
                 }
@@ -208,7 +206,7 @@ pub const Connection = struct {
                 for (sett.value) |sec| {
                     const key = sec.key;
                     if (eql(u8, key, "key-mgmt")) {
-                        const key_mgmt = try sec.value.get(dbus.String);
+                        const key_mgmt = sec.value.as(dbus.String);
                         if (eql(u8, key_mgmt, "none")) {
                             s.@"key-mgmt" = .none;
                         } else if (eql(u8, key_mgmt, "ieee8021x")) {

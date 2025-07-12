@@ -52,9 +52,6 @@ pub fn build(b: *std.Build) void {
 
         webkit_mod.addImport("gtk", gtk_mod);
         dbus_mod.linkSystemLibrary("dbus-1", dynamic_link_opts);
-        dbus_mod.addCSourceFile(.{
-            .file = b.path("pkgs/dbus/dbus.c"),
-        });
         dbus_mod.addIncludePath(b.path("pkgs/dbus"));
         dbus_mod.addImport("glib", glib_mod);
         glib_mod.linkSystemLibrary("glib-2.0", dynamic_link_opts);
@@ -119,6 +116,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
     // TEST
     const test_step = b.step("test", "Run unit tests");
+    const test_dbus_step = b.step("test-dbus", "Run dbus unit tests");
     {
         // MAIN
         {
@@ -179,6 +177,7 @@ pub fn build(b: *std.Build) void {
             run_dbus_unit_tests.step.dependOn(&run_dbus_service.step);
             kill_dbus_service.step.dependOn(&run_dbus_unit_tests.step);
             test_step.dependOn(&kill_dbus_service.step);
+            test_dbus_step.dependOn(&run_dbus_unit_tests.step);
         }
     }
 }
