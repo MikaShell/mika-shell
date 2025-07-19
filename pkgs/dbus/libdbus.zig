@@ -468,7 +468,7 @@ pub const MessageIter = struct {
             },
             .string, .signature, .object_path => {
                 const isCStr = @import("common.zig").isCStr;
-                var str_c: ?[]const u8 = null;
+                var str_c: ?[:0]const u8 = null;
                 if (!isCStr(value)) str_c = try self.allocator.dupeZ(u8, value);
                 defer if (str_c) |s| self.allocator.free(s);
                 ok = dbus_message_iter_append_basic(
@@ -491,11 +491,7 @@ pub const MessageIter = struct {
                 try self.closeContainer(sub);
             },
             .variant => {
-                if (T == Types.AnyVariant) @panic("AnyVariant do not support append");
-                const sub = try self.openContainer(T);
-                defer sub.deinit();
-                try sub.append(T.ValueType, value.value);
-                try self.closeContainer(sub);
+                try value.appendTo.?(value, self);
             },
             .@"struct" => {
                 const sub = try self.openContainer(T);
@@ -635,7 +631,7 @@ pub const MessageIter = struct {
                 var sub = MessageIter.init(self.arena);
                 errdefer sub.deinit();
                 dbus_message_iter_recurse(&self.wrapper, &sub.wrapper);
-                const result: T.Type = .{ .iter = sub, .tag = sub.getArgType(), .value = undefined };
+                const result: T.Type = .{ .iter = sub, .tag = sub.getArgType() };
                 _ = dbus_message_iter_next(&self.wrapper);
                 return result;
             },
@@ -983,7 +979,7 @@ test "method-call-with-args" {
         iter.fromAppend(req);
 
         const Variant = Types.Variant(Types.Int32);
-        try iter.append(Variant, Variant.init(114514));
+        try iter.append(Variant, Variant.init(&114514));
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
         defer req.deinit();
         defer res.deinit();

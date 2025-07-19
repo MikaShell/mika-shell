@@ -371,6 +371,12 @@ pub const App = struct {
         modules.register(network, "network.getPrimaryConnection", Network.getPrimaryConnection);
         modules.register(network, "network.getActiveConnections", Network.getActiveConnections);
         modules.register(network, "network.getWirelessPsk", Network.getWirelessPsk);
+        modules.register(network, "network.activateConnection", Network.activateConnection);
+        modules.register(network, "network.deactivateConnection", Network.deactivateConnection);
+        modules.register(network, "network.checkConnectivity", Network.checkConnectivity);
+        modules.register(network, "network.getWirelessAccessPoints", Network.getWirelessAccessPoints);
+        modules.register(network, "network.getWirelessActiveAccessPoint", Network.getWirelessActiveAccessPoint);
+        modules.register(network, "network.wirelessRequestScan", Network.wirelessRequestScan);
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);

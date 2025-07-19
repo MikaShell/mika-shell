@@ -25,19 +25,17 @@ pub const Device = struct {
 
         var d: Device = undefined;
         d.dbus_path = try allocator.dupe(u8, path);
-        try device.get2Alloc(allocator, "Interface", dbus.String, &d.interface);
+        d.interface = try device.getAlloc(allocator, "Interface", dbus.String);
         errdefer allocator.free(d.interface);
-        try device.get2Alloc(allocator, "Driver", dbus.String, &d.driver);
+        d.driver = try device.getAlloc(allocator, "Driver", dbus.String);
         errdefer allocator.free(d.driver);
-        try device.get2Alloc(allocator, "DriverVersion", dbus.String, &d.driver_version);
+        d.driver_version = try device.getAlloc(allocator, "DriverVersion", dbus.String);
         errdefer allocator.free(d.driver_version);
-        try device.get2Alloc(allocator, "HwAddress", dbus.String, &d.hw_address);
+        d.hw_address = try device.getAlloc(allocator, "HwAddress", dbus.String);
         errdefer allocator.free(d.hw_address);
-        try device.get2Alloc(allocator, "Path", dbus.String, &d.path);
+        d.path = try device.getAlloc(allocator, "Path", dbus.String);
         errdefer allocator.free(d.path);
-        var typ: u32 = undefined;
-        try device.get2("DeviceType", dbus.UInt32, &typ);
-        d.type = @enumFromInt(typ);
+        d.type = @enumFromInt(try device.getBasic("DeviceType", dbus.UInt32));
         return d;
     }
 };
@@ -86,6 +84,7 @@ pub const Connection = struct {
     metered: enum { yes, no, default },
     autoconnect_priority: i32,
     controller: ?[]const u8,
+    interface_name: ?[]const u8,
     wireless: ?Wireless,
     pub fn init(allocator: Allocator, bus: *dbus.Bus, path: []const u8) !Connection {
         const conn = try DBusHelper.init(bus, path, "org.freedesktop.NetworkManager.Settings.Connection");
@@ -100,8 +99,9 @@ pub const Connection = struct {
         c.autoconnect_priority = 0;
         c.controller = null;
         c.wireless = null;
+        c.interface_name = null;
 
-        try conn.get2Alloc(allocator, "Filename", dbus.String, &c.filename);
+        c.filename = try conn.getAlloc(allocator, "Filename", dbus.String);
         errdefer allocator.free(c.filename);
         const result = try conn.call("GetSettings", .{}, .{});
         defer result.deinit();
@@ -123,6 +123,8 @@ pub const Connection = struct {
                         c.type = defines.ConnectionType.parse(con.value.as(dbus.String));
                     } else if (eql(u8, key, "zone")) {
                         c.zone = try allocator.dupe(u8, con.value.as(dbus.String));
+                    } else if (eql(u8, key, "interface-name")) {
+                        c.interface_name = try allocator.dupe(u8, con.value.as(dbus.String));
                     } else if (eql(u8, key, "autoconnect")) {
                         c.autoconnect = con.value.as(dbus.Boolean);
                     } else if (eql(u8, key, "autoconnect-ports")) {
@@ -161,6 +163,7 @@ pub const Connection = struct {
                 for (sett.value) |wirl| {
                     const key = wirl.key;
                     if (eql(u8, key, "band")) {
+                        // TODO: what about Wi-Fi 6E?
                         const band = wirl.value.as(dbus.String);
                         if (eql(u8, band, "bg")) {
                             wireless.band = .@"2.4GHz";
@@ -246,26 +249,31 @@ pub const Connection = struct {
     }
 };
 pub const ActiveConnection = struct {
+    dbus_path: []const u8,
     connection: Connection,
     default4: bool,
     default6: bool,
     devices: []Device,
     state: defines.ActiveConnectionState,
     state_flags: defines.ActiveConnectionStateFlags,
+    specific_object: []const u8,
     type: defines.ConnectionType,
     pub fn init(allocator: Allocator, bus: *dbus.Bus, path: []const u8) !ActiveConnection {
         const active = try DBusHelper.init(bus, path, "org.freedesktop.NetworkManager.Connection.Active");
         defer active.deinit();
         var ac: ActiveConnection = undefined;
+        ac.dbus_path = try allocator.dupe(u8, path);
+        errdefer allocator.free(ac.dbus_path);
         ac.default4 = false;
         ac.default6 = false;
         ac.devices = try allocator.alloc(Device, 0);
         ac.state = .unknown;
         ac.state_flags = .{};
+        ac.specific_object = "/";
 
         var conn: []const u8 = undefined;
         defer allocator.free(conn);
-        try active.get2Alloc(allocator, "Connection", dbus.ObjectPath, &conn);
+        conn = try active.getAlloc(allocator, "Connection", dbus.ObjectPath);
         ac.connection = try Connection.init(allocator, bus, conn);
         errdefer ac.connection.deinit(allocator);
 
@@ -280,24 +288,76 @@ pub const ActiveConnection = struct {
         }
         ac.devices = try ds.toOwnedSlice();
 
-        var typ: []const u8 = undefined;
+        const typ = try active.getAlloc(allocator, "Type", dbus.String);
         defer allocator.free(typ);
-        try active.get2Alloc(allocator, "Type", dbus.String, &typ);
         ac.type = defines.ConnectionType.parse(typ);
 
-        try active.get2("Default", dbus.Boolean, &ac.default4);
-        try active.get2("Default6", dbus.Boolean, &ac.default6);
-        var state: u32 = undefined;
-        try active.get2("State", dbus.UInt32, &state);
-        ac.state = @enumFromInt(state);
-        var stateFlags: u32 = undefined;
-        try active.get2("StateFlags", dbus.UInt32, &stateFlags);
-        ac.state_flags = defines.ActiveConnectionStateFlags.fromRaw(stateFlags);
+        ac.default4 = try active.getBasic("Default", dbus.Boolean);
+        ac.default6 = try active.getBasic("Default6", dbus.Boolean);
+        ac.state = @enumFromInt(try active.getBasic("State", dbus.UInt32));
+        ac.state_flags = defines.ActiveConnectionStateFlags.fromRaw(try active.getBasic("StateFlags", dbus.UInt32));
+        ac.specific_object = try active.getAlloc(allocator, "SpecificObject", dbus.ObjectPath);
         return ac;
     }
     pub fn deinit(self: ActiveConnection, allocator: Allocator) void {
         for (self.devices) |device| device.deinit(allocator);
         allocator.free(self.devices);
         self.connection.deinit(allocator);
+        allocator.free(self.dbus_path);
+        allocator.free(self.specific_object);
+    }
+};
+pub const AccessPoint = struct {
+    bandwidth: u32,
+    frequency: u32,
+    hw_address: []const u8,
+    max_bitrate: u32,
+    last_seen: i32,
+    mode: defines.@"80211Mode",
+    rsn: []defines.@"80211ApSecurityFlags",
+    wpa: []defines.@"80211ApSecurityFlags",
+    ssid: []const u8,
+    strength: u8,
+    pub fn init(allocator: Allocator, bus: *dbus.Bus, path: []const u8) !AccessPoint {
+        const ap = try DBusHelper.init(bus, path, "org.freedesktop.NetworkManager.AccessPoint");
+        defer ap.deinit();
+        var a: AccessPoint = undefined;
+        a.bandwidth = 0;
+        a.frequency = 0;
+        a.hw_address = "";
+        a.max_bitrate = 0;
+        a.last_seen = 0;
+        a.mode = .unknown;
+        a.rsn = &.{};
+        a.wpa = &.{};
+        a.ssid = "";
+        a.strength = 0;
+
+        a.bandwidth = try ap.getBasic("Bandwidth", dbus.UInt32);
+        a.frequency = try ap.getBasic("Frequency", dbus.UInt32);
+        a.hw_address = try ap.getAlloc(allocator, "HwAddress", dbus.String);
+        errdefer allocator.free(a.hw_address);
+        a.max_bitrate = try ap.getBasic("MaxBitrate", dbus.UInt32);
+        a.last_seen = try ap.getBasic("LastSeen", dbus.Int32);
+        a.mode = @enumFromInt(try ap.getBasic("Mode", dbus.UInt32));
+
+        const rsn_flags = try ap.getBasic("RsnFlags", dbus.UInt32);
+        a.rsn = try defines.@"80211ApSecurityFlags".parse(allocator, rsn_flags);
+        errdefer allocator.free(a.rsn);
+
+        const wpa_flags = try ap.getBasic("WpaFlags", dbus.UInt32);
+        a.wpa = try defines.@"80211ApSecurityFlags".parse(allocator, wpa_flags);
+        errdefer allocator.free(a.wpa);
+
+        a.ssid = try ap.getAlloc(allocator, "Ssid", dbus.Array(dbus.Byte));
+        errdefer allocator.free(a.ssid);
+        a.strength = try ap.getBasic("Strength", dbus.Byte);
+        return a;
+    }
+    pub fn deinit(self: AccessPoint, allocator: Allocator) void {
+        allocator.free(self.hw_address);
+        allocator.free(self.ssid);
+        allocator.free(self.rsn);
+        allocator.free(self.wpa);
     }
 };

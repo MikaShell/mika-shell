@@ -41,14 +41,10 @@ pub const Network = struct {
         return try ds.toOwnedSlice();
     }
     pub fn getState(self: Self) !defines.State {
-        var v: u32 = undefined;
-        try self.manager.get2("State", dbus.UInt32, &v);
-        return @enumFromInt(v);
+        return @enumFromInt(try self.manager.getBasic("State", dbus.UInt32));
     }
     pub fn isEnabled(self: Self) !bool {
-        var v: bool = undefined;
-        try self.manager.get2("NetworkingEnabled", dbus.Boolean, &v);
-        return v;
+        return try self.manager.getBasic("NetworkingEnabled", dbus.Boolean);
     }
     pub fn enable(self: Network) !void {
         const result = try self.manager.call("Enable", .{dbus.Boolean}, .{true});
@@ -75,9 +71,9 @@ pub const Network = struct {
         return try cs.toOwnedSlice();
     }
     pub fn getPrimaryConnection(self: Self, allocator: Allocator) !?structs.ActiveConnection {
-        var path: []const u8 = undefined;
+        const path = try self.manager.getAlloc(allocator, "PrimaryConnection", dbus.ObjectPath);
         defer allocator.free(path);
-        try self.manager.get2Alloc(allocator, "PrimaryConnection", dbus.ObjectPath, &path);
+
         if (helper.isValidPath(path)) {
             const c = try structs.ActiveConnection.init(allocator, self.bus, path);
             errdefer c.deinit(allocator);
@@ -135,6 +131,63 @@ pub const Network = struct {
             }
         }
         return null;
+    }
+    pub fn activateConnection(self: Self, allocator: Allocator, connection: []const u8, device: []const u8, specific_object: []const u8) ![]const u8 {
+        const result = try self.manager.call(
+            "ActivateConnection",
+            .{
+                dbus.ObjectPath,
+                dbus.ObjectPath,
+                dbus.ObjectPath,
+            },
+            .{
+                connection,
+                device,
+                specific_object,
+            },
+        );
+        defer result.deinit();
+        return try allocator.dupe(u8, result.next(dbus.ObjectPath));
+    }
+    pub fn deactivateConnection(self: Self, connection: []const u8) !void {
+        const result = try self.manager.call(
+            "DeactivateConnection",
+            .{dbus.ObjectPath},
+            .{connection},
+        );
+        result.deinit();
+    }
+    pub fn checkConnectivity(self: Self) !defines.ConnectivityState {
+        const result = try self.manager.call("CheckConnectivity", .{}, .{});
+        defer result.deinit();
+        return @enumFromInt(result.next(dbus.UInt32));
+    }
+    pub fn getWirelessActiveAccessPoint(self: Self, allocator: Allocator, device: []const u8) !?structs.AccessPoint {
+        const device_helper = try helper.DBusHelper.init(self.bus, device, "org.freedesktop.NetworkManager.Device.Wireless");
+        defer device_helper.deinit();
+        const ap = try device_helper.getAlloc(allocator, "ActiveAccessPoint", dbus.ObjectPath);
+        if (!helper.isValidPath(ap)) return null;
+        return try structs.AccessPoint.init(allocator, self.bus, ap);
+    }
+    pub fn getWirelessAccessPoints(self: Self, allocator: Allocator, device: []const u8) ![]structs.AccessPoint {
+        const device_helper = try helper.DBusHelper.init(self.bus, device, "org.freedesktop.NetworkManager.Device.Wireless");
+        defer device_helper.deinit();
+        const result = try device_helper.call("GetAccessPoints", .{}, .{});
+        defer result.deinit();
+        var aps = std.ArrayList(structs.AccessPoint).init(allocator);
+        defer aps.deinit();
+        for (result.next(dbus.Array(dbus.ObjectPath))) |ap| {
+            const a = try structs.AccessPoint.init(allocator, self.bus, ap);
+            errdefer a.deinit(allocator);
+            try aps.append(a);
+        }
+        return try aps.toOwnedSlice();
+    }
+    pub fn wirelessRequestScan(self: Self, device: []const u8) !void {
+        const device_helper = try helper.DBusHelper.init(self.bus, device, "org.freedesktop.NetworkManager.Device.Wireless");
+        defer device_helper.deinit();
+        const result = try device_helper.call("RequestScan", .{dbus.Vardict}, .{dbus.Vardict.empty});
+        result.deinit();
     }
 };
 const print = std.debug.print;

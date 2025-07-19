@@ -10,19 +10,19 @@ export interface WebviewInfo {
     type: "none";
     uri: string;
 }
-import { addEventListener, removeEventListener } from "./events";
+import { Emitter } from "./events";
 
 type EventMap = {
     open: WebviewInfo;
     close: number;
 };
-
+const emitter = new Emitter("mika");
 export function on<K extends keyof EventMap>(event: K, callback: (data: EventMap[K]) => void) {
-    addEventListener(`mika-${event}`, callback);
+    emitter.on(event, callback);
 }
 export function off<K extends keyof EventMap>(event: K, callback: (data: EventMap[K]) => void) {
-    removeEventListener(`mika-${event}`, callback);
+    emitter.off(event, callback);
 }
 export function once<K extends keyof EventMap>(event: K, callback: (data: EventMap[K]) => void) {
-    addEventListener(`mika-${event}`, callback, true);
+    emitter.once(event, callback);
 }

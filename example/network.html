@@ -11,27 +11,32 @@
                 resizable: false,
             });
             const network = window.mikaShell.network;
-            network.getDevices().then((devices) => {
-                console.log("Network Devices:", devices);
-            });
-            network.getState().then((state) => {
-                console.log("Network State:", state);
-            });
-            network.isEnabled().then((enabled) => {
-                console.log("Network Enabled:", enabled);
-            });
-            network.getConnections().then((connections) => {
-                console.log("Network Connections:", connections);
-            });
-            network.getPrimaryConnection().then((conn) => {
+            const $ = document.querySelector.bind(document);
+            const main = async () => {
+                const state = await network.checkConnectivity();
+                console.log("Network Connectivity:", state);
+                $("#network-state").textContent = `Network State: ${state}`;
+                const device = (await network.wifi.devices())[0];
+                console.log(device);
+                const enabled = await network.wifi.isEnabled();
+                console.log("Wifi Enabled: ", enabled);
+                $("#wifi-enabled").textContent = `Wifi Enabled: ${enabled}`;
+                const conn = await network.getPrimaryConnection();
+                if (conn === null) return;
                 console.log("Network Primary Connection:", conn);
-            });
-            network.getActiveConnections().then((connection) => {
-                console.log("Network Active Connections:", connection);
-            });
+                const accessPoint = await conn.device.getActiveAccessPoint();
+                console.log("Access Points:", accessPoint);
+                $("#primary-connection").textContent = `Primary Connection: ${conn.type}`;
+                $("#access-point").textContent = `Access Point: ${accessPoint.ssid}`;
+            };
+            main();
         </script>
     </head>
     <body>
         <h1>Network</h1>
+        <span id="network-state"></span>
+        <span id="wifi-enabled"></span>
+        <span id="primary-connection">Primary Connection: None</span>
+        <span id="access-point"></span>
     </body>
 </html>

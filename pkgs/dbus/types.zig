@@ -24,6 +24,7 @@ pub fn Array(comptime Sub: type) type {
         pub const typeCode = 'a';
         pub const ArrayElement = Sub;
         pub const Type = []const Sub.Type;
+        pub const empty: Type = &.{};
     };
 }
 
@@ -58,6 +59,7 @@ pub fn Dict(comptime Key: type, comptime Value: type) type {
         };
     });
 }
+pub const Vardict = Dict(String, AnyVariant);
 pub fn Struct(comptime sub: anytype) type {
     const info = @typeInfo(@TypeOf(sub));
     if (info != .@"struct" or !info.@"struct".is_tuple) {
@@ -78,6 +80,17 @@ pub fn Struct(comptime sub: anytype) type {
     };
 }
 
+const VariantContainer = struct {
+    const Self = @This();
+    tag: Tags,
+    iter: *libdbus.MessageIter,
+    value: ?*anyopaque = null,
+    appendTo: ?*const fn (Self, *libdbus.MessageIter) libdbus.MessageIter.IterError!void = null,
+    pub fn as(self: Self, T: type) T.Type {
+        return self.iter.next(T).?;
+    }
+};
+
 /// 在没法确定 Variant 的值类型时，可以用 `AnyVariant` 来表示。
 pub fn Variant(comptime Sub_: type) type {
     return struct {
@@ -86,29 +99,24 @@ pub fn Variant(comptime Sub_: type) type {
         pub const tag: Tags = .variant;
         pub const typeCode = 'v';
         pub const ValueType = Sub;
-        pub fn init(value: Sub.Type) Type {
+        pub fn init(value: *const Sub.Type) Type {
             if (Sub == Invalid) @compileError("AnyVariant cannot be initialized with init() method");
             return Type{
                 .iter = undefined,
                 .tag = Sub.tag,
-                .value = value,
+                .value = @constCast(@ptrCast(value)),
+                .appendTo = appendTo,
             };
         }
-        pub const Type = struct {
-            tag: Tags,
-            iter: *libdbus.MessageIter,
-            value: if (Sub == void) void else Sub.Type,
-            /// 用于 Variant(T) 类型，获取其中的值。
-            pub fn get(self: @This()) Sub.Type {
-                if (Sub == Invalid) @compileError("AnyVariant should use as() method to get the actual type");
-                return self.iter.next(Sub).?;
-            }
-            /// 用于 AnyVariant 类型，获取其中的值, T 为 dbus 类型。
-            pub fn as(self: @This(), T: type) T.Type {
-                if (Sub != Invalid) @compileError("as() method can only be used with AnyVariant");
-                return self.iter.next(T).?;
-            }
-        };
+        fn appendTo(v: VariantContainer, iter: *libdbus.MessageIter) libdbus.MessageIter.IterError!void {
+            if (v.tag == .invalid) @panic("AnyVariant cannot be appended to a message");
+            const variant = try iter.openContainer(Self);
+            defer variant.deinit();
+            const value: *ValueType.Type = @ptrCast(@alignCast(v.value));
+            try variant.append(ValueType, value.*);
+            try iter.closeContainer(variant);
+        }
+        pub const Type = VariantContainer;
     };
 }
 pub const AnyVariant = Variant(void);

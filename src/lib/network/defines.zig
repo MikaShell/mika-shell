@@ -155,3 +155,65 @@ pub const ActiveConnectionStateFlags = packed struct {
         };
     }
 };
+pub const ConnectivityState = enum(u8) {
+    unknown = 0,
+    none = 1,
+    portal = 2,
+    limited = 3,
+    full = 4,
+};
+pub const @"80211Mode" = enum(u32) {
+    unknown = 0,
+    adhoc = 1,
+    infra = 2,
+    ap = 3,
+    mesh = 4,
+};
+pub const @"80211ApSecurityFlags" = enum(u32) {
+    None = 0x0000_0000, // No security
+    Pair_WEP40 = 0x0000_0001, // 40/64-bit WEP (pairwise)
+    Pair_WEP104 = 0x0000_0002, // 104/128-bit WEP (pairwise)
+    Pair_TKIP = 0x0000_0004, // TKIP (pairwise)
+    Pair_CCMP = 0x0000_0008, // AES/CCMP (pairwise)
+
+    Group_WEP40 = 0x0000_0010, // 40/64-bit WEP (group)
+    Group_WEP104 = 0x0000_0020, // 104/128-bit WEP (group)
+    Group_TKIP = 0x0000_0040, // TKIP (group)
+    Group_CCMP = 0x0000_0080, // AES/CCMP (group)
+
+    Key_Mgmt_PSK = 0x0000_0100, // WPA/RSN with Pre-Shared Key
+    Key_Mgmt_8021X = 0x0000_0200, // 802.1x EAP authentication
+    Key_Mgmt_SAE = 0x0000_0400, // WPA3-SAE (personal)
+    Key_Mgmt_OWE = 0x0000_0800, // WPA3-OWE (open)
+    Key_Mgmt_OWE_Transition = 0x0000_1000, // WPA3-OWE transition mode
+    Key_Mgmt_EAP_Suite_B_192 = 0x0000_2000, // WPA3 Enterprise Suite-B 192-bit
+
+    _,
+    const Self = @This();
+    pub fn parse(allocator: std.mem.Allocator, flags: u32) ![]Self {
+        var list = std.ArrayList(Self).init(allocator);
+
+        if (flags == 0) {
+            return list.toOwnedSlice();
+        }
+
+        if ((flags & @intFromEnum(Self.Pair_WEP40)) != 0) try list.append(.Pair_WEP40);
+        if ((flags & @intFromEnum(Self.Pair_WEP104)) != 0) try list.append(.Pair_WEP104);
+        if ((flags & @intFromEnum(Self.Pair_TKIP)) != 0) try list.append(.Pair_TKIP);
+        if ((flags & @intFromEnum(Self.Pair_CCMP)) != 0) try list.append(.Pair_CCMP);
+
+        if ((flags & @intFromEnum(Self.Group_WEP40)) != 0) try list.append(.Group_WEP40);
+        if ((flags & @intFromEnum(Self.Group_WEP104)) != 0) try list.append(.Group_WEP104);
+        if ((flags & @intFromEnum(Self.Group_TKIP)) != 0) try list.append(.Group_TKIP);
+        if ((flags & @intFromEnum(Self.Group_CCMP)) != 0) try list.append(.Group_CCMP);
+
+        if ((flags & @intFromEnum(Self.Key_Mgmt_PSK)) != 0) try list.append(.Key_Mgmt_PSK);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_8021X)) != 0) try list.append(.Key_Mgmt_8021X);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_SAE)) != 0) try list.append(.Key_Mgmt_SAE);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE)) != 0) try list.append(.Key_Mgmt_OWE);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE_Transition)) != 0) try list.append(.Key_Mgmt_OWE_Transition);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_EAP_Suite_B_192)) != 0) try list.append(.Key_Mgmt_EAP_Suite_B_192);
+
+        return list.toOwnedSlice();
+    }
+};

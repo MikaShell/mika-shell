@@ -46,6 +46,7 @@ pub const Object = struct {
     listeners: std.ArrayList(common.Listener),
     pub fn init(bus: *Bus, name: []const u8, path: []const u8, iface: []const u8) !*Self {
         const allocator = bus.allocator;
+        bus.err.reset();
         const req = try common.call(allocator, bus.conn, bus.err, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", .{Type.String}, .{name});
         defer req.deinit();
         const obj = try allocator.create(Object);
@@ -150,7 +151,7 @@ pub const Object = struct {
         );
         return .{ .result = resp, .value = resp.next(Type.AnyVariant).as(ResultTyep) };
     }
-    pub fn get2(self: *Object, name: []const u8, ResultTyep: type, pointer: *ResultTyep.Type) !void {
+    pub fn getBasic(self: *Object, name: []const u8, ResultTyep: type) !ResultTyep.Type {
         switch (ResultTyep) {
             Type.Byte,
             Type.Boolean,
@@ -163,28 +164,22 @@ pub const Object = struct {
             Type.Double,
             => {},
             else => {
-                @panic("get2 only support basic type");
+                @panic("getBasic only support basic type");
             },
         }
-        const resp = try self.callWithSelf(
-            self.name,
-            self.path,
-            "org.freedesktop.DBus.Properties",
-            "Get",
-            .{ Type.String, Type.String },
-            .{ self.iface, name },
-        );
+        const resp = try self.get(name, ResultTyep);
         defer resp.deinit();
-        pointer.* = resp.next(Type.AnyVariant).as(ResultTyep);
+        return resp.value;
     }
-    pub fn get2Alloc(self: *Object, allocator: Allocator, name: []const u8, ResultTyep: type, str_ptr: *ResultTyep.Type) !void {
+    pub fn getAlloc(self: *Object, allocator: Allocator, name: []const u8, ResultTyep: type) !ResultTyep.Type {
         switch (ResultTyep) {
             Type.String,
             Type.ObjectPath,
             Type.Signature,
+            Type.Array(Type.Byte),
             => {},
             else => {
-                @panic("get2 only support string, objectpath, signature");
+                @panic("getAlloc only support string, objectpath, signature and byte array");
             },
         }
         const resp = try self.callWithSelf(
@@ -196,7 +191,7 @@ pub const Object = struct {
             .{ self.iface, name },
         );
         defer resp.deinit();
-        str_ptr.* = try allocator.dupe(u8, resp.next(Type.AnyVariant).as(ResultTyep));
+        return try allocator.dupe(u8, resp.next(Type.AnyVariant).as(ResultTyep));
     }
     /// 设置属性值
     pub fn set(self: *Object, name: []const u8, Value: type, value: Value.Type) !void {
@@ -207,7 +202,7 @@ pub const Object = struct {
             "org.freedesktop.DBus.Properties",
             "Set",
             .{ Type.String, Type.String, Variant },
-            .{ self.iface, name, Variant.init(value) },
+            .{ self.iface, name, Variant.init(&value) },
         );
         defer resp.deinit();
     }

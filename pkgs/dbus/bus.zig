@@ -205,6 +205,7 @@ const FilterWrapper = struct {
 };
 pub const Bus = struct {
     const Self = @This();
+    type: libdbus.BusType,
     conn: *libdbus.Connection,
     ownerNames: std.ArrayList([]const u8),
     uniqueName: []const u8,
@@ -229,6 +230,7 @@ pub const Bus = struct {
         errdefer err.deinit();
         errdefer conn.close();
         bus.* = Bus{
+            .type = bus_type,
             .conn = conn,
             .uniqueName = conn.getUniqueName(),
             .err = err,
@@ -262,6 +264,32 @@ pub const Bus = struct {
         self.err.deinit();
         self.allocator.destroy(self.err);
         self.allocator.destroy(self);
+    }
+    pub fn call(self: *Self, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, comptime argsType: anytype, args: Type.getTupleTypes(argsType)) common.CallError!common.Result {
+        return common.call(
+            self.allocator,
+            self.conn,
+            self.err,
+            name,
+            path,
+            iface,
+            method,
+            argsType,
+            args,
+        );
+    }
+    pub fn callN(self: *Self, name: []const u8, path: []const u8, iface: []const u8, method: []const u8, comptime argsType: anytype, args: Type.getTupleTypes(argsType)) common.CallNError!common.Result {
+        return common.callN(
+            self.allocator,
+            self.conn,
+            self.err,
+            name,
+            path,
+            iface,
+            method,
+            argsType,
+            args,
+        );
     }
     /// 获取指定名称的代理
     ///

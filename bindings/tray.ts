@@ -95,28 +95,19 @@ export function getMenu(service: string): Promise<MenuNode> {
 export function activateMenu(service: string, id: number): Promise<void> {
     return call("tray.activateMenu", service, id);
 }
-import { addEventListener, removeEventListener } from "./events";
-var listenerCount = 0;
+import { Emitter } from "./events";
 type Events = "added" | "changed" | "removed";
-
-function addListener(name: Events, callback: (service: string) => void, once: boolean = false) {
-    const eventName = `tray-${name}`;
-    if (listenerCount === 0) subscribe();
-    listenerCount++;
-    addEventListener(eventName, callback, once);
-}
-function removeListener(name: Events, callback: (service: string) => void) {
-    removeEventListener(`tray-${name}`, callback);
-    if (listenerCount === 0) unsubscribe();
-}
+const emitter = new Emitter("tray");
+emitter.init = subscribe;
+emitter.deinit = unsubscribe;
 export function on<T extends Events>(event: T, callback: (service: string) => void) {
-    addListener(event, callback, false);
+    emitter.on(event, callback);
 }
 export function off<T extends Events>(event: T, callback: (service: string) => void) {
-    removeListener(event, callback);
+    emitter.off(event, callback);
 }
 export function once<T extends Events>(event: T, callback: (service: string) => void) {
-    addListener(event, callback, true);
+    emitter.once(event, callback);
 }
 const proxied: Array<Record<string, Item>> = [];
 const onAdded = async (service: string) => {

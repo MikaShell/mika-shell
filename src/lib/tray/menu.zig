@@ -217,7 +217,7 @@ pub fn activate(allocator: Allocator, bus: *dbus.Bus, owner: []const u8, path: [
         "com.canonical.dbusmenu",
         "Event",
         .{ dbus.Int32, dbus.String, Variant, dbus.UInt32 },
-        .{ id, "clicked", Variant.init(&.{}), 0 },
+        .{ id, "clicked", Variant.init(&&.{}), 0 },
     );
     defer result.deinit();
 }

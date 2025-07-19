@@ -81,16 +81,11 @@ export function removeTryableListener(
         canTryListeners.delete(id);
     }
 }
-export function addEventListener(
-    name: string,
-    callback: (data: any) => void,
-    once: boolean = false
-) {
+function addEventListener(name: string, callback: (data: any) => void, once: boolean = false) {
     if (listeners.size === 0) window.addEventListener("mika-shell-event", dispatchEvent);
     listeners.set(name, [...(listeners.get(name) || []), { callback, once }]);
 }
-
-export function removeEventListener(name: string, callback: (data: any) => void) {
+function removeEventListener(name: string, callback: (data: any) => void) {
     const callbacks = listeners.get(name) || [];
     const index = callbacks.findIndex((listener) => listener.callback === callback);
     if (index >= 0) {
@@ -119,3 +114,55 @@ addEventListener("mika-try-hide", (id) => {
     dispatchTryableEvent(id, "hide");
     isHiding = false;
 });
+
+export class Emitter {
+    private listeners: Map<string, Function[]> = new Map();
+    private onceListeners: Map<string, Function[]> = new Map();
+    public init: () => void = () => {};
+    public deinit: () => void = () => {};
+    private fullName(name: string) {
+        return `${this.prifix}-${name}`;
+    }
+    constructor(private prifix: string) {
+        this.dispatch = this.dispatch.bind(this);
+        window.addEventListener("mika-shell-event", this.dispatch);
+    }
+    on(name: string, callback: Function) {
+        if (this.listeners.size === 0 && this.onceListeners.size === 0) {
+            this.init();
+        }
+        const name_ = this.fullName(name);
+        this.listeners.set(name_, [...(this.listeners.get(name_) || []), callback]);
+    }
+    once(name: string, callback: Function) {
+        if (this.onceListeners.size === 0) this.init();
+        const name_ = this.fullName(name);
+        this.onceListeners.set(name_, [...(this.onceListeners.get(name_) || []), callback]);
+    }
+    off(name: string, callback: Function) {
+        const name_ = this.fullName(name);
+        const listeners = this.listeners.get(name_) || [];
+        const onceListeners = this.onceListeners.get(name_) || [];
+        const index = listeners.indexOf(callback);
+        if (index >= 0) listeners.splice(index, 1);
+        const onceIndex = onceListeners.indexOf(callback);
+        if (onceIndex >= 0) onceListeners.splice(onceIndex, 1);
+        if (listeners.length === 0) this.listeners.delete(name_);
+        if (onceListeners.length === 0) this.onceListeners.delete(name_);
+        if (this.listeners.size === 0 && this.onceListeners.size === 0) {
+            this.deinit();
+            window.removeEventListener("mika-shell-event", this.dispatch);
+        }
+    }
+    private async dispatch(event: any) {
+        const name: string = event.detail.name;
+        const data: any = event.detail.data;
+        if (!name.startsWith(this.prifix)) return;
+        const listeners = this.listeners.get(name) || [];
+        const onceListeners = this.onceListeners.get(name) || [];
+        listeners.forEach((callback) => callback(data));
+        onceListeners.forEach((callback) => callback(data));
+        if (listeners.length === 0) this.listeners.delete(name);
+        this.onceListeners.delete(name);
+    }
+}

@@ -1,5 +1,3 @@
-import { addEventListener, removeEventListener } from "./events";
-
 interface Notification {
     id: number;
     appName: string;
@@ -96,27 +94,20 @@ export function activate(id: number, action: string = "default"): Promise<void> 
 export function setDontDisturb(value: boolean): Promise<void> {
     return call("notifd.setDontDisturb", value);
 }
-var listenerCount = 0;
 type Events = "added" | "removed";
+import { Emitter } from "./events";
 
-function addListener(name: string, callback: (data: any) => void, once: boolean = false) {
-    const eventName = `notifd-${name}`;
-    if (listenerCount === 0) subscribe();
-    listenerCount++;
-    addEventListener(eventName, callback, once);
-}
-function removeListener(name: string, callback: (data: any) => void) {
-    removeEventListener(`notifd-${name}`, callback);
-    if (listenerCount === 0) unsubscribe();
-}
+const emitter = new Emitter("notifd");
+emitter.init = subscribe;
+emitter.deinit = unsubscribe;
 export function on(event: Events, callback: (id: number) => void) {
-    addListener(event, callback, false);
+    emitter.on(event, callback);
 }
 export function off(event: Events, callback: (id: number) => void) {
-    removeListener(event, callback);
+    emitter.off(event, callback);
 }
 export function once(event: Events, callback: (id: number) => void) {
-    addListener(event, callback, true);
+    emitter.once(event, callback);
 }
 const proxied: Array<Notification[]> = [];
 const onAdded = async (id: number) => {
