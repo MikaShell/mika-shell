@@ -7,8 +7,7 @@ export type Options = {
     backgroundTransparent: boolean;
     hidden: boolean;
 };
-
-export function init(options: Partial<Options> = {}): Promise<void> {
+function _init(options: Partial<Options> = {}): Promise<void> {
     const opt: any = {
         title: options.title ?? "MikaShell Window",
         class: options.class ?? "mika-shell",
@@ -17,6 +16,17 @@ export function init(options: Partial<Options> = {}): Promise<void> {
         hidden: options.hidden ?? false,
     };
     return call("window.init", opt);
+}
+export function init(options: Partial<Options> = {}): Promise<void> {
+    if (options.resizable !== true) {
+        return new Promise((resolve, reject) => {
+            window.addEventListener("load", () => {
+                _init(options).then(resolve).catch(reject);
+            });
+        });
+    } else {
+        return _init(options);
+    }
 }
 export function show(): Promise<void> {
     return call("window.show");

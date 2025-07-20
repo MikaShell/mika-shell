@@ -102,11 +102,6 @@ pub const Webview = struct {
         w.container.setChild(w.impl.asWidget());
         return w;
     }
-    pub fn deinit(self: *Webview) void {
-        self.allocator.free(self.name);
-        self.container.destroy();
-        self.allocator.destroy(self);
-    }
     pub fn emitEvent(self: *Webview, name: []const u8, data: anytype) void {
         const alc = std.heap.page_allocator;
         const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
@@ -223,6 +218,8 @@ pub const Config = struct {
 };
 pub const App = struct {
     modules: *Modules,
+    mutex: std.Thread.Mutex,
+    isQuit: bool = false,
     webviews: std.ArrayList(*Webview),
     allocator: Allocator,
     config: Config,
@@ -235,6 +232,7 @@ pub const App = struct {
         errdefer allocator.destroy(app);
         app.config = try Config.load(allocator, configDir);
         errdefer app.config.deinit(allocator);
+        app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
@@ -273,10 +271,12 @@ pub const App = struct {
         return app;
     }
     pub fn deinit(self: *App) void {
-        for (self.webviews.items) |webview| webview.deinit();
+        self.isQuit = true;
         self.sessionBusWatcher.deinit();
         self.systemBusWatcher.deinit();
-
+        for (self.webviews.items) |webview| {
+            webview.forceClose();
+        }
         self.webviews.deinit();
         self.modules.deinit();
         self.sessionBus.deinit();
@@ -299,7 +299,9 @@ pub const App = struct {
     fn openS(self: *App, uri: []const u8, name: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules, name) catch unreachable;
         webview.impl.loadUri(uri);
+        self.mutex.lock();
         self.webviews.append(webview) catch unreachable;
+        self.mutex.unlock();
         const cssProvider = gtk.CssProvider.new();
         defer cssProvider.free();
         cssProvider.loadFromString("window {background-color: transparent;}");
@@ -318,7 +320,10 @@ pub const App = struct {
             fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const target: *webkit.WebView = @ptrCast(widget);
                 const a: *App = @ptrCast(@alignCast(data));
+                if (a.isQuit) return;
                 const targetID = target.getPageId();
+                a.mutex.lock();
+                defer a.mutex.unlock();
                 for (a.webviews.items, 0..a.webviews.items.len) |w, i| {
                     if (w.impl.getPageId() == targetID) {
                         _ = a.webviews.orderedRemove(i);

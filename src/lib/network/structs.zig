@@ -3,6 +3,7 @@ const dbus = @import("dbus");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const DBusHelper = @import("helper.zig").DBusHelper;
+const isVaildPath = @import("helper.zig").isValidPath;
 pub const Device = struct {
     dbus_path: []const u8,
     interface: []const u8,
@@ -258,6 +259,8 @@ pub const ActiveConnection = struct {
     state: defines.ActiveConnectionState,
     state_flags: defines.ActiveConnectionStateFlags,
     specific_object: []const u8,
+    ip4_config: ?IPConfig,
+    ip6_config: ?IPConfig,
     type: defines.ConnectionType,
     pub fn init(allocator: Allocator, bus: *dbus.Bus, path: []const u8) !ActiveConnection {
         const active = try DBusHelper.init(bus, path, "org.freedesktop.NetworkManager.Connection.Active");
@@ -271,7 +274,8 @@ pub const ActiveConnection = struct {
         ac.state = .unknown;
         ac.state_flags = .{};
         ac.specific_object = "/";
-
+        ac.ip4_config = null;
+        ac.ip6_config = null;
         var conn: []const u8 = undefined;
         defer allocator.free(conn);
         conn = try active.getAlloc(allocator, "Connection", dbus.ObjectPath);
@@ -298,6 +302,17 @@ pub const ActiveConnection = struct {
         ac.state = @enumFromInt(try active.getBasic("State", dbus.UInt32));
         ac.state_flags = defines.ActiveConnectionStateFlags.fromRaw(try active.getBasic("StateFlags", dbus.UInt32));
         ac.specific_object = try active.getAlloc(allocator, "SpecificObject", dbus.ObjectPath);
+
+        const ip4_config = try active.getAlloc(allocator, "Ip4Config", dbus.ObjectPath);
+        defer allocator.free(ip4_config);
+        if (isVaildPath(ip4_config)) {
+            ac.ip4_config = try IPConfig.init(allocator, bus, ip4_config);
+        }
+        const ip6_config = try active.getAlloc(allocator, "Ip6Config", dbus.ObjectPath);
+        defer allocator.free(ip6_config);
+        if (isVaildPath(ip6_config)) {
+            ac.ip6_config = try IPConfig.init(allocator, bus, ip6_config);
+        }
         return ac;
     }
     pub fn deinit(self: ActiveConnection, allocator: Allocator) void {
@@ -306,6 +321,8 @@ pub const ActiveConnection = struct {
         self.connection.deinit(allocator);
         allocator.free(self.dbus_path);
         allocator.free(self.specific_object);
+        if (self.ip4_config) |ip4_config| ip4_config.deinit(allocator);
+        if (self.ip6_config) |ip6_config| ip6_config.deinit(allocator);
     }
 };
 pub const AccessPoint = struct {
@@ -360,5 +377,45 @@ pub const AccessPoint = struct {
         allocator.free(self.ssid);
         allocator.free(self.rsn);
         allocator.free(self.wpa);
+    }
+};
+const IP = struct {
+    address: []const u8,
+    prefix: u32,
+};
+const IPConfig = struct {
+    addresses: []IP,
+    gateway: []const u8,
+    pub fn init(allocator: Allocator, bus: *dbus.Bus, path: []const u8) !IPConfig {
+        var iface = "org.freedesktop.NetworkManager.IP4Config";
+        if (std.mem.startsWith(u8, path, "/org/freedesktop/NetworkManager/IP6Config")) {
+            iface = "org.freedesktop.NetworkManager.IP6Config";
+        }
+        const ipcfg = try DBusHelper.init(bus, path, iface);
+        defer ipcfg.deinit();
+        const addressData = try ipcfg.get("AddressData", dbus.Array(dbus.Vardict));
+        defer addressData.deinit();
+        var addresses = try allocator.alloc(IP, addressData.value.len);
+        for (addressData.value, 0..) |data, i| {
+            const ip = data[0].value.as(dbus.String);
+            const prefix = data[1].value.as(dbus.UInt32);
+            addresses[i] = .{
+                .address = try allocator.dupe(u8, ip),
+                .prefix = prefix,
+            };
+        }
+        errdefer allocator.free(addresses);
+        errdefer for (addresses) |ip| allocator.free(ip.address);
+
+        const gateway = try ipcfg.getAlloc(allocator, "Gateway", dbus.String);
+        return .{
+            .addresses = addresses,
+            .gateway = gateway,
+        };
+    }
+    pub fn deinit(self: IPConfig, allocator: Allocator) void {
+        for (self.addresses) |ip| allocator.free(ip.address);
+        allocator.free(self.addresses);
+        allocator.free(self.gateway);
     }
 };

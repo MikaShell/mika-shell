@@ -48,5 +48,5 @@ pub const DBusHelper = struct {
     }
 };
 pub fn isValidPath(path: []const u8) bool {
-    return !std.mem.eql(u8, path, "/");
+    return path.len > 0 and !std.mem.eql(u8, path, "/");
 }

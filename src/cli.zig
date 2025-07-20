@@ -240,10 +240,9 @@ pub fn daemon() !void {
     const ipcServer = try ipc.Server.init(allocator, app);
     defer ipcServer.deinit();
     try ipcServer.listen();
-    glib.timeoutMainLoop(10_000);
-    // while (true) {
-    //     _ = glib.mainIteration();
-    // }
+    while (true) {
+        _ = glib.mainIteration();
+    }
 }
 const glib = @import("glib");
 

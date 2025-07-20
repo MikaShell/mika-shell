@@ -39,6 +39,7 @@ pub const Window = struct {
             .{ "getId", getId },
             .{ "openDevTools", openDevTools },
             .{ "setTitle", setTitle },
+            .{ "close", close },
         };
     }
     fn getWindow(self: *Self, args: Args) !*Webview {

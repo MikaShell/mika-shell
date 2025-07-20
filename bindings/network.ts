@@ -87,7 +87,10 @@ export class Connection {
         return getWirelessPsk(this.dbus_path);
     }
 }
-
+export interface IPConfig {
+    address: { address: string; prefix: number }[];
+    gateway: string;
+}
 export class ActiveConnection {
     dbus_path: string;
     connection: Connection;
@@ -108,6 +111,8 @@ export class ActiveConnection {
         ip6_ready: boolean;
     };
     specific_object: string;
+    ip4_config: IPConfig | null;
+    ip6_config: IPConfig | null;
     type: "802-11-wireless" | "802-3-ethernet";
     public diactivate() {
         return deactivateConnection(this.dbus_path);
