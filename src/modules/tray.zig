@@ -1,8 +1,10 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
+const Allocator = std.mem.Allocator;
 const tray = @import("../lib/tray.zig");
 const dbus = @import("dbus");
 const App = @import("../app.zig").App;
@@ -31,17 +33,37 @@ pub const Tray = struct {
     host: ?*tray.Host = null,
     bus: *dbus.Bus,
     subscriber: std.ArrayList(u64),
-    pub fn init(allocator: Allocator, app: *App, bus: *dbus.Bus) !*Self {
+    pub fn init(ctx: Context) !*Self {
+        const allocator = ctx.allocator;
         const self = try allocator.create(Self);
         self.* = Self{
             .allocator = allocator,
-            .app = app,
-            .bus = bus,
+            .app = ctx.app,
+            .bus = ctx.sessionBus,
             .subscriber = std.ArrayList(u64).init(allocator),
         };
         // TODO: 这个线程需要关闭吗?
         _ = try std.Thread.spawn(.{}, trayWatcherThread, .{});
         return self;
+    }
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        self.subscriber.deinit();
+        if (self.host) |h| h.deinit();
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "getItem", getItem },
+            .{ "getItems", getItems },
+            .{ "subscribe", subscribe },
+            .{ "unsubscribe", unsubscribe },
+            .{ "activate", activate },
+            .{ "secondaryActivate", secondaryActivate },
+            .{ "scroll", scroll },
+            .{ "provideXdgActivationToken", provideXdgActivationToken },
+            .{ "getMenu", getMenu },
+            .{ "activateMenu", activateMenu },
+        };
     }
     fn setup(self: *Self, result: *Result) !void {
         const allocator = self.allocator;
@@ -52,11 +74,6 @@ pub const Tray = struct {
             };
             try self.host.?.addListener(onItemUpdated, self);
         }
-    }
-    pub fn deinit(self: *Self) void {
-        self.subscriber.deinit();
-        if (self.host) |h| h.deinit();
-        self.allocator.destroy(self);
     }
     fn onItemUpdated(_: *tray.Host, state: tray.ItemState, service: []const u8, data: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(data));

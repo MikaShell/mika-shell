@@ -422,10 +422,25 @@ const c = @cImport({
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
 const App = @import("../app.zig").App;
 
 pub const Icon = struct {
     const Self = @This();
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        return self;
+    }
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "lookup", lookup },
+        };
+    }
+
     // TODO: 替换成 zig 实现的 icon 查找器
     pub fn lookup(_: *Self, args: Args, result: *Result) !void {
         const allocator = std.heap.page_allocator;

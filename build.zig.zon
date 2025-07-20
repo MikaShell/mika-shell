@@ -12,9 +12,9 @@
             .url = "git+https://github.com/karlseguin/http.zig#68e760cc9eed0722dfcae69bda0ed9406bb83be2",
             .hash = "httpz-0.0.0-PNVzrOu4BgCBCARbwWC7MUn7_MqnGwUNfTXEUryOns06",
         },
-        .@"zig-cli" = .{
-            .url = "git+https://github.com/sam701/zig-cli#9fca749122a321fd4af4fecafba0062b3e36db98",
-            .hash = "cli-0.9.0-2eKe_zP5AAD96LcpU9Gdo7vRHvHIKjYnyR9ME6si527r",
+        .cli = .{
+            .url = "git+https://github.com/sam701/zig-cli#bdaab80c0f24624cb4e8b80bb7b34957263f67b8",
+            .hash = "cli-0.9.0-2eKe_zUBAQAuGjFuolxsm2SkNyuMVqk4SaYrwzis5jTp",
         },
         .ini = .{
             .url = "git+https://github.com/ziglibs/ini#30afc2fc875ff817af0ffe490481f6f8aa3b5cd4",

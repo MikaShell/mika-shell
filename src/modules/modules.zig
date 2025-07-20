@@ -95,106 +95,15 @@ pub const Result = struct {
 pub fn Callable(comptime T: type) type {
     return *const fn (self: T, args: Args, result: *Result) anyerror!void;
 }
-pub fn Entry(comptime T: type) type {
-    return struct {
-        self: T,
-        call: Callable(T),
-    };
-}
-const AnyEntry = Entry(*anyopaque);
-pub const Modules = struct {
+const App = @import("../app.zig").App;
+pub const Context = struct {
     allocator: std.mem.Allocator,
-    table: std.StringHashMap(AnyEntry),
-    pub fn init(allocator: std.mem.Allocator) *Modules {
-        const m = allocator.create(Modules) catch unreachable;
-        m.* = .{
-            .table = std.StringHashMap(AnyEntry).init(allocator),
-            .allocator = allocator,
-        };
-        return m;
-    }
-    pub fn deinit(self: *Modules) void {
-        self.table.deinit();
-        self.allocator.destroy(self);
-    }
-    pub fn call(self: *Modules, name: []const u8, args: Args, result: *Result) !void {
-        const entry = self.table.get(name) orelse {
-            return error.FunctionNotFound;
-        };
-        return entry.call(entry.self, args, result);
-    }
-    pub fn register(
-        self: *Modules,
-        module: anytype,
-        name: []const u8,
-        comptime function: Callable(@TypeOf(module)),
-    ) void {
-        const wrap: Callable(*anyopaque) = comptime blk: {
-            const wrapper = struct {
-                fn wrap(self_: *anyopaque, args: Args, result: *Result) !void {
-                    return function(@ptrCast(@alignCast(self_)), args, result);
-                }
-            };
-            break :blk &wrapper.wrap;
-        };
-        const entry = AnyEntry{
-            .self = module,
-            .call = wrap,
-        };
-        if (self.table.contains(name)) {
-            @panic("function already registered");
-        }
-        self.table.put(name, entry) catch unreachable;
-    }
+    app: *App,
+    systemBus: *dbus.Bus,
+    sessionBus: *dbus.Bus,
 };
-const TestModule = struct {
-    pub fn show(_: *TestModule, _: Args, result: *Result) !void {
-        result.commit("Hello, world!");
-    }
-    pub fn throw(_: *TestModule, _: Args, _: *Result) !void {
-        return error.TestError;
-    }
-    pub fn testArgs(_: *TestModule, args: Args, _: *Result) !void {
-        _ = try args.integer(0);
-        _ = try args.bool(1);
-        _ = try args.string(2);
-        _ = try args.array(3);
-        _ = try args.object(4);
-    }
-};
-const webkit = @import("webkit");
-
-test "register and call" {
-    const allocator = std.testing.allocator;
-    var m = Modules.init(allocator);
-    defer m.deinit();
-    var testModule = TestModule{};
-    const t = &testModule;
-    m.register(t, "show", TestModule.show);
-    m.register(t, "throw", TestModule.throw);
-    m.register(t, "testArgs", TestModule.testArgs);
-    const jsonStr =
-        \\{
-        \\    "args": [
-        \\        2,
-        \\        true,
-        \\        "hello",
-        \\        [3,4,5],
-        \\        {"foo":"bar"}
-        \\    ]
-        \\}
-    ;
-    const v = try std.json.parseFromSlice(std.json.Value, allocator, jsonStr, .{});
-    defer v.deinit();
-    const value = Args{ .items = v.value.object.get("args").?.array.items };
-    var result = Result.init(allocator);
-    defer result.deinit();
-    try m.call("show", value, &result);
-    try std.testing.expectEqualStrings("\"Hello, world!\"", result.buffer.?.items);
-    const ctx = webkit.JSCContext.new();
-    const jsvalue = result.toJSCValue(ctx);
-    try std.testing.expectEqualStrings("\"Hello, world!\"", jsvalue.toJson(0));
-    try std.testing.expectError(error.TestError, m.call("throw", value, &result));
-
-    try m.call("testArgs", value, &result);
+pub fn Registry(T: type) type {
+    return []const std.meta.Tuple(&.{ []const u8, Callable(*T) });
 }
+const webkit = @import("webkit");
+const dbus = @import("dbus");

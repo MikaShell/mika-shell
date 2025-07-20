@@ -1,8 +1,10 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
+const Allocator = std.mem.Allocator;
 const notification = @import("../lib/notifd.zig");
 const dbus = @import("dbus");
 const App = @import("../app.zig").App;
@@ -16,23 +18,36 @@ pub const Notifd = struct {
     subscriber: std.ArrayList(u64),
     notifd: ?*notification.Notifd,
     dontDisturb: bool = false,
-    pub fn init(allocator: Allocator, app: *App, bus: *dbus.Bus) !*Self {
-        const self = try allocator.create(Self);
+
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
         self.* = Self{
-            .app = app,
-            .allocator = allocator,
-            .bus = bus,
-            .subscriber = std.ArrayList(u64).init(allocator),
+            .app = ctx.app,
+            .allocator = ctx.allocator,
+            .bus = ctx.sessionBus,
+            .subscriber = std.ArrayList(u64).init(ctx.allocator),
             .dontDisturb = false,
             .notifd = null,
         };
         return self;
     }
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, allocator: Allocator) void {
         if (self.notifd) |notifd| notifd.deinit();
         self.subscriber.deinit();
-        self.allocator.destroy(self);
+        allocator.destroy(self);
     }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "subscribe", subscribe },
+            .{ "unsubscribe", unsubscribe },
+            .{ "get", get },
+            .{ "dismiss", dismiss },
+            .{ "activate", activate },
+            .{ "getAll", getAll },
+            .{ "setDontDisturb", setDontDisturb },
+        };
+    }
+
     fn onNotificationAdded(self: *Self, id: u32) void {
         const app = self.app;
         var i: usize = self.subscriber.items.len;

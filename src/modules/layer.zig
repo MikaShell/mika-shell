@@ -14,14 +14,43 @@ const Options = struct {
 
 const std = @import("std");
 const webkit = @import("webkit");
-const modules = @import("modules.zig");
 const Webview = @import("../app.zig").Webview;
 const App = @import("../app.zig").App;
-const Args = @import("modules.zig").Args;
-const Result = @import("modules.zig").Result;
+const modules = @import("modules.zig");
+const Args = modules.Args;
+const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
+const Allocator = std.mem.Allocator;
 pub const Layer = struct {
     app: *App,
     const Self = @This();
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        self.app = ctx.app;
+        return self;
+    }
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "init", initLayer },
+            .{ "getId", getId },
+            .{ "show", show },
+            .{ "hide", hide },
+            .{ "close", close },
+            .{ "openDevTools", openDevTools },
+            .{ "resetAnchor", resetAnchor },
+            .{ "setAnchor", setAnchor },
+            .{ "setLayer", setLayer },
+            .{ "setKeyboardMode", setKeyboardMode },
+            .{ "setNamespace", setNamespace },
+            .{ "setMargin", setMargin },
+            .{ "setExclusiveZone", setExclusiveZone },
+            .{ "autoExclusiveZoneEnable", autoExclusiveZoneEnable },
+        };
+    }
     fn getWebview(self: *Self, args: Args) !*Webview {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
@@ -39,7 +68,7 @@ pub const Layer = struct {
         const layer = layershell.Layer.init(w.container);
         return layer;
     }
-    pub fn init(self: *Self, args: Args, _: *Result) !void {
+    pub fn initLayer(self: *Self, args: Args, _: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
 

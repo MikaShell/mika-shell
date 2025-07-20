@@ -1,11 +1,29 @@
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
 const App = @import("../app.zig").App;
 const std = @import("std");
 pub const OS = struct {
     const Self = @This();
     allocator: Allocator,
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        self.allocator = ctx.allocator;
+        return self;
+    }
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "getEnv", getEnv },
+            .{ "getSystemInfo", getSystemInfo },
+            .{ "getUserInfo", getUserInfo },
+            .{ "exec", exec },
+        };
+    }
     pub fn getEnv(self: *Self, args: Args, result: *Result) !void {
         const key = try args.string(1);
         const allocator = self.allocator;

@@ -92,6 +92,14 @@ let
 in
 linkFarm name [
   {
+    name = "cli-0.9.0-2eKe_zUBAQAuGjFuolxsm2SkNyuMVqk4SaYrwzis5jTp";
+    path = fetchZigArtifact {
+      name = "cli";
+      url = "git+https://github.com/sam701/zig-cli#bdaab80c0f24624cb4e8b80bb7b34957263f67b8";
+      hash = "sha256-o8p6fEaSJ585MU3v6vwBY0hOvpT2C7Mlo45VWwQwbOE=";
+    };
+  }
+  {
     name = "httpz-0.0.0-PNVzrOu4BgCBCARbwWC7MUn7_MqnGwUNfTXEUryOns06";
     path = fetchZigArtifact {
       name = "httpz";
@@ -121,14 +129,6 @@ linkFarm name [
       name = "websocket";
       url = "https://github.com/karlseguin/websocket.zig/archive/7c3f1149bffcde1dec98dea88a442e2b580d750a.tar.gz";
       hash = "sha256-tDnyNptyRxQjrm0MqTmsy2F93yLBYDJE2KkqENJFW4Y=";
-    };
-  }
-  {
-    name = "cli-0.9.0-2eKe_zP5AAD96LcpU9Gdo7vRHvHIKjYnyR9ME6si527r";
-    path = fetchZigArtifact {
-      name = "zig-cli";
-      url = "git+https://github.com/sam701/zig-cli#9fca749122a321fd4af4fecafba0062b3e36db98";
-      hash = "sha256-PCuRlECGRWPTW2MtkUc4X4dKieVg4Ji4J4uHWJhxpL0=";
     };
   }
 ]

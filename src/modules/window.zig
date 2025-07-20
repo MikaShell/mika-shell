@@ -11,12 +11,36 @@ const webkit = @import("webkit");
 const App = @import("../app.zig").App;
 const Webview = @import("../app.zig").Webview;
 const events = @import("../events.zig");
-const Args = @import("modules.zig").Args;
-const Result = @import("modules.zig").Result;
+const modules = @import("modules.zig");
+const Args = modules.Args;
+const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
+const Allocator = std.mem.Allocator;
 const gtk = @import("gtk");
 pub const Window = struct {
     const Self = @This();
     app: *App,
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        self.* = Self{
+            .app = ctx.app,
+        };
+        return self;
+    }
+    pub fn deinit(self: *Self, allocator: Allocator) void {
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "init", initWindow },
+            .{ "show", show },
+            .{ "hide", hide },
+            .{ "getId", getId },
+            .{ "openDevTools", openDevTools },
+            .{ "setTitle", setTitle },
+        };
+    }
     fn getWindow(self: *Self, args: Args) !*Webview {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
@@ -25,7 +49,7 @@ pub const Window = struct {
         }
         return w;
     }
-    pub fn init(self: *Self, args: Args, _: *Result) !void {
+    pub fn initWindow(self: *Self, args: Args, _: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
         if (w.type == .Layer) {

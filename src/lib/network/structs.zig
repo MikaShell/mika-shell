@@ -238,6 +238,7 @@ pub const Connection = struct {
         allocator.free(self.filename);
         allocator.free(self.id);
         if (self.zone) |zone| allocator.free(zone);
+        if (self.interface_name) |interface_name| allocator.free(interface_name);
         if (self.controller) |controller| allocator.free(controller);
         if (self.wireless) |wireless| {
             if (wireless.bssid) |bssid| allocator.free(bssid);

@@ -102,6 +102,11 @@ pub const Webview = struct {
         w.container.setChild(w.impl.asWidget());
         return w;
     }
+    pub fn deinit(self: *Webview) void {
+        self.allocator.free(self.name);
+        self.container.destroy();
+        self.allocator.destroy(self);
+    }
     pub fn emitEvent(self: *Webview, name: []const u8, data: anytype) void {
         const alc = std.heap.page_allocator;
         const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
@@ -158,19 +163,9 @@ pub const Webview = struct {
 };
 const dbus = @import("dbus");
 const Allocator = std.mem.Allocator;
-const Modules = @import("modules/modules.zig").Modules;
+const Modules = @import("modules.zig").Modules;
 const Result = @import("modules/modules.zig").Result;
 const Args = @import("modules/modules.zig").Args;
-const Mika = @import("modules/mika.zig").Mika;
-const Layer = @import("modules/layer.zig").Layer;
-const Window = @import("modules/window.zig").Window;
-const Tray = @import("modules/tray.zig").Tray;
-const Icon = @import("modules/icon.zig").Icon;
-const OS = @import("modules/os.zig").OS;
-const Apps = @import("modules/apps.zig").Apps;
-const Monitor = @import("modules/monitor.zig").Monitor;
-const Notifd = @import("modules/notifd.zig").Notifd;
-const Network = @import("modules/network.zig").Network;
 pub const Error = error{
     WebviewNotExists,
 };
@@ -235,22 +230,11 @@ pub const App = struct {
     systemBus: *dbus.Bus,
     sessionBusWatcher: dbus.GLibWatch,
     systemBusWatcher: dbus.GLibWatch,
-    mika: *Mika,
-    window: *Window,
-    layer: *Layer,
-    tray: *Tray,
-    icon: *Icon,
-    os: *OS,
-    apps: *Apps,
-    monitor: *Monitor,
-    notifd: *Notifd,
-    network: *Network,
     pub fn init(allocator: Allocator, configDir: []const u8) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
         app.config = try Config.load(allocator, configDir);
         errdefer app.config.deinit(allocator);
-        app.modules = Modules.init(allocator);
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
@@ -268,115 +252,20 @@ pub const App = struct {
             @panic("can not watch system dbus loop");
         };
 
-        const mika = try allocator.create(Mika);
-        const window = try allocator.create(Window);
-        const layer = try allocator.create(Layer);
-        const icon = try allocator.create(Icon);
-        const os = try allocator.create(OS);
-        const apps = try allocator.create(Apps);
-        const monitor = try allocator.create(Monitor);
-
-        mika.* = Mika{ .app = app };
-        window.* = Window{ .app = app };
-        layer.* = Layer{ .app = app };
-        icon.* = Icon{};
-        os.* = OS{ .allocator = allocator };
-        apps.* = Apps{ .allocator = allocator };
-        monitor.* = Monitor{ .allocator = allocator };
-
-        const tray = try Tray.init(allocator, app, sessionBus);
-        const notifd = try Notifd.init(allocator, app, sessionBus);
-        const network = try Network.init(allocator, systemBus);
-
-        app.mika = mika;
-        app.window = window;
-        app.layer = layer;
-        app.tray = tray;
-        app.icon = icon;
-        app.os = os;
-        app.apps = apps;
-        app.monitor = monitor;
-        app.notifd = notifd;
-        app.network = network;
+        app.modules = Modules.init(allocator, app, systemBus, sessionBus);
 
         const modules = app.modules;
 
-        modules.register(mika, "mika.open", Mika.open);
-        modules.register(mika, "mika.close", Mika.close);
-        modules.register(mika, "mika.show", Mika.show);
-        modules.register(mika, "mika.hide", Mika.hide);
-        modules.register(mika, "mika.forceClose", Mika.forceClose);
-        modules.register(mika, "mika.forceShow", Mika.forceShow);
-        modules.register(mika, "mika.forceHide", Mika.forceHide);
-
-        modules.register(window, "window.init", Window.init);
-        modules.register(window, "window.show", Window.show);
-        modules.register(window, "window.hide", Window.hide);
-        modules.register(window, "window.getId", Window.getId);
-        modules.register(window, "window.openDevTools", Window.openDevTools);
-        modules.register(window, "window.setTitle", Window.setTitle);
-
-        modules.register(layer, "layer.init", Layer.init);
-        modules.register(layer, "layer.getId", Layer.getId);
-        modules.register(layer, "layer.show", Layer.show);
-        modules.register(layer, "layer.hide", Layer.hide);
-        modules.register(layer, "layer.close", Layer.close);
-        modules.register(layer, "lsyer.openDevTools", Layer.openDevTools);
-        modules.register(layer, "layer.resetAnchor", Layer.resetAnchor);
-        modules.register(layer, "layer.setAnchor", Layer.setAnchor);
-        modules.register(layer, "layer.setLayer", Layer.setLayer);
-        modules.register(layer, "layer.setKeyboardMode", Layer.setKeyboardMode);
-        modules.register(layer, "layer.setNamespace", Layer.setNamespace);
-        modules.register(layer, "layer.setMargin", Layer.setMargin);
-        modules.register(layer, "layer.setExclusiveZone", Layer.setExclusiveZone);
-        modules.register(layer, "layer.autoExclusiveZoneEnable", Layer.autoExclusiveZoneEnable);
-
-        modules.register(tray, "tray.getItem", Tray.getItem);
-        modules.register(tray, "tray.getItems", Tray.getItems);
-        modules.register(tray, "tray.subscribe", Tray.subscribe);
-        modules.register(tray, "tray.unsubscribe", Tray.unsubscribe);
-        modules.register(tray, "tray.activate", Tray.activate);
-        modules.register(tray, "tray.secondaryActivate", Tray.secondaryActivate);
-        modules.register(tray, "tray.scroll", Tray.scroll);
-        modules.register(tray, "tray.provideXdgActivationToken", Tray.provideXdgActivationToken);
-        modules.register(tray, "tray.getMenu", Tray.getMenu);
-        modules.register(tray, "tray.activateMenu", Tray.activateMenu);
-
-        modules.register(icon, "icon.lookup", Icon.lookup);
-
-        modules.register(os, "os.getEnv", OS.getEnv);
-        modules.register(os, "os.getSystemInfo", OS.getSystemInfo);
-        modules.register(os, "os.getUserInfo", OS.getUserInfo);
-        modules.register(os, "os.exec", OS.exec);
-
-        modules.register(apps, "apps.list", Apps.list);
-        modules.register(apps, "apps.activate", Apps.activate);
-
-        modules.register(monitor, "monitor.list", Monitor.list);
-
-        modules.register(notifd, "notifd.subscribe", Notifd.subscribe);
-        modules.register(notifd, "notifd.unsubscribe", Notifd.unsubscribe);
-        modules.register(notifd, "notifd.get", Notifd.get);
-        modules.register(notifd, "notifd.dismiss", Notifd.dismiss);
-        modules.register(notifd, "notifd.activate", Notifd.activate);
-        modules.register(notifd, "notifd.getAll", Notifd.getAll);
-        modules.register(notifd, "notifd.setDontDisturb", Notifd.setDontDisturb);
-
-        modules.register(network, "network.getDevices", Network.getDevices);
-        modules.register(network, "network.getState", Network.getState);
-        modules.register(network, "network.isEnabled", Network.isEnabled);
-        modules.register(network, "network.enable", Network.enable);
-        modules.register(network, "network.disable", Network.disable);
-        modules.register(network, "network.getConnections", Network.getConnections);
-        modules.register(network, "network.getPrimaryConnection", Network.getPrimaryConnection);
-        modules.register(network, "network.getActiveConnections", Network.getActiveConnections);
-        modules.register(network, "network.getWirelessPsk", Network.getWirelessPsk);
-        modules.register(network, "network.activateConnection", Network.activateConnection);
-        modules.register(network, "network.deactivateConnection", Network.deactivateConnection);
-        modules.register(network, "network.checkConnectivity", Network.checkConnectivity);
-        modules.register(network, "network.getWirelessAccessPoints", Network.getWirelessAccessPoints);
-        modules.register(network, "network.getWirelessActiveAccessPoint", Network.getWirelessActiveAccessPoint);
-        modules.register(network, "network.wirelessRequestScan", Network.wirelessRequestScan);
+        try modules.mount(@import("modules/mika.zig").Mika, "mika");
+        try modules.mount(@import("modules/window.zig").Window, "window");
+        try modules.mount(@import("modules/layer.zig").Layer, "layer");
+        try modules.mount(@import("modules/tray.zig").Tray, "tray");
+        try modules.mount(@import("modules/icon.zig").Icon, "icon");
+        try modules.mount(@import("modules/os.zig").OS, "os");
+        try modules.mount(@import("modules/apps.zig").Apps, "apps");
+        try modules.mount(@import("modules/monitor.zig").Monitor, "monitor");
+        try modules.mount(@import("modules/notifd.zig").Notifd, "notifd");
+        try modules.mount(@import("modules/network.zig").Network, "network");
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
@@ -384,37 +273,24 @@ pub const App = struct {
         return app;
     }
     pub fn deinit(self: *App) void {
-        for (self.webviews.items) |webview| webview.close();
+        for (self.webviews.items) |webview| webview.deinit();
         self.sessionBusWatcher.deinit();
         self.systemBusWatcher.deinit();
 
         self.webviews.deinit();
         self.modules.deinit();
-
-        self.tray.deinit();
-        self.notifd.deinit();
-        self.network.deinit();
-
         self.sessionBus.deinit();
         self.systemBus.deinit();
 
-        self.apps.deinit();
-
         self.config.deinit(self.allocator);
 
-        self.allocator.destroy(self.mika);
-        self.allocator.destroy(self.window);
-        self.allocator.destroy(self.layer);
-        self.allocator.destroy(self.icon);
-        self.allocator.destroy(self.os);
-        self.allocator.destroy(self.apps);
-        self.allocator.destroy(self.monitor);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {
         for (self.config.pages) |page| {
             if (std.mem.eql(u8, page.name, pageName)) {
                 const uri = std.fs.path.join(self.allocator, &.{ "http://localhost:6797", page.path }) catch unreachable;
+                defer self.allocator.free(uri);
                 return self.openS(uri, pageName);
             }
         }

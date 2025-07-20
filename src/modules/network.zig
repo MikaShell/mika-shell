@@ -1,8 +1,10 @@
+const App = @import("../app.zig").App;
+const std = @import("std");
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
-const App = @import("../app.zig").App;
-const std = @import("std");
+const Context = modules.Context;
+const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const networkManager = @import("../lib/network.zig");
 const dbus = @import("dbus");
@@ -10,17 +12,34 @@ pub const Network = struct {
     const Self = @This();
     allocator: Allocator,
     nm: networkManager.Network,
-    pub fn init(allocator: Allocator, bus: *dbus.Bus) !*Self {
-        const self = try allocator.create(Self);
-        self.* = Self{
-            .allocator = allocator,
-            .nm = try networkManager.Network.init(bus),
-        };
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        self.allocator = ctx.allocator;
+        self.nm = try networkManager.Network.init(ctx.systemBus);
         return self;
     }
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, allocator: Allocator) void {
         self.nm.deinit();
-        self.allocator.destroy(self);
+        allocator.destroy(self);
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "getDevices", getDevices },
+            .{ "getState", getState },
+            .{ "isEnabled", isEnabled },
+            .{ "enable", enable },
+            .{ "disable", disable },
+            .{ "getConnections", getConnections },
+            .{ "getPrimaryConnection", getPrimaryConnection },
+            .{ "getActiveConnections", getActiveConnections },
+            .{ "getWirelessPsk", getWirelessPsk },
+            .{ "activateConnection", activateConnection },
+            .{ "deactivateConnection", deactivateConnection },
+            .{ "checkConnectivity", checkConnectivity },
+            .{ "getWirelessActiveAccessPoint", getWirelessActiveAccessPoint },
+            .{ "getWirelessAccessPoints", getWirelessAccessPoints },
+            .{ "wirelessRequestScan", wirelessRequestScan },
+        };
     }
     pub fn getDevices(self: *Self, _: Args, result: *Result) !void {
         const devices = try self.nm.getDevices(self.allocator);

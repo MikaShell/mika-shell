@@ -1,6 +1,5 @@
 const std = @import("std");
 const testing = std.testing;
-const Allocator = std.mem.Allocator;
 
 pub const Type = enum {
     none,
@@ -581,6 +580,9 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
+const Context = modules.Context;
+const Registry = modules.Registry;
+const Allocator = std.mem.Allocator;
 const icon = @import("icon.zig");
 const glib = @import("glib");
 pub const Apps = struct {
@@ -589,8 +591,21 @@ pub const Apps = struct {
     entrys: ?[]Entry = null,
     monitors: ?[]glib.FileMonitor = null,
     needReload: bool = false,
+    pub fn init(ctx: Context) !*Self {
+        const self = try ctx.allocator.create(Self);
+        self.* = Self{
+            .allocator = ctx.allocator,
+        };
+        return self;
+    }
+    pub fn register() Registry(Self) {
+        return &.{
+            .{ "list", list },
+            .{ "activate", activate },
+        };
+    }
     pub fn list(self: *Self, _: modules.Args, result: *modules.Result) !void {
-        try self.init();
+        try self.setup();
         const allocator = self.allocator;
         if (self.needReload) {
             for (self.entrys.?) |*entry| entry.deinit(allocator);
@@ -601,7 +616,7 @@ pub const Apps = struct {
         const entrys = self.entrys.?;
         result.commit(entrys);
     }
-    fn init(self: *Self) !void {
+    fn setup(self: *Self) !void {
         const allocator = self.allocator;
         if (self.entrys == null) {
             self.entrys = try listApps(allocator);
@@ -623,7 +638,7 @@ pub const Apps = struct {
             self.monitors = try monitors.toOwnedSlice();
         }
     }
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, allocator: Allocator) void {
         if (self.entrys) |entrys| {
             for (entrys) |*e| e.deinit(self.allocator);
             self.allocator.free(entrys);
@@ -632,9 +647,10 @@ pub const Apps = struct {
             for (monitors) |m| m.deinit();
             self.allocator.free(monitors);
         }
+        allocator.destroy(self);
     }
     pub fn activate(self: *Self, args: Args, _: *Result) !void {
-        try self.init();
+        try self.setup();
         const allocator = self.allocator;
         const id = try args.string(1);
         const action_ = try args.string(2);

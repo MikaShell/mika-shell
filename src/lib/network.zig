@@ -166,6 +166,7 @@ pub const Network = struct {
         const device_helper = try helper.DBusHelper.init(self.bus, device, "org.freedesktop.NetworkManager.Device.Wireless");
         defer device_helper.deinit();
         const ap = try device_helper.getAlloc(allocator, "ActiveAccessPoint", dbus.ObjectPath);
+        defer allocator.free(ap);
         if (!helper.isValidPath(ap)) return null;
         return try structs.AccessPoint.init(allocator, self.bus, ap);
     }

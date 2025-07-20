@@ -4,7 +4,7 @@ const assets = @import("assets.zig");
 const App = @import("app.zig").App;
 const getConfigDir = @import("app.zig").getConfigDir;
 const ipc = @import("ipc.zig");
-const cli = @import("zig-cli");
+const cli = @import("cli");
 var config = struct {
     daemon: struct {
         config_dir: []const u8 = undefined,
@@ -45,6 +45,7 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
     };
 }
 fn cmdOpen(r: *cli.AppRunner) !cli.Command {
+    defer allocator.free(config.open.pageName);
     return cli.Command{
         .name = "open",
         .description = .{
@@ -177,13 +178,13 @@ fn cmdClose(r: *cli.AppRunner) !cli.Command {
         },
     };
 }
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const allocator = gpa.allocator();
+
 pub fn run() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
     var rr = try cli.AppRunner.init(allocator);
     const r = &rr;
-    defer allocator.free(config.open.pageName);
     const cliApp = cli.App{
         .command = .{
             .name = "mika-shell",
@@ -207,10 +208,7 @@ pub fn run() !void {
 }
 pub fn daemon() !void {
     gtk.init();
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
+    defer allocator.free(config.daemon.config_dir);
     // TODO: 完善报错信息
     const configDir = blk: {
         if (config.daemon.config_dir.len > 0) {
@@ -220,7 +218,7 @@ pub fn daemon() !void {
         }
     };
     defer allocator.free(configDir);
-    std.log.debug("ConfigDir: {s}", .{configDir});
+    std.log.info("ConfigDir: {s}", .{configDir});
 
     std.fs.accessAbsolute(configDir, .{}) catch |err| switch (err) {
         error.FileNotFound => {
@@ -242,10 +240,10 @@ pub fn daemon() !void {
     const ipcServer = try ipc.Server.init(allocator, app);
     defer ipcServer.deinit();
     try ipcServer.listen();
-
-    while (true) {
-        _ = glib.mainIteration();
-    }
+    glib.timeoutMainLoop(10_000);
+    // while (true) {
+    //     _ = glib.mainIteration();
+    // }
 }
 const glib = @import("glib");
 
