@@ -1,9 +1,11 @@
-const Options = struct {
+pub const Options = struct {
     title: []const u8,
     class: []const u8,
     resizable: bool,
     hidden: bool,
     backgroundTransparent: bool,
+    width: i32,
+    height: i32,
 };
 
 const std = @import("std");
@@ -40,6 +42,8 @@ pub const Window = struct {
             .{ "openDevTools", openDevTools },
             .{ "setTitle", setTitle },
             .{ "close", close },
+            .{ "setSize", setSize },
+            .{ "getSize", getSize },
         };
     }
     fn getWindow(self: *Self, args: Args) !*Webview {
@@ -87,6 +91,8 @@ pub const Window = struct {
         if (!opt.hidden) {
             w.container.present();
         }
+        w.container.setDefaultSize(opt.width, opt.height);
+        w.options = .{ .window = opt };
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
@@ -112,5 +118,21 @@ pub const Window = struct {
     pub fn close(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
         w.close();
+    }
+    pub fn setSize(self: *Self, args: Args, result: *Result) !void {
+        const w = try self.getWindow(args);
+        if (w.options.window.resizable) {
+            return result.errors("setSize is not allowed for resizable window", .{});
+        }
+        const width = try args.integer(1);
+        const height = try args.integer(2);
+        w.container.setDefaultSize(@intCast(width), @intCast(height));
+    }
+    pub fn getSize(self: *Self, args: Args, result: *Result) !void {
+        const w = try self.getWindow(args);
+        var width: i32 = undefined;
+        var height: i32 = undefined;
+        w.container.getSize(&width, &height);
+        result.commit(.{ .width = width, .height = height });
     }
 };

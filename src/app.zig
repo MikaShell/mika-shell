@@ -7,8 +7,8 @@ pub const WebviewType = enum {
     Window,
     Layer,
 };
-pub const WindowOptions = struct {};
-pub const LayerOptions = struct {};
+pub const WindowOptions = @import("./modules/window.zig").Options;
+pub const LayerOptions = @import("./modules/layer.zig").Options;
 pub const Webview = struct {
     const Info = struct {
         type: []const u8,
@@ -34,9 +34,29 @@ pub const Webview = struct {
             .impl = webkit.WebView.new(),
             .container = gtk.Window.new(),
             ._modules = m,
-            .options = .{ .window = .{} },
+            .options = undefined,
             .type = .None,
         };
+        w.container.asWidget().connect(.hide, struct {
+            fn f(_: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const w_: *Webview = @ptrCast(@alignCast(data));
+                if (w_.type == .Layer) {
+                    w_.emitEvent(events.Layer.hide, null);
+                } else {
+                    w_.emitEvent(events.Window.hide, null);
+                }
+            }
+        }.f, w);
+        w.container.asWidget().connect(.show, struct {
+            fn f(_: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const w_: *Webview = @ptrCast(@alignCast(data));
+                if (w_.type == .Layer) {
+                    w_.emitEvent(events.Layer.show, null);
+                } else {
+                    w_.emitEvent(events.Window.show, null);
+                }
+            }
+        }.f, w);
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
         settings.setEnableDeveloperExtras(true);
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;

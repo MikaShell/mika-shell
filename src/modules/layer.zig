@@ -1,5 +1,5 @@
 const layershell = @import("layershell");
-const Options = struct {
+pub const Options = struct {
     monitor: i32,
     anchor: []layershell.Edge,
     layer: layershell.Layers,
@@ -10,6 +10,8 @@ const Options = struct {
     autoExclusiveZone: bool,
     backgroundTransparent: bool,
     hidden: bool,
+    width: i32,
+    height: i32,
 };
 
 const std = @import("std");
@@ -49,6 +51,8 @@ pub const Layer = struct {
             .{ "setMargin", setMargin },
             .{ "setExclusiveZone", setExclusiveZone },
             .{ "autoExclusiveZoneEnable", autoExclusiveZoneEnable },
+            .{ "getSize", getSize },
+            .{ "setSize", setSize },
         };
     }
     fn getWebview(self: *Self, args: Args) !*Webview {
@@ -80,6 +84,7 @@ pub const Layer = struct {
             // 已经被初始化为 Window, 无法再次初始化为 Layer
             return error.WebviewIsAlreadyAWindow;
         }
+
         const layer = layershell.Layer.init(w.container);
         if (w.type == .None) {
             _ = layer.setMonitor(opt.monitor) catch {};
@@ -106,9 +111,12 @@ pub const Layer = struct {
         } else {
             w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
         }
+        w.container.setDefaultSize(opt.width, opt.height);
         if (!opt.hidden) {
-            w.container.asWidget().show();
+            w.show();
         }
+
+        w.options = .{ .layer = opt };
     }
     pub fn getId(_: *Self, args: Args, result: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
@@ -171,5 +179,18 @@ pub const Layer = struct {
     pub fn autoExclusiveZoneEnable(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
         layer.autoExclusiveZoneEnable();
+    }
+    pub fn getSize(self: *Self, args: Args, result: *Result) !void {
+        const w = try self.getWebview(args);
+        var width: i32 = 0;
+        var height: i32 = 0;
+        w.container.getSize(&width, &height);
+        result.commit(.{ .width = width, .height = height });
+    }
+    pub fn setSize(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWebview(args);
+        const width = try args.integer(1);
+        const height = try args.integer(2);
+        w.container.setDefaultSize(@intCast(width), @intCast(height));
     }
 };

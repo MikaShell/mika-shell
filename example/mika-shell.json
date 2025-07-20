@@ -3,35 +3,39 @@
     "description": "This is an example mika-shell configuration file",
     "pages": [
         {
-            "name": "index-page",
-            "description": "This is the index page",
-            "path": "/index.html"
+            "name": "debug",
+            "description": "This is the debug page",
+            "path": "/debug/index.html"
         },
         {
-            "name": "tray",
-            "path": "/tray.html"
+            "name": "debug-tray",
+            "path": "/debug/tray.html"
         },
         {
-            "name": "apps",
-            "path": "/apps.html"
+            "name": "debug-apps",
+            "path": "/debug/apps.html"
         },
         {
-            "name": "hyprland",
-            "path": "/hyprland.html"
+            "name": "debug-hyprland",
+            "path": "/debug/hyprland.html"
         },
         {
-            "name": "notifd",
-            "path": "/notifd.html"
+            "name": "debug-notifd",
+            "path": "/debug/notifd.html"
         },
         {
-            "name": "network",
-            "path": "/network.html"
+            "name": "debug-network",
+            "path": "/debug/network.html"
         },
         {
-            "name": "404",
+            "name": "debug-404",
             "description": "This page is used to test the built-in 404 page",
             "path": "/unknown.html"
+        },
+        {
+            "name": "bar",
+            "path": "/bar.html"
         }
     ],
-    "startup": ["index-page"]
+    "startup": ["bar"]
 }

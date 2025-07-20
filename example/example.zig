@@ -1,11 +1,12 @@
 const filenames = [_][]const u8{
     "mika-shell.json",
-    "style.css",
-    "index.html",
-    "apps.html",
-    "hyprland.html",
-    "notifd.html",
-    "tray.html",
+    "debug/style.css",
+    "debug/index.html",
+    "debug/apps.html",
+    "debug/hyprland.html",
+    "debug/notifd.html",
+    "debug/tray.html",
+    "bar.html",
 };
 
 const std = @import("std");

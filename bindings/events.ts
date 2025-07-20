@@ -51,14 +51,14 @@ async function dispatchTryableEvent(id: number, action: string) {
         }
     }
     if (canDo) {
-        if (action === "close") call("mika.forceClose", id);
-        else if (action === "show") call("mika.forceShow", id);
-        else if (action === "hide") call("mika.forceHide", id);
+        if (action === "try-close") call("mika.forceClose", id);
+        else if (action === "try-show") call("mika.forceShow", id);
+        else if (action === "try-hide") call("mika.forceHide", id);
     }
 }
 export function addTryableListener(
     id: number,
-    action: "close" | "show" | "hide",
+    action: "try-close" | "try-show" | "try-hide",
     callback: () => boolean | Promise<boolean>,
     once: boolean = false
 ) {
@@ -66,7 +66,7 @@ export function addTryableListener(
 }
 export function removeTryableListener(
     id: number,
-    action: "close" | "show" | "hide",
+    action: "try-close" | "try-show" | "try-hide",
     callback: () => boolean | Promise<boolean>
 ) {
     const handlers = canTryListeners.get(id) || [];
@@ -97,21 +97,21 @@ var isClosing = false;
 addEventListener("mika-try-close", (id) => {
     if (isClosing) return;
     isClosing = true;
-    dispatchTryableEvent(id, "close");
+    dispatchTryableEvent(id, "try-close");
     isClosing = false;
 });
 var isShowing = false;
 addEventListener("mika-try-show", (id) => {
     if (isShowing) return;
     isShowing = true;
-    dispatchTryableEvent(id, "show");
+    dispatchTryableEvent(id, "try-show");
     isShowing = false;
 });
 var isHiding = false;
 addEventListener("mika-try-hide", (id) => {
     if (isHiding) return;
     isHiding = true;
-    dispatchTryableEvent(id, "hide");
+    dispatchTryableEvent(id, "try-hide");
     isHiding = false;
 });
 

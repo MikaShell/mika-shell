@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            body {
+                background-color: rgba(0, 18, 32, 0.823);
+                color: aliceblue;
+                display: flex;
+                align-items: center;
+                height: 100vh;
+                user-select: none;
+                -webkit-user-select: none;
+                margin: 0;
+            }
+            #debug {
+                background-color: rgba(52, 147, 35, 0.782);
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                transition: background-color 0.2s ease-in-out;
+                margin: 0 4px;
+            }
+            #debug:hover {
+                background-color: rgba(70, 168, 53, 0.782);
+            }
+            #left {
+                flex: 1;
+                display: flex;
+                justify-content: start;
+            }
+            #right {
+                flex: 1;
+                display: flex;
+                justify-content: start;
+            }
+            #center {
+                flex: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                white-space: nowrap;
+            }
+            #clock {
+                font-weight: bold;
+            }
+            .tray-icon {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                padding: 2px;
+                border: solid 1px rgba(24, 104, 68, 0.295);
+                background-color: rgba(240, 248, 255, 0.105);
+            }
+            #tray {
+                top: 10px;
+                right: 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 4px;
+                margin: 0 4px;
+            }
+        </style>
+        <script>
+            mikaShell.layer.init({
+                anchor: ["top", "left", "right"],
+                height: 38,
+                layer: "top",
+                autoExclusiveZone: true,
+                backgroundTransparent: true,
+            });
+        </script>
+        <!-- Clock -->
+        <script>
+            window.addEventListener("load", () => {
+                const clock = document.getElementById("clock");
+                const updateClock = () => {
+                    clock.innerHTML = new Date().toLocaleTimeString(undefined, {
+                        hour12: false,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    });
+                };
+                updateClock();
+                setInterval(updateClock, 100);
+            });
+        </script>
+        <!-- Tray -->
+        <script>
+            const pickIcon = (icons, size) => {
+                if (!Array.isArray(icons) || icons.length === 0) return null;
+
+                let closest = icons[0];
+                let minDiff = Math.abs(closest.width - size);
+
+                for (let i = 1; i < icons.length; i++) {
+                    const diff = Math.abs(icons[i].width - size);
+                    if (diff < minDiff) {
+                        closest = icons[i];
+                        minDiff = diff;
+                    }
+                }
+
+                return closest;
+            };
+            const arrayToUrl = (arr) => {
+                const uint8Array = new Uint8Array(arr);
+                const blob = new Blob([uint8Array], { type: "image/png" });
+                const imageUrl = URL.createObjectURL(blob);
+                return imageUrl;
+            };
+            function updata(item) {
+                const div = document.getElementById("tray");
+                item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
+                const imageUrl = arrayToUrl(pickIcon(item.icon.pixmap, 32).webp);
+                for (let i = 0; i < div.children.length; i++) {
+                    const img = div.children[i];
+                    if (img.dataset.service !== item.service) continue;
+                    URL.revokeObjectURL(img.src);
+                    img.src = imageUrl;
+                    return;
+                }
+
+                const img = document.createElement("img");
+                img.src = imageUrl;
+                img.className = "tray-icon";
+                img.dataset["service"] = item.service;
+                img.addEventListener("contextmenu", function (e) {
+                    e.preventDefault();
+                    tray.getMenu(item.service).then((menu) => {
+                        console.log("tray-menu", menu);
+                    });
+                });
+                img.onclick = () => mikaShell.tray.activate(item.service, 0, 0);
+                div.appendChild(img);
+            }
+            const proxy = new Proxy(
+                {},
+                {
+                    get: (target, prop) => {
+                        return target[prop];
+                    },
+                    set: (target, prop, value) => {
+                        target[prop] = value;
+                        updata(value);
+                        return true;
+                    },
+                    deleteProperty: (target, prop) => {
+                        delete target[prop];
+                        console.log("tray-removed", prop);
+                        const div = document.getElementById("tray");
+                        const img = div.querySelector(`img[data-service="${prop}"]`);
+                        if (img) div.removeChild(img);
+                        return true;
+                    },
+                }
+            );
+            mikaShell.tray.proxy(proxy);
+            mikaShell.window.on("close", () => {
+                tray.unproxy(proxy);
+            });
+        </script>
+    </head>
+    <body>
+        <div id="left">
+            <button id="debug" onclick="mikaShell.mika.open('debug')">Debug</button>
+            <div id="tray"></div>
+        </div>
+        <div id="center">
+            <span id="clock"> </span>
+        </div>
+        <div id="right"></div>
+    </body>
+</html>

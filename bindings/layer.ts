@@ -1,5 +1,53 @@
 import call from "./call";
-export * from "./layer-and-window";
+import * as events from "./events";
+
+type TryableEvents = "try-close" | "try-hide" | "try-show";
+type Events = TryableEvents | "show" | "hide";
+type Callback<T extends Events> = T extends TryableEvents
+    ? () => boolean | Promise<boolean>
+    : () => void;
+const emitter = new events.Emitter("layer");
+async function addListener<K extends Events>(
+    event: K,
+    callback: Callback<K>,
+    once: boolean = false
+) {
+    if (event === "try-close" || event === "try-hide" || event === "try-show") {
+        events.addTryableListener(
+            await call("layer.getId"),
+            event,
+            callback as Callback<TryableEvents>,
+            once
+        );
+    } else {
+        if (once) emitter.once(event, callback);
+        else emitter.on(event, callback);
+    }
+}
+
+async function removeListener<K extends Events>(event: K, callback: Callback<K>) {
+    if (event === "try-close" || event === "try-hide" || event === "try-show") {
+        events.removeTryableListener(
+            await call("layer.getId"),
+            event,
+            callback as Callback<TryableEvents>
+        );
+    } else {
+        emitter.off(event, callback);
+    }
+}
+
+export function on<K extends Events>(event: K, callback: Callback<K>) {
+    return addListener(event, callback);
+}
+export function off<K extends Events>(event: K, callback: Callback<K>) {
+    return removeListener(event, callback);
+}
+
+export function once<K extends Events>(event: K, callback: Callback<K>) {
+    return addListener(event, callback, true);
+}
+
 export type Edge = "left" | "right" | "top" | "bottom";
 export type Layers = "background" | "bottom" | "top" | "overlay";
 export type KeyboardMode = "none" | "exclusive" | "ondemand";
@@ -31,6 +79,8 @@ export type Options = {
     autoExclusiveZone: boolean;
     backgroundTransparent: boolean;
     hidden: boolean;
+    height: number;
+    width: number;
 };
 
 export function init(options: Partial<Options> = {}): Promise<void> {
@@ -46,6 +96,8 @@ export function init(options: Partial<Options> = {}): Promise<void> {
         autoExclusiveZone: options.autoExclusiveZone ?? false,
         backgroundTransparent: options.backgroundTransparent ?? false,
         hidden: options.hidden ?? false,
+        height: options.height ?? 0,
+        width: options.width ?? 0,
     };
 
     return call("layer.init", opt);
@@ -85,4 +137,10 @@ export function setExclusiveZone(zone: number): Promise<void> {
 }
 export function autoExclusiveZoneEnable(): Promise<void> {
     return call("layer.autoExclusiveZoneEnable");
+}
+export function setSize(width: number, height: number): Promise<void> {
+    return call("layer.setSize", width, height);
+}
+export function getSize(): Promise<{ width: number; height: number }> {
+    return call("layer.getSize");
 }

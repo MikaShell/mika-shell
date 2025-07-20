@@ -9,6 +9,14 @@ pub const Mika = struct {
     pub const tryShow = "mika-try-show";
     pub const tryHide = "mika-try-hide";
 };
+pub const Window = struct {
+    pub const show = "window-show";
+    pub const hide = "window-hide";
+};
+pub const Layer = struct {
+    pub const show = "layer-show";
+    pub const hide = "layer-hide";
+};
 pub const Tray = struct {
     pub const added = "tray-added";
     pub const removed = "tray-removed";

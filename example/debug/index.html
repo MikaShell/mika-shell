@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Welcome</title>
+        <title>Debug</title>
         <link rel="stylesheet" href="style.css" />
         <style>
             #os-info {
@@ -50,17 +50,19 @@
                     backgroundTransparent: true,
                 });
             };
-            const windowInit = () => {
-                window.mikaShell.window.init({
+            const windowInit = async () => {
+                await window.mikaShell.window.init({
                     title: "MikaShell Test",
                     backgroundTransparent: true,
                     resizable: false,
+                    width: 800,
+                    height: 500,
                 });
             };
             windowInit();
             // or
             // layerInit();
-            window.mikaShell.window.on("close", () => {
+            window.mikaShell.window.on("try-close", () => {
                 const result = confirm("Are you sure to close this window?");
                 if (result) {
                     return true;
@@ -101,12 +103,12 @@
             </div>
         </div>
         <div class="open">
-            <button onclick="window.mikaShell.mika.open('tray')">Tray</button>
-            <button onclick="window.mikaShell.mika.open('hyprland')">Hyprland</button>
-            <button onclick="window.mikaShell.mika.open('apps')">Apps</button>
-            <button onclick="window.mikaShell.mika.open('404')">404</button>
-            <button onclick="window.mikaShell.mika.open('notifd')">Notifd</button>
-            <button onclick="window.mikaShell.mika.open('network')">Network</button>
+            <button onclick="window.mikaShell.mika.open('debug-tray')">Tray</button>
+            <button onclick="window.mikaShell.mika.open('debug-hyprland')">Hyprland</button>
+            <button onclick="window.mikaShell.mika.open('debug-apps')">Apps</button>
+            <button onclick="window.mikaShell.mika.open('debug-404')">404</button>
+            <button onclick="window.mikaShell.mika.open('debug-notifd')">Notifd</button>
+            <button onclick="window.mikaShell.mika.open('debug-network')">Network</button>
         </div>
     </body>
 </html>

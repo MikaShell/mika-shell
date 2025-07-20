@@ -122,6 +122,20 @@ pub const Window = extern struct {
     pub fn setResizable(self: *Self, resizable: bool) void {
         gtk_window_set_resizable(self, @intFromBool(resizable));
     }
+    pub fn setDefaultSize(self: *Self, width: i32, height: i32) void {
+        c.gtk_window_set_default_size(@ptrCast(self), @intCast(width), @intCast(height));
+    }
+    pub fn setSize(self: *Self, width: i32, height: i32) void {
+        c.gtk_widget_set_size_request(@ptrCast(self.asWidget()), @intCast(width), @intCast(height));
+    }
+    pub fn getSize(self: *Self, width: *i32, height: *i32) void {
+        const surface = c.gtk_native_get_surface(@ptrCast(self));
+        if (surface == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        width.* = @intCast(c.gdk_surface_get_width(surface));
+        height.* = @intCast(c.gdk_surface_get_height(surface));
+    }
     pub fn connect(
         self: *Self,
         comptime signal: Signal,

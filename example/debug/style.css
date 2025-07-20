@@ -7,10 +7,6 @@ body {
     flex-direction: column;
     padding: 12px;
 }
-:root {
-    height: 500px;
-    width: 800px;
-}
 button {
     background-color: rgb(100, 100, 100);
     color: white;
