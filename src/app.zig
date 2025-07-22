@@ -284,6 +284,7 @@ pub const App = struct {
         try modules.mount(@import("modules/monitor.zig").Monitor, "monitor");
         try modules.mount(@import("modules/notifd.zig").Notifd, "notifd");
         try modules.mount(@import("modules/network.zig").Network, "network");
+        try modules.mount(@import("modules/dock.zig").Dock, "dock");
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
@@ -397,6 +398,11 @@ pub const App = struct {
         for (self.webviews.items) |webview| {
             webview.emitEvent(name, data);
         }
+    }
+    pub fn emitEventTo(self: *App, id: u64, name: []const u8, data: anytype) bool {
+        const webview = self.getWebview(id) catch return false;
+        webview.emitEvent(name, data);
+        return true;
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell

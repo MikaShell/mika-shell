@@ -35,7 +35,11 @@
         {
             "name": "bar",
             "path": "/bar.html"
+        },
+        {
+            "name": "dock",
+            "path": "/dock.html"
         }
     ],
-    "startup": ["bar"]
+    "startup": ["bar", "dock"]
 }

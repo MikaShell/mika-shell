@@ -17,7 +17,7 @@ pub fn timeoutMainLoop(timeout_ms: u32) void {
 pub fn mainIteration() bool {
     return c.g_main_context_iteration(null, 1) == 1;
 }
-// OTOD: 优化这个玩意
+// TODO: 优化这个玩意
 pub fn FdWatch(T: type) type {
     return struct {
         const Callback = if (T == void) *const fn () bool else *const fn (*T) bool;

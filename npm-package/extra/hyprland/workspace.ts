@@ -21,12 +21,12 @@ export function unproxy(workspaces: Workspaces) {
     if (proxiers.length === 0) deinit();
 }
 function add(ws: Workspaces, id: number) {
-    if (ws.length === id) {
+    if (ws.length === id || ws[id - 1] === null) {
         // FIXME: 由于 WebSocket 后端的 bug, 可能会有重复, 所以这里需要判断一下
         return;
     }
     if (ws.length > id - 1) {
-        ws[id - 1] = true;
+        ws[id - 1] = false;
     } else {
         if (ws.length < id - 1) {
             for (let i = ws.length; i < id - 1; i++) {

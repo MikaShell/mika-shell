@@ -20,6 +20,18 @@
             .url = "git+https://github.com/ziglibs/ini#30afc2fc875ff817af0ffe490481f6f8aa3b5cd4",
             .hash = "ini-0.1.0-YCQ9YsQlAACRplKkaUUXQLWVh2P1VULCsaS4JHhmkJRe",
         },
+        .wayland = .{
+            .url = "git+https://codeberg.org/ifreund/zig-wayland#65b01fb69148013eea882c8222a82a1d96a6241b",
+            .hash = "wayland-0.4.0-dev-lQa1krLJAQBGO2aKqDcfxUOsW_e4PJZO_K_rxA20RztB",
+        },
+        .@"wlr-protocols" = .{
+            .url = "git+https://gitlab.freedesktop.org/wlroots/wlr-protocols#a5028afbe4a1cf0daf020c4104c1565a09d6e58a",
+            .hash = "N-V-__8AAKq3AQDAxXNMWRVkNSQxyXYDjTZGuXQFj3G0CwAe",
+        },
+        .@"wayland-protocols" = .{
+            .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#1.45",
+            .hash = "N-V-__8AAIKCDgBX6hRMzFmvC-WAwrOH_ewvZgAzPGbBvavk",
+        },
     },
 
     .paths = .{

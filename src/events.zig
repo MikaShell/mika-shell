@@ -26,3 +26,11 @@ pub const Notifd = struct {
     pub const added = "notifd-added";
     pub const removed = "notifd-removed";
 };
+pub const Dock = struct {
+    pub const added = "dock-added";
+    pub const changed = "dock-changed";
+    pub const closed = "dock-closed";
+    pub const enter = "dock-entered";
+    pub const leave = "dock-left";
+    pub const activated = "dock-activated";
+};

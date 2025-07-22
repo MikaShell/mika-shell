@@ -28,6 +28,7 @@ jobs:
                 pkg-config
                 libsharpyuv-dev
                 libsystemd-dev
+                libwayland-dev
         steps:
             - name: Install packages
               run: |

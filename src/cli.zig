@@ -206,6 +206,7 @@ pub fn run() !void {
     };
     return r.run(&cliApp);
 }
+const wayland = @import("wayland");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -237,9 +238,14 @@ pub fn daemon() !void {
     const app = try App.init(allocator, configDir);
     defer app.deinit();
 
+    try wayland.init(allocator);
+    const watch = try wayland.withGLib();
+    defer watch.deinit();
+
     const ipcServer = try ipc.Server.init(allocator, app);
     defer ipcServer.deinit();
     try ipcServer.listen();
+
     while (true) {
         _ = glib.mainIteration();
     }
@@ -247,6 +253,7 @@ pub fn daemon() !void {
 const glib = @import("glib");
 
 fn open() !void {
+    defer allocator.free(config.open.pageName);
     try ipc.request(.{
         .type = "open",
         .pageName = config.open.pageName,

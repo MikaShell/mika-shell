@@ -124,11 +124,35 @@ linkFarm name [
     };
   }
   {
+    name = "wayland-0.4.0-dev-lQa1krLJAQBGO2aKqDcfxUOsW_e4PJZO_K_rxA20RztB";
+    path = fetchZigArtifact {
+      name = "wayland";
+      url = "git+https://codeberg.org/ifreund/zig-wayland#65b01fb69148013eea882c8222a82a1d96a6241b";
+      hash = "sha256-G97kemlWXbjIdLYmRUzjg7wmBpR+VbKMOqY3w9w78V8=";
+    };
+  }
+  {
+    name = "N-V-__8AAIKCDgBX6hRMzFmvC-WAwrOH_ewvZgAzPGbBvavk";
+    path = fetchZigArtifact {
+      name = "wayland-protocols";
+      url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#1.45";
+      hash = "sha256-EKmoeF00BRhSY2bccLZTYH907fVy+tHm27ccvAPZTrQ=";
+    };
+  }
+  {
     name = "websocket-0.1.0-ZPISdXNIAwCXG7oHBj4zc1CfmZcDeyR6hfTEOo8_YI4r";
     path = fetchZigArtifact {
       name = "websocket";
       url = "https://github.com/karlseguin/websocket.zig/archive/7c3f1149bffcde1dec98dea88a442e2b580d750a.tar.gz";
       hash = "sha256-tDnyNptyRxQjrm0MqTmsy2F93yLBYDJE2KkqENJFW4Y=";
+    };
+  }
+  {
+    name = "N-V-__8AAKq3AQDAxXNMWRVkNSQxyXYDjTZGuXQFj3G0CwAe";
+    path = fetchZigArtifact {
+      name = "wlr-protocols";
+      url = "git+https://gitlab.freedesktop.org/wlroots/wlr-protocols#a5028afbe4a1cf0daf020c4104c1565a09d6e58a";
+      hash = "sha256-m6f7/ES4bK2ZFv8hoxZgUcFNltuRkIctpJuFWAUynkg=";
     };
   }
 ]

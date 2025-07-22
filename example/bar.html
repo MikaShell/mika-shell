@@ -199,11 +199,7 @@
             const hyprlandWorkspaces = document.getElementById("hyprland-workspaces");
             hyprlandWorkspaces.addEventListener("wheel", (e) => {
                 e.preventDefault();
-                const delta = e.deltaY;
-                for (let i = 0; i < workspaces.length; i++) {
-                    if (workspaces[i] !== true) continue;
-                    hyprland.command.dispatch("workspace", delta > 0 ? "+1" : "-1");
-                }
+                hyprland.command.dispatch("workspace", e.deltaY > 0 ? "+1" : "-1");
             });
 
             const removeWorkspace = (index) => {

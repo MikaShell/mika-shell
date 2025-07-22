@@ -1,5 +1,5 @@
 const std = @import("std");
-
+const Scanner = @import("wayland").Scanner;
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
     var webkit_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
     var glib_mod: *std.Build.Module = undefined;
+    var wayland_mod: *std.Build.Module = undefined;
     // pkgs
     {
         gtk_mod = b.createModule(.{
@@ -42,6 +43,30 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
         });
+        wayland_mod = b.createModule(.{
+            .root_source_file = b.path("pkgs/wayland.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        // WAYLAND
+        {
+            const scanner = Scanner.create(b, .{
+                // Just to clear the error of scanner not finding wayland-protocols
+                .wayland_protocols = b.path("."),
+            });
+            const zig_wayland = b.createModule(.{ .root_source_file = scanner.result });
+
+            const wlr_protocols = b.dependency("wlr-protocols", .{});
+            const wayland_protocols = b.dependency("wayland-protocols", .{});
+            _ = wayland_protocols;
+            scanner.addCustomProtocol(wlr_protocols.path("unstable/wlr-foreign-toplevel-management-unstable-v1.xml"));
+            scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
+            scanner.generate("wl_output", 1);
+            scanner.generate("wl_seat", 1);
+
+            wayland_mod.addImport("zig-wayland", zig_wayland);
+            wayland_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
+        }
         // Linking
         gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
@@ -56,7 +81,9 @@ pub fn build(b: *std.Build) void {
         dbus_mod.addImport("glib", glib_mod);
         glib_mod.linkSystemLibrary("glib-2.0", dynamic_link_opts);
         glib_mod.linkSystemLibrary("gio-2.0", dynamic_link_opts);
+        wayland_mod.addImport("glib", glib_mod);
     }
+
     // EXAMPLE
     const example_mod = b.createModule(.{
         .root_source_file = b.path("example/example.zig"),
@@ -95,7 +122,6 @@ pub fn build(b: *std.Build) void {
 
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
-    exe_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
     const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
@@ -110,6 +136,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("webkit", webkit_mod);
     exe_mod.addImport("glib", glib_mod);
     exe_mod.addImport("dbus", dbus_mod);
+    exe_mod.addImport("wayland", wayland_mod);
 
     b.installArtifact(exe);
     // CMD

@@ -13,6 +13,7 @@
   glib-networking,
   openssl,
   devhelp,
+  wayland-scanner,
   dbus,
   libwebp,
   d-spy,
@@ -54,6 +55,9 @@ in
       dbus
       libwebp
       librsvg # 为 GTK 加载svg图标提供支持
+
+      wayland-scanner
+
       # NPM Package
       esbuild
       nodejs_24

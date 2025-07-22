@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            body {
+                background-color: transparent;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+            #dock {
+                display: flex;
+                flex-direction: row;
+                justify-content: center;
+                align-items: center;
+                gap: 12px;
+                margin: 0 8px 8px 8px;
+                background-color: rgba(40, 70, 92, 0.516);
+                border-radius: 8px;
+                padding: 12px 18px;
+            }
+            .hidden {
+                display: none !important;
+            }
+            .item {
+                display: flex;
+                background-color: rgba(86, 86, 86, 0.475);
+                padding: 4px;
+                border-radius: 8px;
+            }
+            .item[data-activated="true"] {
+                background-color: rgba(144, 144, 144, 0.475);
+            }
+            .item img {
+                height: 38px;
+                width: 38px;
+            }
+        </style>
+        <title>Dock Example</title>
+        <script>
+            mikaShell.layer.init({
+                anchor: ["bottom"],
+                height: 100,
+                layer: "top",
+                backgroundTransparent: true,
+            });
+        </script>
+        <script type="module">
+            import { hyprland } from "./extra.js";
+            const showDock = () => {
+                const dock = document.getElementById("dock");
+                dock.classList.remove("hidden");
+                tryHideDock();
+            };
+            const onActivated = (id) => {
+                const dock = document.getElementById("dock");
+                for (const item of dock.children) {
+                    if (item.dataset.id === id.toString()) {
+                        item.dataset.activated = true;
+                    } else {
+                        item.dataset.activated = false;
+                    }
+                }
+            };
+            const onAdded = (item) => {
+                const dock = document.getElementById("dock");
+                const newItem = document.createElement("div");
+                const img = document.createElement("img");
+                newItem.appendChild(img);
+                newItem.classList.add("item");
+                newItem.dataset.id = item.id;
+                newItem.dataset.activated = item.state.includes("activated");
+                newItem.addEventListener("click", () => {
+                    mikaShell.dock.activate(item.id);
+                    hyprland.command.dispatch("focusurgentorlast");
+                });
+                dock.appendChild(newItem);
+                mikaShell.icon
+                    .lookup(item.appId.toLowerCase(), 512)
+                    .then((icon) => {
+                        img.src = icon;
+                    })
+                    .catch(async () => {
+                        const icon = await mikaShell.icon.lookup("application-x-executable", 32);
+                        img.src = icon;
+                    });
+                showDock();
+            };
+            const onClosed = (id) => {
+                const dock = document.getElementById("dock");
+                for (const item of dock.children) {
+                    if (item.dataset.id === id.toString()) {
+                        dock.removeChild(item);
+                    }
+                }
+            };
+
+            window.addEventListener("load", async () => {
+                mikaShell.dock.on("activated", onActivated);
+                mikaShell.dock.on("added", onAdded);
+                mikaShell.dock.on("closed", onClosed);
+                mikaShell.dock.list().then((items) => {
+                    for (const item of items) {
+                        onAdded(item);
+                    }
+                });
+            });
+            window.addEventListener("unload", () => {
+                mikaShell.dock.off("activated", onActivated);
+                mikaShell.dock.off("added", onAdded);
+                mikaShell.dock.off("closed", onClosed);
+            });
+        </script>
+        <script>
+            const tryHideDock = () => {
+                setTimeout(async () => {
+                    const dock = document.getElementById("dock");
+                    dock.classList.toggle("hidden", !mouseInPage);
+                }, 3000);
+            };
+            let mouseInPage = false;
+            window.addEventListener("load", async () => {
+                document.body.addEventListener("mouseenter", () => {
+                    mouseInPage = true;
+                    const dock = document.getElementById("dock");
+                    dock.classList.remove("hidden");
+                });
+                document.body.addEventListener("mouseleave", () => {
+                    mouseInPage = false;
+                    tryHideDock();
+                });
+                const dock = document.getElementById("dock");
+                const monitors = await mikaShell.monitor.list();
+                const observer = new ResizeObserver(async () => {
+                    const height = Math.floor(dock.clientHeight * monitors[0].scale);
+                    const width = Math.floor(dock.clientWidth * monitors[0].scale);
+                    mikaShell.layer.setSize(width, height);
+                    if (dock.classList.contains("hidden")) {
+                        const monitors = await mikaShell.monitor.list();
+                        const width = 600;
+                        mikaShell.layer.setSize(width, 18);
+                    }
+                });
+                observer.observe(dock);
+            });
+            tryHideDock();
+        </script>
+    </head>
+    <body>
+        <div id="dock"></div>
+    </body>
+</html>
