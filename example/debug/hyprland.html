@@ -30,9 +30,6 @@
                     ws.onerror = (event) => {
                         reject(event);
                     };
-                    ws.onclose = () => {
-                        reject("Socket closed");
-                    };
                 });
                 return promise;
             }
@@ -44,13 +41,16 @@
                 const ws = window.mikaShell.socket(`/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`);
                 let buffer = "";
                 ws.onmessage = (event) => {
-                    const parts = (buffer + event.data).split("\n");
-                    buffer = parts.pop();
-                    const message = parts.shift();
-                    console.log("Hyprland Event:", {
-                        name: message.split(">>")[0],
-                        args: message.split(">>")[1].split(","),
-                    });
+                    buffer += event.data;
+                    const parts = buffer.split("\n");
+                    buffer = buffer.endsWith("\n") ? "" : parts.pop() || "";
+                    for (const message of parts) {
+                        if (!message) continue;
+                        console.log("Hyprland Event:", {
+                            name: message.split(">>")[0],
+                            args: message.split(">>")[1].split(","),
+                        });
+                    }
                 };
             }
             init().then(() => {

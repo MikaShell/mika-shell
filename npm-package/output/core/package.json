@@ -1,8 +1,7 @@
 {
-    "name": "@humxc/mika-shell",
+    "name": "@mika-shell/core",
     "version": "0.0.2",
-    "description": "MikaShell frontend library",
-    "main": "index.js",
+    "description": "MikaShell frontend core library",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/HumXC/mika-shell.git"

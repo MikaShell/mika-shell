@@ -1,4 +1,4 @@
-name: Publish JS Package
+name: Publish Extra JS Package
 on:
     workflow_dispatch:
 
@@ -7,7 +7,7 @@ permissions:
     id-token: write
 
 jobs:
-    publish-js-package:
+    publish-extra-js-package:
         runs-on: ubuntu-22.04
         steps:
             - name: Checkout repository
@@ -21,10 +21,10 @@ jobs:
             - name: Build
               run: |
                   chmod +x ./build-npm.sh
-                  ./build-npm.sh
+                  ./build-npm.sh extra
 
             - name: Publish Package
               run: |
-                  npm publish --provenance --access public ./npm-package
+                  npm publish --provenance --access public ./npm-package/output/extra
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

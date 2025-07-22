@@ -1,7 +1,16 @@
 #!/usr/bin/env sh
-tsc -t es2022 -m es2022 --declaration --emitDeclarationOnly --outDir npm-package bindings/index.ts
+if [ "$1" = "core" ]; then
+    tsc -t es2022 -m es2022 --declaration --emitDeclarationOnly --outDir npm-package/output/core npm-package/core/index.ts
+elif [ "$1" = "extra" ]; then
+    tsc -t es2022 -m es2022 --module NodeNext --declaration --outDir npm-package/output/extra npm-package/extra/index.ts
+else 
+    echo "Invalid argument, please use either 'core' or 'extra'"
+fi
 
-if [ "$1" = "pack" ]; then
-    npm pack ./npm-package
-    rm -rf npm-package/*.d.ts
+
+
+if [ "$2" = "pack" ]; then
+    npm pack ./npm-package/output/$1
+    rm -rf npm-package/output/$1/*.d.ts
+    rm -rf npm-package/output/$1/*.js
 fi

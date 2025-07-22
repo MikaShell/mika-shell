@@ -28,9 +28,10 @@ const Handler = struct {
                 .watch = try glib.FdWatch(Context).add(sock.handle, onUnixSockMessage, ctx),
             };
         }
+        // BUG: 在使用 hyprland 的 socket2 时,观察到一些消息会被读取 3 次
         fn onUnixSockMessage(ctx: *Context) bool {
             var buf: [512]u8 = undefined;
-            const n = ctx.unixSock.reader().read(&buf) catch {
+            const n = ctx.unixSock.read(&buf) catch {
                 _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
                 return false;
             };

@@ -5,11 +5,12 @@ result
 npm-package/bindings
 npm-package/dist/*
 !npm-package/dist/package.json
-npm-package/*.d.ts
-npm-package/*.js
+npm-package/output/**/*.d.ts
+npm-package/output/**/*.js
 *.tgz
 zig-out
 .zig-cache
 zigfetch
 perf.data
 src/bindings.js
+example/extra.js

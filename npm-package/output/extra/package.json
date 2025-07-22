@@ -1,0 +1,17 @@
+{
+    "name": "@mika-shell/extra",
+    "version": "0.0.2",
+    "description": "MikaShell frontend extras library",
+    "main": "index.js",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/HumXC/mika-shell.git"
+    },
+    "author": "HumXC",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/HumXC/mika-shell/issues"
+    },
+    "homepage": "https://github.com/HumXC/mika-shell#readme",
+    "dependencies": {}
+}

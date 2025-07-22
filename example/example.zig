@@ -6,6 +6,7 @@ const filenames = [_][]const u8{
     "debug/hyprland.html",
     "debug/notifd.html",
     "debug/tray.html",
+    "extra.js",
     "bar.html",
 };
 

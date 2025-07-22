@@ -7,6 +7,7 @@
                 color: aliceblue;
                 display: flex;
                 align-items: center;
+                justify-content: center;
                 height: 100vh;
                 user-select: none;
                 -webkit-user-select: none;
@@ -27,39 +28,24 @@
             #left {
                 flex: 1;
                 display: flex;
+                align-items: center;
                 justify-content: start;
             }
             #right {
                 flex: 1;
                 display: flex;
+                align-items: center;
                 justify-content: start;
             }
             #center {
                 flex: 0;
                 display: flex;
-                justify-content: center;
                 align-items: center;
+                justify-content: center;
                 white-space: nowrap;
             }
             #clock {
                 font-weight: bold;
-            }
-            .tray-icon {
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                padding: 2px;
-                border: solid 1px rgba(24, 104, 68, 0.295);
-                background-color: rgba(240, 248, 255, 0.105);
-            }
-            #tray {
-                top: 10px;
-                right: 10px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 4px;
-                margin: 0 4px;
             }
         </style>
         <script>
@@ -87,6 +73,25 @@
             });
         </script>
         <!-- Tray -->
+        <style>
+            .tray-icon {
+                width: 20px;
+                height: 20px;
+                border-radius: 8px;
+                padding: 2px;
+                border: solid 1px rgba(24, 104, 68, 0.295);
+                background-color: rgba(240, 248, 255, 0.105);
+            }
+            #tray {
+                top: 10px;
+                right: 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 4px;
+                margin: 0 4px;
+            }
+        </style>
         <script>
             const pickIcon = (icons, size) => {
                 if (!Array.isArray(icons) || icons.length === 0) return null;
@@ -110,7 +115,7 @@
                 const imageUrl = URL.createObjectURL(blob);
                 return imageUrl;
             };
-            function updata(item) {
+            function updateTray(item) {
                 const div = document.getElementById("tray");
                 item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
                 const imageUrl = arrayToUrl(pickIcon(item.icon.pixmap, 32).webp);
@@ -138,21 +143,15 @@
             const proxy = new Proxy(
                 {},
                 {
-                    get: (target, prop) => {
-                        return target[prop];
-                    },
                     set: (target, prop, value) => {
-                        target[prop] = value;
-                        updata(value);
-                        return true;
+                        updateTray(value);
+                        return Reflect.set(target, prop, value);
                     },
                     deleteProperty: (target, prop) => {
-                        delete target[prop];
-                        console.log("tray-removed", prop);
                         const div = document.getElementById("tray");
                         const img = div.querySelector(`img[data-service="${prop}"]`);
                         if (img) div.removeChild(img);
-                        return true;
+                        return Reflect.defineProperty(target, prop);
                     },
                 }
             );
@@ -161,11 +160,103 @@
                 tray.unproxy(proxy);
             });
         </script>
+        <!-- Hyprland Workspace -->
+        <style>
+            #hyprland-workspaces {
+                display: flex;
+                flex-direction: row;
+                gap: 4px;
+                margin: 0 4px;
+                align-items: center;
+                justify-content: center;
+                background-color: rgba(214, 214, 214, 0.244);
+                padding: 6px;
+                border-radius: 8px;
+            }
+
+            .hyprland-workspace {
+                display: flex;
+                width: 10px;
+                height: 10px;
+                box-sizing: border-box;
+                border: solid 1px #d1d1d199;
+                background-color: #5b5b5b8e;
+                border-radius: 50%;
+                transition: background-color 0.2s ease;
+            }
+
+            .hyprland-workspace[data-active="true"] {
+                border: none;
+                background-color: #42d475;
+            }
+            .hyprland-workspace[data-active="false"] {
+                border: none;
+                background-color: #4f96b6;
+            }
+        </style>
+        <script type="module">
+            import { hyprland } from "./extra.js";
+            const hyprlandWorkspaces = document.getElementById("hyprland-workspaces");
+            hyprlandWorkspaces.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                const delta = e.deltaY;
+                for (let i = 0; i < workspaces.length; i++) {
+                    if (workspaces[i] !== true) continue;
+                    hyprland.command.dispatch("workspace", delta > 0 ? "+1" : "-1");
+                }
+            });
+
+            const removeWorkspace = (index) => {
+                const dom = hyprlandWorkspaces;
+                const el = dom.children[index];
+                dom.removeChild(el);
+            };
+            const addWorkspace = (index, value) => {
+                const dom = hyprlandWorkspaces;
+                const el = document.createElement("div");
+                el.classList.add("hyprland-workspace");
+                el.addEventListener("click", () => {
+                    hyprland.command.dispatch("workspace", index + 1);
+                });
+                dom.appendChild(el);
+                if (value === null) {
+                    delete el.dataset.active;
+                    return;
+                }
+                el.dataset.active = value;
+            };
+            const updateWorkspace = (index, value) => {
+                const dom = hyprlandWorkspaces;
+                const el = dom.children[index];
+                if (value === null) {
+                    delete el.dataset.active;
+                    return;
+                }
+                el.dataset.active = value;
+            };
+
+            const workspaces = new Proxy([], {
+                set: (target, prop, value) => {
+                    const isIndex = String(Number(prop)) === prop;
+                    if (isIndex) {
+                        if (target[prop] !== undefined) updateWorkspace(Number(prop), value);
+                        else addWorkspace(Number(prop), value);
+                    }
+                    return Reflect.set(target, prop, value);
+                },
+                deleteProperty: (target, prop) => {
+                    removeWorkspace(Number(prop));
+                    return Reflect.deleteProperty(target, prop);
+                },
+            });
+            hyprland.workspace.proxy(workspaces);
+        </script>
     </head>
     <body>
         <div id="left">
             <button id="debug" onclick="mikaShell.mika.open('debug')">Debug</button>
             <div id="tray"></div>
+            <div id="hyprland-workspaces"></div>
         </div>
         <div id="center">
             <span id="clock"> </span>

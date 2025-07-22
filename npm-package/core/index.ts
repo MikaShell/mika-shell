@@ -26,6 +26,12 @@ const mikaShell = {
     notifd,
     network,
 };
+declare global {
+    interface Window {
+        // @ts-ignore
+        mikaShell: typeof mikaShell;
+    }
+}
 // @ts-ignore
 window.mikaShell = mikaShell;
 export default mikaShell;
