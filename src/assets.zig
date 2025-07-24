@@ -29,6 +29,7 @@ const Handler = struct {
             };
         }
         // BUG: 在使用 hyprland 的 socket2 时,观察到一些消息会被读取 3 次
+        // BUG: 在频繁调用 hyprland 的 socket 时, 无法正确关闭. 可能与上面是同一个 bug
         fn onUnixSockMessage(ctx: *Context) bool {
             var buf: [512]u8 = undefined;
             const n = ctx.unixSock.read(&buf) catch {

@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("webp/encode.h");
 });
-// TODO: 这个函数的 CPU 代价较大, 尝试优化.
 // 虽然这个函数本身似乎不能再优化, 但是考虑减少该函数的调用.
 // 目前的处理方式是为每一个 icon 都转换 webp
 fn pixmapToWebp(
@@ -77,7 +76,7 @@ pub const Item = struct {
     pub const Icon = struct {
         name: []const u8,
         themePath: []const u8,
-        pixmap: []const Pixmap,
+        pixmap: []const Pixmap, // TODO: 改成浏览器可以直接使用的 base64
     };
     pub const Overlay = struct {
         iconName: []const u8,

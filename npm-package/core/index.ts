@@ -10,6 +10,7 @@ import * as monitor from "./monitor";
 import * as notifd from "./notifd";
 import * as network from "./network";
 import * as dock from "./dock";
+import * as libinput from "./libinput";
 function socket(path: string) {
     return new WebSocket(["ws://localhost:6797", path].join("/"));
 }
@@ -27,6 +28,7 @@ const mikaShell = {
     notifd,
     network,
     dock,
+    libinput,
 };
 declare global {
     interface Window {

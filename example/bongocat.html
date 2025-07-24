@@ -1,0 +1,250 @@
+<!-- 
+https://github.com/ayangweb/BongoCat 的简单实现
+需要先按照上面的仓库中的方法下载第一个模型并解压到 public/BongoCat 目录下
+确保 cat.model3.json 存在于 public/BongoCat 根目录中
+
+500ms 内按下空格5次播放[打雷]
+500ms 内按下空格3次播放[挥手]
+按下 空格 + 1 切换表情[恶棍]😮
+按下 空格 + 2 切换表情[光环]😇
+-->
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            body {
+                background-color: transparent;
+                margin: 0;
+                overflow: hidden;
+                position: relative;
+                height: 100vh;
+                width: 100vw;
+            }
+            body > * {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+        <script>
+            const height = 354;
+            const width = 612;
+            const scale = 0.5;
+        </script>
+        <script type="module">
+            mikaShell.layer.init({
+                anchor: ["right", "bottom"],
+                height: Math.floor(height * scale),
+                width: Math.floor(width * scale),
+                layer: "overlay",
+                exclusiveZone: -100,
+                backgroundTransparent: true,
+            });
+            // mikaShell.window.init({
+            //     resizable: false,
+            //     height: Math.floor(height * scale),
+            //     width: Math.floor(width * scale),
+            //     backgroundTransparent: true,
+            // });
+            mikaShell.layer.on("show", async () => {
+                const monitor = await mikaShell.monitor.get();
+                let isMouseDown = false;
+                let pointerX = 0;
+                let pointerY = 0;
+                let currentEvent = null;
+                let pendingAnimation = false;
+                let isMoving = false;
+                let x = monitor.width - width;
+                let y = monitor.height - height;
+                window.addEventListener("mousedown", (e) => {
+                    isMouseDown = true;
+                    pointerX = e.clientX;
+                    pointerY = e.clientY;
+                });
+                const handleMouseMove = async () => {
+                    const e = currentEvent;
+                    if (isMoving) {
+                        pointerX = e.clientX;
+                        pointerY = e.clientY;
+                        pendingAnimation = false;
+                        return;
+                    }
+                    isMoving = true;
+                    const dx = e.clientX - pointerX;
+                    const dy = e.clientY - pointerY;
+                    x += dx;
+                    y += dy;
+                    await mikaShell.layer.setMargin("right", monitor.width - x);
+                    await mikaShell.layer.setMargin("bottom", monitor.height - y);
+                    await sleep(40);
+                    isMoving = false;
+                    pendingAnimation = false;
+                };
+                window.addEventListener("mouseup", () => (isMouseDown = false));
+                window.addEventListener("mousemove", async (e) => {
+                    if (!isMouseDown) return;
+                    currentEvent = e;
+                    if (!pendingAnimation) {
+                        pendingAnimation = true;
+                        requestAnimationFrame(handleMouseMove);
+                    }
+                });
+            });
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        </script>
+        <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/browser/pixi.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+    </head>
+
+    <body>
+        <img id="bg" />
+        <canvas id="canvas"></canvas>
+        <img id="pressedKeys" />
+        <script type="module">
+            const modelPath = "./public/BongoCat";
+            const file = (name) => {
+                return `${modelPath}/${name}`;
+            };
+            const cat = file("cat.model3.json");
+            const keyMap = {
+                2: "Num1",
+                3: "Num2",
+                4: "Num3",
+                5: "Num4",
+                6: "Num5",
+                7: "Num6",
+                8: "Num7",
+                16: "KeyQ",
+                17: "KeyW",
+                18: "KeyE",
+                19: "KeyR",
+                30: "KeyA",
+                31: "KeyS",
+                32: "KeyD",
+                57: "Space",
+            };
+            (async function main() {
+                const app = new PIXI.Application({
+                    view: document.getElementById("canvas"),
+                    autoStart: true,
+                    resizeTo: document.getElementById("bg"),
+                    backgroundAlpha: 0,
+                });
+
+                const model = await PIXI.live2d.Live2DModel.from(cat);
+                app.stage.addChild(model);
+                model.scale.set(scale);
+                document.getElementById("bg").src = file("resources/background.png");
+                const pressedKeys = document.getElementById("pressedKeys");
+                const getParameterRange = (id) => {
+                    const coreModel = model.internalModel.coreModel;
+                    const index = coreModel.getParameterIndex(id);
+                    const min = coreModel.getParameterMinimumValue(index);
+                    const max = coreModel.getParameterMaximumValue(index);
+                    return {
+                        min,
+                        max,
+                    };
+                };
+                const setParameterValue = (id, value) => {
+                    model.internalModel.coreModel.setParameterValueById(id, value);
+                };
+                let spaceCount = 0;
+                let spaceTimer = null;
+                const countSpace = () => {
+                    spaceCount++;
+                    clearTimeout(spaceTimer);
+
+                    spaceTimer = setTimeout(() => {
+                        if (spaceCount >= 5) {
+                            model.motion("CAT_motion", 0);
+                        } else if (spaceCount >= 3) {
+                            model.motion("CAT_motion", 1);
+                        }
+                        spaceCount = 0;
+                        spaceTimer = null;
+                    }, 500);
+                };
+                let style1 = false;
+                let style2 = false;
+                let spaceHold = false;
+                const setStyle = () => {
+                    setParameterValue("Param4", style1);
+                    setParameterValue("Param5", style2);
+                };
+                mikaShell.libinput.on("keyboardKey", (e) => {
+                    if (spaceHold && e.key === 2 && e.state === 1) {
+                        style1 = !style1;
+                        if (style1) style2 = false;
+                        setStyle();
+                    }
+                    if (spaceHold && e.key === 3 && e.state === 1) {
+                        style2 = !style2;
+                        if (style2) style1 = false;
+                        setStyle();
+                    }
+                    if (e.key === 57) {
+                        if (e.state === 1) {
+                            spaceHold = true;
+                            countSpace();
+                        } else {
+                            spaceHold = false;
+                        }
+                    }
+                    if (keyMap[e.key] === undefined) return;
+                    const isPressed = e.state === 1;
+                    if (isPressed) {
+                        const src = file(`resources/left-keys/${keyMap[e.key]}.png`);
+                        pressedKeys.src = src;
+                        pressedKeys.style.visibility = "visible";
+                    } else {
+                        pressedKeys.style.visibility = "hidden";
+                    }
+
+                    setParameterValue("CatParamLeftHandDown", isPressed);
+                });
+                const isNil = (value) => value === null || value === undefined;
+                const monitor = await mikaShell.monitor.get();
+                let x = 0;
+                let y = 0;
+                let pendingAnimation = false;
+                const handleMouseMove = async () => {
+                    const xRatio = x / monitor.width;
+                    const yRatio = y / monitor.height;
+                    for (const id of ["ParamMouseX", "ParamMouseY", "ParamAngleX", "ParamAngleY"]) {
+                        const { min, max } = getParameterRange(id);
+
+                        if (isNil(min) || isNil(max)) continue;
+
+                        const isXAxis = id.endsWith("X");
+
+                        const ratio = isXAxis ? xRatio : yRatio;
+                        let value = max - ratio * (max - min);
+
+                        setParameterValue(id, value);
+                    }
+                    pendingAnimation = false;
+                };
+                mikaShell.libinput.on("pointerMotion", async (e) => {
+                    const x_ = x + e.dxUnaccelerated;
+                    const y_ = y + e.dyUnaccelerated;
+                    if (x_ > 0 && x_ < monitor.width) x = Math.floor(x_);
+                    if (y_ > 0 && y_ < monitor.height) y = Math.floor(y_);
+
+                    if (!pendingAnimation) {
+                        pendingAnimation = true;
+                        requestAnimationFrame(handleMouseMove);
+                    }
+                });
+                mikaShell.libinput.on("pointerButton", (e) => {
+                    if (e.button !== 272 || e.button !== 273) return;
+                    const id = e.button === 272 ? "ParamMouseLeftDown" : "ParamMouseRightDown";
+                    setParameterValue(id, e.state === 1);
+                });
+            })();
+        </script>
+    </body>
+</html>

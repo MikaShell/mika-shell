@@ -9,6 +9,8 @@ const filenames = [_][]const u8{
     "extra.js",
     "bar.html",
     "dock.html",
+    "showkeys.html",
+    "bongocat.html",
 };
 
 const std = @import("std");

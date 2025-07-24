@@ -132,13 +132,12 @@
                     tryHideDock();
                 });
                 const dock = document.getElementById("dock");
-                const monitors = await mikaShell.monitor.list();
                 const observer = new ResizeObserver(async () => {
-                    const height = Math.floor(dock.clientHeight * monitors[0].scale);
-                    const width = Math.floor(dock.clientWidth * monitors[0].scale);
+                    const scale = await mikaShell.layer.getScale();
+                    const height = Math.floor(dock.clientHeight * scale);
+                    const width = Math.floor(dock.clientWidth * scale);
                     mikaShell.layer.setSize(width, height);
                     if (dock.classList.contains("hidden")) {
-                        const monitors = await mikaShell.monitor.list();
                         const width = 600;
                         mikaShell.layer.setSize(width, 18);
                     }

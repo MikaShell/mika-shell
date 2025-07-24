@@ -44,6 +44,8 @@ pub const Window = struct {
             .{ "close", close },
             .{ "setSize", setSize },
             .{ "getSize", getSize },
+            .{ "getScaleFactor", getScale },
+            .{ "setInputRegion", setInputRegion },
         };
     }
     fn getWindow(self: *Self, args: Args) !*Webview {
@@ -134,5 +136,13 @@ pub const Window = struct {
         var height: i32 = undefined;
         w.container.getSize(&width, &height);
         result.commit(.{ .width = width, .height = height });
+    }
+    pub fn getScale(self: *Self, args: Args, result: *Result) !void {
+        const w = try self.getWindow(args);
+        result.commit(w.container.getScale());
+    }
+    pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWindow(args);
+        w.container.setInputRegion(null);
     }
 };

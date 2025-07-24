@@ -96,6 +96,40 @@ pub const Window = extern struct {
     extern fn gtk_window_set_child(window: *Window, child: *Widget) void;
     extern fn gtk_window_set_title(window: *Window, title: [*c]const u8) void;
     extern fn gtk_window_set_resizable(window: *Window, resizable: c_int) void;
+    extern fn gtk_window_set_focus_visible(window: *Window, setting: c_int) void;
+    pub fn getMonitor(self: *Self, allocator: std.mem.Allocator) !Monitor {
+        const display = c.gdk_display_get_default();
+        const surface = c.gtk_native_get_surface(@ptrCast(self));
+        if (surface == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        const monitor = c.gdk_display_get_monitor_at_surface(display, surface);
+        if (monitor == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        return Monitor.init(monitor.?, allocator);
+    }
+    pub fn setFocusVisible(self: *Self, setting: bool) void {
+        gtk_window_set_focus_visible(self, @intFromBool(setting));
+    }
+    pub fn setInputRegion(self: *Self, region: ?*c.cairo_region_t) void {
+        // TODO: 支持自定义输入区域
+        if (region != null) @panic("not implemented");
+        const surface = c.gtk_native_get_surface(@ptrCast(self));
+        if (surface == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        const region_ = c.cairo_region_create();
+        defer c.cairo_region_destroy(region_);
+        c.gdk_surface_set_input_region(surface, region_);
+    }
+    pub fn getScale(self: *Self) f64 {
+        const surface = c.gtk_native_get_surface(@ptrCast(self));
+        if (surface == null) {
+            @panic("you should call this function after the window is realized");
+        }
+        return c.gdk_surface_get_scale(surface);
+    }
     pub const setChild = gtk_window_set_child;
     pub fn new() *Window {
         return @ptrCast(gtk_window_new());
@@ -160,39 +194,42 @@ pub const Monitor = struct {
     description: []const u8,
     model: []const u8,
     refreshRate: f64,
-    pub fn get(allocator: std.mem.Allocator) ![]Monitor {
-        const list = c.gdk_display_get_monitors(c.gdk_display_get_default());
-        const len = c.g_list_model_get_n_items(list);
-        var result = try allocator.alloc(Monitor, len);
-        for (0..len) |i| {
-            const monitor: *c.GdkMonitor = @ptrCast(c.g_list_model_get_item(list, @intCast(i)));
-            var rect: c.GdkRectangle = undefined;
-            c.gdk_monitor_get_geometry(monitor, &rect);
-            const scale = c.gdk_monitor_get_scale(monitor);
-            const connector = c.gdk_monitor_get_connector(monitor);
-            const desc = c.gdk_monitor_get_description(monitor);
-            const width_mm = c.gdk_monitor_get_height_mm(monitor);
-            const height_mm = c.gdk_monitor_get_width_mm(monitor);
-            const model = c.gdk_monitor_get_model(monitor);
-            const refresh_rate = c.gdk_monitor_get_refresh_rate(monitor);
+    fn init(monitor: *c.GdkMonitor, allocator: std.mem.Allocator) !Monitor {
+        var rect: c.GdkRectangle = undefined;
+        c.gdk_monitor_get_geometry(monitor, &rect);
+        const scale = c.gdk_monitor_get_scale(monitor);
+        const connector = c.gdk_monitor_get_connector(monitor);
+        const desc = c.gdk_monitor_get_description(monitor);
+        const width_mm = c.gdk_monitor_get_height_mm(monitor);
+        const height_mm = c.gdk_monitor_get_width_mm(monitor);
+        const model = c.gdk_monitor_get_model(monitor);
+        const refresh_rate = c.gdk_monitor_get_refresh_rate(monitor);
 
-            result[i] = Monitor{
-                .scale = scale,
-                .width = @intCast(rect.width),
-                .height = @intCast(rect.height),
-                .widthMm = @intCast(width_mm),
-                .heightMm = @intCast(height_mm),
-                .connector = try allocator.dupe(u8, std.mem.span(connector)),
-                .description = try allocator.dupe(u8, std.mem.span(desc)),
-                .model = try allocator.dupe(u8, std.mem.span(model)),
-                .refreshRate = @as(f64, @floatFromInt(refresh_rate)) / 1000.0,
-            };
-        }
-        return result;
+        return Monitor{
+            .scale = scale,
+            .width = @intCast(rect.width),
+            .height = @intCast(rect.height),
+            .widthMm = @intCast(width_mm),
+            .heightMm = @intCast(height_mm),
+            .connector = try allocator.dupe(u8, std.mem.span(connector)),
+            .description = try allocator.dupe(u8, std.mem.span(desc)),
+            .model = try allocator.dupe(u8, std.mem.span(model)),
+            .refreshRate = @as(f64, @floatFromInt(refresh_rate)) / 1000.0,
+        };
     }
     pub fn deinit(self: Monitor, allocator: std.mem.Allocator) void {
         allocator.free(self.connector);
         allocator.free(self.description);
         allocator.free(self.model);
+    }
+    pub fn list(allocator: std.mem.Allocator) ![]Monitor {
+        const monitors = c.gdk_display_get_monitors(c.gdk_display_get_default());
+        const len = c.g_list_model_get_n_items(monitors);
+        var result = try allocator.alloc(Monitor, len);
+        for (0..len) |i| {
+            const monitor: *c.GdkMonitor = @ptrCast(c.g_list_model_get_item(monitors, @intCast(i)));
+            result[i] = try Monitor.init(monitor, allocator);
+        }
+        return result;
     }
 };

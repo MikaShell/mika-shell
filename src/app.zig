@@ -285,6 +285,7 @@ pub const App = struct {
         try modules.mount(@import("modules/notifd.zig").Notifd, "notifd");
         try modules.mount(@import("modules/network.zig").Network, "network");
         try modules.mount(@import("modules/dock.zig").Dock, "dock");
+        try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);

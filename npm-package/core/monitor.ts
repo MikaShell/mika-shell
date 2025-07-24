@@ -1,5 +1,5 @@
 import call from "./call";
-interface Monitor {
+export interface Monitor {
     scale: number;
     width: number;
     height: number;
@@ -12,4 +12,7 @@ interface Monitor {
 }
 export function list(): Promise<Monitor[]> {
     return call("monitor.list");
+}
+export function get(): Promise<Monitor> {
+    return call("monitor.get");
 }

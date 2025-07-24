@@ -120,6 +120,7 @@ export class Emitter {
     private onceListeners: Map<string, Function[]> = new Map();
     public init: () => void = () => {};
     public deinit: () => void = () => {};
+    public onEmpty: (name: string) => void = () => {};
     private fullName(name: string) {
         return `${this.prifix}-${name}`;
     }
@@ -162,7 +163,10 @@ export class Emitter {
         const onceListeners = this.onceListeners.get(name) || [];
         listeners.forEach((callback) => callback(data));
         onceListeners.forEach((callback) => callback(data));
-        if (listeners.length === 0) this.listeners.delete(name);
         this.onceListeners.delete(name);
+        if (listeners.length === 0) {
+            this.listeners.delete(name);
+            this.onEmpty(name.replace(this.prifix + "-", ""));
+        }
     }
 }

@@ -18,6 +18,9 @@
   stdenv,
   wrapGAppsHook4,
   zig_0_14,
+  wayland-scanner,
+  systemd,
+  libinput,
   debug ? false,
   ...
 }: let
@@ -61,6 +64,9 @@ in
       librsvg
       dbus
       glib
+      wayland-scanner
+      systemd # 提供 libudev
+      libinput
     ];
     meta = {
       description = "Build your own desktop shell using HTML + CSS + JS";

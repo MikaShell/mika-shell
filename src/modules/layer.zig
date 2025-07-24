@@ -53,6 +53,8 @@ pub const Layer = struct {
             .{ "autoExclusiveZoneEnable", autoExclusiveZoneEnable },
             .{ "getSize", getSize },
             .{ "setSize", setSize },
+            .{ "setInputRegion", setInputRegion },
+            .{ "getScale", getScale },
         };
     }
     fn getWebview(self: *Self, args: Args) !*Webview {
@@ -101,9 +103,8 @@ pub const Layer = struct {
         layer.setMargin(layershell.Edge.Right, opt.margin[1]);
         layer.setMargin(layershell.Edge.Bottom, opt.margin[2]);
         layer.setMargin(layershell.Edge.Left, opt.margin[3]);
-        if (opt.exclusiveZone > 0) {
-            layer.setExclusiveZone(opt.exclusiveZone);
-        } else if (opt.autoExclusiveZone) {
+        layer.setExclusiveZone(opt.exclusiveZone);
+        if (opt.autoExclusiveZone) {
             layer.autoExclusiveZoneEnable();
         }
         if (opt.backgroundTransparent) {
@@ -115,7 +116,6 @@ pub const Layer = struct {
         if (!opt.hidden) {
             w.show();
         }
-
         w.options = .{ .layer = opt };
     }
     pub fn getId(_: *Self, args: Args, result: *Result) !void {
@@ -192,5 +192,13 @@ pub const Layer = struct {
         const width = try args.integer(1);
         const height = try args.integer(2);
         w.container.setDefaultSize(@intCast(width), @intCast(height));
+    }
+    pub fn getScale(self: *Self, args: Args, result: *Result) !void {
+        const w = try self.getWebview(args);
+        result.commit(w.container.getScale());
+    }
+    pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
+        const w = try self.getWebview(args);
+        w.container.setInputRegion(null);
     }
 };

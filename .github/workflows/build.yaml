@@ -29,6 +29,9 @@ jobs:
                 libsharpyuv-dev
                 libsystemd-dev
                 libwayland-dev
+                libudev-dev
+                libinput-dev
+
         steps:
             - name: Install packages
               run: |

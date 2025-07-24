@@ -113,7 +113,6 @@ pub fn call(
     if (args_info != .@"struct" or !args_info.@"struct".is_tuple) {
         @compileError("expected a tuple, found " ++ @typeName(@TypeOf(argsType)));
     }
-    // TODO: c字符串参数的处理
     var name_c: ?[:0]const u8 = null;
     defer if (name_c) |n| allocator.free(n);
     var path_c: ?[:0]const u8 = null;

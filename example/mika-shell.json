@@ -39,7 +39,15 @@
         {
             "name": "dock",
             "path": "/dock.html"
+        },
+        {
+            "name": "showkeys",
+            "path": "/showkeys.html"
+        },
+        {
+            "name": "bongocat",
+            "path": "/bongocat.html"
         }
     ],
-    "startup": ["bar", "dock"]
+    "startup": ["bar", "dock", "bongocat"]
 }

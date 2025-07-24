@@ -123,6 +123,8 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
     exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
+    exe_mod.linkSystemLibrary("libudev", dynamic_link_opts);
+    exe_mod.linkSystemLibrary("libinput", dynamic_link_opts);
     const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });

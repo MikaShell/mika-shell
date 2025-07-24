@@ -144,3 +144,9 @@ export function setSize(width: number, height: number): Promise<void> {
 export function getSize(): Promise<{ width: number; height: number }> {
     return call("layer.getSize");
 }
+export function setInputRegion(): Promise<void> {
+    return call("layer.setInputRegion");
+}
+export function getScale(): Promise<number> {
+    return call("layer.getScale");
+}

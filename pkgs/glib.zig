@@ -61,7 +61,55 @@ pub fn FdWatch(T: type) type {
         }
     };
 }
+pub fn FdWatch2(T: type) type {
+    switch (@typeInfo(T)) {
+        .pointer, .void => {},
+        else => {
+            @panic("T must be a pointer or void");
+        },
+    }
+    return struct {
+        const Callback = if (T == void) *const fn (void) bool else *const fn (T) bool;
+        const Wrapper = struct {
+            d: T,
+            c: Callback,
+            result: bool,
+            fn f(_: *c.GIOChannel, _: c.GIOCondition, w: *@This()) callconv(.c) c_int {
+                w.result = if (T == void) w.c({}) else w.c(w.d);
+                return @intFromBool(w.result);
+            }
+        };
 
+        source: c_uint,
+        wrapper: *Wrapper,
+        pub fn add(fd: c_int, callback: Callback, data: if (T == void) null else T) !@This() {
+            const ch = c.g_io_channel_unix_new(fd);
+            if (ch == null) return error.FailedToCreateChannel;
+            defer c.g_io_channel_unref(ch);
+            const wrapper = try std.heap.page_allocator.create(Wrapper);
+            wrapper.* = .{
+                .d = data,
+                .c = callback,
+                .result = true,
+            };
+            const source = c.g_io_add_watch(ch, c.G_IO_IN, @ptrCast(&Wrapper.f), wrapper);
+            if (source == 0) {
+                std.heap.page_allocator.destroy(wrapper);
+                return error.FailedToAddWatch;
+            }
+            return .{
+                .source = source,
+                .wrapper = wrapper,
+            };
+        }
+        pub fn deinit(self: @This()) void {
+            if (self.wrapper.result) {
+                _ = c.g_source_remove(self.source);
+            }
+            std.heap.page_allocator.destroy(self.wrapper);
+        }
+    };
+}
 pub const FileMonitor = struct {
     pub const Event = enum(c_int) {
         changed = c.G_FILE_MONITOR_EVENT_CHANGED,
