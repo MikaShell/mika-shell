@@ -3,15 +3,19 @@ import * as event from "./event";
 
 export type Workspaces = Array<boolean | null>;
 const proxiers: Workspaces[] = [];
-export function proxy(workspaces: Workspaces) {
+export async function proxy(workspaces: Workspaces) {
     if (proxiers.indexOf(workspaces) !== -1) return;
     if (proxiers.length === 0) init();
-    proxiers.push(workspaces);
-    command.workspaces().then(async (ws) => {
+    for (let i = 0; i < 5; i++) {
+        const ws = await command.workspaces();
+        if (ws === null) continue;
         ws.forEach((w) => add(workspaces, w.id));
         const active = await command.activeworkspace();
+        if (active === null) continue;
         focus(workspaces, active.id);
-    });
+        break;
+    }
+    proxiers.push(workspaces);
 }
 export function unproxy(workspaces: Workspaces) {
     const index = proxiers.indexOf(workspaces);
@@ -21,10 +25,6 @@ export function unproxy(workspaces: Workspaces) {
     if (proxiers.length === 0) deinit();
 }
 function add(ws: Workspaces, id: number) {
-    if (ws.length === id || ws[id - 1] === null) {
-        // FIXME: 由于 WebSocket 后端的 bug, 可能会有重复, 所以这里需要判断一下
-        return;
-    }
     if (ws.length > id - 1) {
         ws[id - 1] = false;
     } else {
@@ -42,17 +42,12 @@ function add(ws: Workspaces, id: number) {
     }
 }
 function remove(ws: Workspaces, id: number) {
-    if (ws.length < id) {
-        // FIXME: 由于 WebSocket 后端的 bug, 可能会有重复, 所以这里需要判断一下
-        return;
-    }
     ws[id - 1] = null;
     while (ws.length > 0 && ws[ws.length - 1] === null) {
         ws.pop();
     }
 }
 function focus(ws: Workspaces, id: number) {
-    if (ws[id - 1]) return; // FIXME: 由于 WebSocket 后端的 bug, 可能会有重复, 所以这里需要判断一下
     for (let i = 0; i < ws.length; i++) {
         if (i === id - 1) ws[i] = true;
         else if (ws[i] === true) ws[i] = false;

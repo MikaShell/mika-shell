@@ -1,10 +1,8 @@
 import { getSocket } from "./common";
-var socket: WebSocket | null = null;
+var socket: WebSocket | boolean = false;
 async function setupSocket() {
-    if (socket !== null) {
-        socket.close();
-        socket = null;
-    }
+    if (socket) return;
+    socket = true;
     socket = await getSocket("event");
     socket.onerror = (event) => {
         console.error("Hyprland event socket error:", event);
@@ -317,18 +315,14 @@ function dispatchEvent(event: string, data: any) {
     }
 }
 export function on<K extends keyof EventMap>(event: K, callback: (data: EventMap[K]) => void) {
-    if (socket === null || socket?.readyState !== WebSocket.OPEN) {
-        setupSocket();
-    }
+    setupSocket();
     if (!listeners.has(event)) {
         listeners.set(event, []);
     }
     listeners.get(event)!.push(callback as any);
 }
 export function once<K extends keyof EventMap>(event: K, callback: (data: EventMap[K]) => void) {
-    if (socket === null || socket?.readyState !== WebSocket.OPEN) {
-        setupSocket();
-    }
+    setupSocket();
     if (!onceListeners.has(event)) {
         onceListeners.set(event, []);
     }
