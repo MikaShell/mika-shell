@@ -23,22 +23,24 @@ pub const Network = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "getDevices", getDevices },
-            .{ "getState", getState },
-            .{ "isEnabled", isEnabled },
-            .{ "enable", enable },
-            .{ "disable", disable },
-            .{ "getConnections", getConnections },
-            .{ "getPrimaryConnection", getPrimaryConnection },
-            .{ "getActiveConnections", getActiveConnections },
-            .{ "getWirelessPsk", getWirelessPsk },
-            .{ "activateConnection", activateConnection },
-            .{ "deactivateConnection", deactivateConnection },
-            .{ "checkConnectivity", checkConnectivity },
-            .{ "getWirelessActiveAccessPoint", getWirelessActiveAccessPoint },
-            .{ "getWirelessAccessPoints", getWirelessAccessPoints },
-            .{ "wirelessRequestScan", wirelessRequestScan },
+        return .{
+            .exports = &.{
+                .{ "getDevices", getDevices },
+                .{ "getState", getState },
+                .{ "isEnabled", isEnabled },
+                .{ "enable", enable },
+                .{ "disable", disable },
+                .{ "getConnections", getConnections },
+                .{ "getPrimaryConnection", getPrimaryConnection },
+                .{ "getActiveConnections", getActiveConnections },
+                .{ "getWirelessPsk", getWirelessPsk },
+                .{ "activateConnection", activateConnection },
+                .{ "deactivateConnection", deactivateConnection },
+                .{ "checkConnectivity", checkConnectivity },
+                .{ "getWirelessActiveAccessPoint", getWirelessActiveAccessPoint },
+                .{ "getWirelessAccessPoints", getWirelessAccessPoints },
+                .{ "wirelessRequestScan", wirelessRequestScan },
+            },
         };
     }
     pub fn getDevices(self: *Self, _: Args, result: *Result) !void {

@@ -61,7 +61,12 @@ pub fn getLocalMachineId() []const u8 {
     if (id == null) return "";
     return std.mem.span(id);
 }
-
+fn checkError(err: *Error) Errors!void {
+    if (err.isSet()) {
+        std.log.scoped(.dbus).debug("DBusError: {s} {s}", .{ err.name(), err.message() });
+        return error.DBusError;
+    }
+}
 pub const MessageHandler = *const fn (*Connection, ?*Message, ?*anyopaque) HandlerResult;
 pub const FreeFunction = *const fn (?*anyopaque) void;
 pub const Connection = extern struct {
@@ -87,12 +92,12 @@ pub const Connection = extern struct {
     extern fn dbus_bus_get_private(@"type": BusType, @"error": *Error) *Connection;
     pub fn get(bus_type: BusType, err: *Error) Errors!*Connection {
         const conn = dbus_bus_get_private(bus_type, err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
         return conn;
     }
     pub fn sendWithReplyAndBlock(self: *Self, message: *Message, timeout_milliseconds: i32, err: *Error) Errors!*Message {
         const reply = dbus_connection_send_with_reply_and_block(self, message, @intCast(timeout_milliseconds), err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
         return reply.?;
     }
     pub fn send(self: *Self, message: *Message, client_serial: ?*c_uint) bool {
@@ -100,11 +105,11 @@ pub const Connection = extern struct {
     }
     pub fn addMatch(self: *Self, rule: []const u8, err: *Error) Errors!void {
         dbus_bus_add_match(self, rule.ptr, err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
     }
     pub fn removeMatch(self: *Self, rule: []const u8, err: *Error) Errors!void {
         dbus_bus_remove_match(self, rule.ptr, err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
     }
     pub fn flush(self: *Self) void {
         dbus_connection_flush(self);
@@ -154,12 +159,12 @@ pub const Connection = extern struct {
     };
     pub fn requestName(self: *Self, name: []const u8, flags: NameFlag, err: *Error) Errors!RequestNameReply {
         const r = dbus_bus_request_name(self, name.ptr, @intCast(@intFromEnum(flags)), err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
         return @enumFromInt(r);
     }
     pub fn releaseName(self: *Self, name: []const u8, err: *Error) Errors!ReleaseNameReply {
         const r = dbus_bus_release_name(self, name.ptr, err);
-        if (err.isSet()) return error.DBusError;
+        try checkError(err);
         return @enumFromInt(r);
     }
 };
@@ -589,7 +594,7 @@ pub const MessageIter = struct {
         if (self.getArgType() != T.tag) {
             if (self.getArgType() != .array and T.tag != .dict) {
                 if (self.getArgType() != .dict and T.tag != .@"struct") {
-                    std.log.err("miss match type: expected {any}, got {any}\n", .{ T.tag, self.getArgType() });
+                    std.log.err("Miss match type: expected {any}, got {any}\n", .{ T.tag, self.getArgType() });
                     @panic("miss match type");
                 }
             }

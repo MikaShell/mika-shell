@@ -103,7 +103,11 @@ pub const Context = struct {
     sessionBus: *dbus.Bus,
 };
 pub fn Registry(T: type) type {
-    return []const std.meta.Tuple(&.{ []const u8, Callable(*T) });
+    return struct {
+        exports: []const std.meta.Tuple(&.{ []const u8, Callable(*T) }) = &.{},
+        events: []const events.Events = &.{},
+    };
 }
 const webkit = @import("webkit");
 const dbus = @import("dbus");
+const events = @import("../events.zig");

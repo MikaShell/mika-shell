@@ -175,7 +175,7 @@ https://github.com/ayangweb/BongoCat 的简单实现
                     setParameterValue("Param4", style1);
                     setParameterValue("Param5", style2);
                 };
-                mikaShell.libinput.on("keyboardKey", (e) => {
+                mikaShell.libinput.on("keyboard-key", (e) => {
                     if (spaceHold && e.key === 2 && e.state === 1) {
                         style1 = !style1;
                         if (style1) style2 = false;
@@ -228,7 +228,7 @@ https://github.com/ayangweb/BongoCat 的简单实现
                     }
                     pendingAnimation = false;
                 };
-                mikaShell.libinput.on("pointerMotion", async (e) => {
+                mikaShell.libinput.on("pointer-motion", async (e) => {
                     const x_ = x + e.dxUnaccelerated;
                     const y_ = y + e.dyUnaccelerated;
                     if (x_ > 0 && x_ < monitor.width) x = Math.floor(x_);
@@ -239,7 +239,7 @@ https://github.com/ayangweb/BongoCat 的简单实现
                         requestAnimationFrame(handleMouseMove);
                     }
                 });
-                mikaShell.libinput.on("pointerButton", (e) => {
+                mikaShell.libinput.on("pointer-button", (e) => {
                     if (e.button !== 272 || e.button !== 273) return;
                     const id = e.button === 272 ? "ParamMouseLeftDown" : "ParamMouseRightDown";
                     setParameterValue(id, e.state === 1);

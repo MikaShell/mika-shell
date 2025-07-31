@@ -1,30 +1,23 @@
-import call from "./call";
-import { Emitter } from "./events";
-function subscribe(event: string): Promise<void> {
-    return call("libinput.subscribe", event);
-}
-function unsubscribe(event: string): Promise<void> {
-    return call("libinput.unsubscribe", event);
-}
-const emitter = new Emitter("libinput");
-emitter.onEmpty = (name: string) => {
-    unsubscribe(name);
-};
+import * as events from "./events";
+import { Libinput } from "./events-define";
+
+type Events = keyof typeof Libinput;
 type EventMap = {
-    keyboardKey: { key: number; state: number };
-    pointerMotion: { x: number; y: number; dx: number; dy: number };
-    pointerButton: { button: number; state: number };
+    [K in Events]: K extends "pointer-motion"
+        ? { x: number; y: number; dx: number; dy: number }
+        : K extends "pointer-button"
+        ? { button: number; state: number }
+        : K extends "keyboard-key"
+        ? { key: number; state: number }
+        : never;
 };
-export type Events = keyof EventMap;
+
 export function on<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    emitter.on(event, callback);
-    subscribe(event);
+    events.on(Libinput[event], callback);
 }
 export function off<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    emitter.off(event, callback);
-    unsubscribe(event);
+    events.off(Libinput[event], callback);
 }
 export function once<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    emitter.once(event, callback);
-    subscribe(event);
+    events.once(Libinput[event], callback);
 }

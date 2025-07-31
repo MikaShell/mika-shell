@@ -94,21 +94,19 @@ export function activate(id: number, action: string = "default"): Promise<void> 
 export function setDontDisturb(value: boolean): Promise<void> {
     return call("notifd.setDontDisturb", value);
 }
-type Events = "added" | "removed";
-import { Emitter } from "./events";
+import { Notifd } from "./events-define";
+import * as events from "./events";
+type Events = keyof typeof Notifd;
+export function on<K extends Events>(event: K, callback: (id: number) => void) {
+    events.on(Notifd[event], callback);
+}
+export function off<K extends Events>(event: K, callback: (id: number) => void) {
+    events.off(Notifd[event], callback);
+}
+export function once<K extends Events>(event: K, callback: (id: number) => void) {
+    events.once(Notifd[event], callback);
+}
 
-const emitter = new Emitter("notifd");
-emitter.init = subscribe;
-emitter.deinit = unsubscribe;
-export function on(event: Events, callback: (id: number) => void) {
-    emitter.on(event, callback);
-}
-export function off(event: Events, callback: (id: number) => void) {
-    emitter.off(event, callback);
-}
-export function once(event: Events, callback: (id: number) => void) {
-    emitter.once(event, callback);
-}
 const proxied: Array<Notification[]> = [];
 const onAdded = async (id: number) => {
     const item = await get(id);
@@ -136,11 +134,11 @@ const onRemoved = async (id: number) => {
     }
 };
 export function proxy(data: Notification[]) {
-    proxied.push(data);
-    if (proxied.length > 0) {
+    if (proxied.length === 0) {
         on("added", onAdded);
         on("removed", onRemoved);
     }
+    proxied.push(data);
 }
 export function unproxy(data: Notification[]) {
     const index = proxied.indexOf(data);

@@ -81,7 +81,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         for (app.webviews.items) |w| {
             const name = w.name;
             const title = w.impl.getTitle() orelse "*unknown*";
-            const id = w.impl.getPageId();
+            const id = w.id;
             const uri = w.impl.getUri();
             const visible = w.container.asWidget().getVisible();
             const t = switch (w.type) {
@@ -149,7 +149,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
                 }
             },
             else => {
-                w.show();
+                app.showRequest(w);
             },
         }
     }
@@ -161,7 +161,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         if (r.force.?) {
             w.forceHide();
         } else {
-            w.hide();
+            app.hideRequest(w);
         }
     }
     if (eql(r.type, "close")) {
@@ -172,7 +172,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         if (r.force.?) {
             w.forceClose();
         } else {
-            w.close();
+            app.closeRequest(w);
         }
     }
 }

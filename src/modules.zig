@@ -13,15 +13,25 @@ pub fn Entry(comptime T: type) type {
 }
 const AnyEntry = Entry(*anyopaque);
 const App = @import("app.zig").App;
+const events = @import("events.zig");
 pub const Modules = struct {
     const Registered = struct {
         ptr: *anyopaque,
         deinit: *const fn (*anyopaque, Allocator) void,
     };
+    pub const EventGroup = struct {
+        events: []const events.Events,
+        data: ?*anyopaque,
+        start: ?*const fn (?*anyopaque) anyerror!void,
+        stop: ?*const fn (?*anyopaque) anyerror!void,
+        onChanged: ?*const fn (?*anyopaque, events.ChangeState, events.Events) void,
+    };
     allocator: std.mem.Allocator,
     table: std.StringHashMap(AnyEntry),
     ctx: Context,
     registered: std.ArrayList(Registered),
+    eventGroups: std.ArrayList(EventGroup),
+
     pub fn init(allocator: std.mem.Allocator, app: *App, systemBus: *dbus.Bus, sessionBus: *dbus.Bus) *Modules {
         const m = allocator.create(Modules) catch unreachable;
         m.* = .{
@@ -34,6 +44,7 @@ pub const Modules = struct {
                 .sessionBus = sessionBus,
             },
             .registered = std.ArrayList(Registered).init(allocator),
+            .eventGroups = std.ArrayList(EventGroup).init(allocator),
         };
         return m;
     }
@@ -57,8 +68,9 @@ pub const Modules = struct {
             .ptr = m,
             .deinit = @ptrCast(&Module_.deinit),
         });
-        const table = comptime blk: {
-            const table = Module_.register();
+        const functions = comptime blk: {
+            const registry: Registry(Module_) = Module_.register();
+            const table = registry.exports;
             var tb: [table.len]std.meta.Tuple(&.{ []const u8, Callable(*Module_) }) = undefined;
             for (table, 0..) |entry, i| {
                 const name_ = name ++ "." ++ entry[0];
@@ -66,8 +78,33 @@ pub const Modules = struct {
             }
             break :blk tb;
         };
-        inline for (table) |entry| {
+        inline for (functions) |entry| {
             self.register(m, entry[0], entry[1]);
+        }
+        const events_ = comptime blk: {
+            const registry: Registry(Module_) = Module_.register();
+            break :blk registry.events;
+        };
+        if (events_.len > 0) {
+            var start: ?*const fn (*Module_) anyerror!void = null;
+            var stop: ?*const fn (*Module_) anyerror!void = null;
+            var onChanged: ?*const fn (*Module_, events.ChangeState, events.Events) void = null;
+            if (@hasDecl(Module_, "eventStart")) {
+                start = &Module_.eventStart;
+            }
+            if (@hasDecl(Module_, "eventStop")) {
+                stop = &Module_.eventStop;
+            }
+            if (@hasDecl(Module_, "eventOnChange")) {
+                onChanged = &Module_.eventOnChange;
+            }
+            try self.eventGroups.append(.{
+                .events = try self.allocator.dupe(events.Events, events_),
+                .start = @ptrCast(start),
+                .stop = @ptrCast(stop),
+                .data = @ptrCast(m),
+                .onChanged = @ptrCast(onChanged),
+            });
         }
     }
     fn register(
@@ -102,10 +139,12 @@ const TestModule = struct {
         return m;
     }
     pub fn register() Registry(@This()) {
-        return &.{
-            .{ "show", show },
-            .{ "throw", throw },
-            .{ "testArgs", testArgs },
+        return .{
+            .exports = &.{
+                .{ "show", show },
+                .{ "throw", throw },
+                .{ "testArgs", testArgs },
+            },
         };
     }
     pub fn deinit(self: *@This(), allocator: Allocator) void {
@@ -158,3 +197,154 @@ test "register and call" {
 
     try m.call("test.testArgs", value, &result);
 }
+pub const Emitter = struct {
+    const Self = @This();
+    const Group = struct {
+        count: u32,
+        group: Modules.EventGroup,
+        fn has(self: Group, event: events.Events) bool {
+            for (self.group.events) |e| {
+                if (e == event) return true;
+            }
+            return false;
+        }
+        fn addOne(self: *Group, event: events.Events) !void {
+            self.count += 1;
+            if (self.count == 1) {
+                if (self.group.start) |start| {
+                    try start(self.group.data);
+                }
+            }
+            if (self.group.onChanged) |onChanged| {
+                onChanged(self.group.data, .add, event);
+            }
+        }
+        fn removeOne(self: *Group, event: events.Events) !void {
+            self.count -= 1;
+            if (self.group.onChanged) |onChanged| {
+                onChanged(self.group.data, .remove, event);
+            }
+            if (self.count == 0) {
+                if (self.group.stop) |stop| {
+                    try stop(self.group.data);
+                }
+            }
+        }
+    };
+    allocator: Allocator,
+    app: *App,
+    subscriber: std.AutoHashMap(events.Events, std.ArrayList(u64)),
+    channel: *events.EventChannel,
+    groups: []Group,
+    pub fn init(app: *App, allocator: Allocator, channel: *events.EventChannel, eventGroups: []Modules.EventGroup) !*Self {
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+        var groups = try allocator.alloc(Group, eventGroups.len);
+        errdefer allocator.free(groups);
+        for (eventGroups, 0..) |group, i| {
+            groups[i] = .{ .count = 0, .group = group };
+        }
+        self.* = .{
+            .allocator = allocator,
+            .app = app,
+            .subscriber = std.AutoHashMap(events.Events, std.ArrayList(u64)).init(allocator),
+            .channel = channel,
+            .groups = groups,
+        };
+        return self;
+    }
+    pub fn deinit(self: *Self) void {
+        var it = self.subscriber.valueIterator();
+        while (it.next()) |v| v.deinit();
+        self.subscriber.deinit();
+        self.allocator.free(self.groups);
+        self.allocator.destroy(self);
+    }
+    pub fn subscribe(
+        self: *Self,
+        args: Args,
+        event: events.Events,
+    ) !void {
+        blk: {
+            for (self.groups) |*group| {
+                if (!group.has(event)) continue;
+                try group.addOne(event);
+                break :blk;
+            }
+            return error.UnkownEvent;
+        }
+        const id = args.uInteger(0) catch unreachable;
+        const list = try self.subscriber.getOrPut(event);
+        if (!list.found_existing) {
+            list.value_ptr.* = std.ArrayList(u64).init(self.allocator);
+        }
+        for (list.value_ptr.items) |id_| {
+            if (id_ == id) return;
+        }
+        try list.value_ptr.append(id);
+    }
+    pub fn unsubscribeAll(self: *Self, id: u64) void {
+        var it = self.subscriber.iterator();
+        var removed = std.ArrayList(events.Events).init(self.allocator);
+        defer removed.deinit();
+        while (it.next()) |kv| {
+            const list = kv.value_ptr;
+            for (list.items, 0..) |item, i| {
+                if (item == id) {
+                    _ = list.swapRemove(i);
+                    try removed.append(kv.key_ptr.*);
+                    break;
+                }
+            }
+            if (list.items.len == 0) {
+                list.deinit();
+                _ = self.subscriber.remove(kv.key_ptr.*);
+                self.allocator.free(kv.key_ptr.*);
+            }
+        }
+        for (removed.items) |event| {
+            for (self.groups) |*group| {
+                if (!group.has(event)) continue;
+                try group.removeOne(event);
+                break;
+            }
+            unreachable;
+        }
+    }
+    pub fn unsubscribe(
+        self: *Self,
+        args: Args,
+        event: events.Events,
+    ) !void {
+        const id = args.uInteger(0) catch unreachable;
+        const list = self.subscriber.getPtr(event) orelse return error.NotSubscribed;
+        blk: {
+            for (list.items, 0..) |item, i| {
+                if (item != id) continue;
+                _ = list.swapRemove(i);
+                if (list.items.len == 0) {
+                    list.deinit();
+                    const key = self.subscriber.getKey(event).?;
+                    _ = self.subscriber.remove(key);
+                }
+                break :blk;
+            }
+            return error.NotSubscribed;
+        }
+        for (self.groups) |*group| {
+            if (!group.has(event)) continue;
+            try group.removeOne(event);
+            return;
+        }
+        unreachable;
+    }
+    pub fn emit(self: *Self, event: events.Events, data: anytype) void {
+        const list = self.subscriber.get(event) orelse return;
+        const json = std.json.stringifyAlloc(self.allocator, .{ .event = @intFromEnum(event), .data = data }, .{}) catch unreachable;
+        defer self.allocator.free(json);
+        for (list.items) |id| {
+            const json_ = self.allocator.dupe(u8, json) catch unreachable;
+            self.channel.store(.{ .dist = id, .allocator = self.allocator, .data = json_ }) catch unreachable;
+        }
+    }
+};

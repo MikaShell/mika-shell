@@ -1,36 +1,125 @@
 const std = @import("std");
-
-pub const Mika = struct {
-    pub const open = "mika-open";
-    pub const close = "mika-close";
-    pub const show = "mika-show";
-    pub const hide = "mika-hide";
-    pub const tryClose = "mika-try-close";
-    pub const tryShow = "mika-try-show";
-    pub const tryHide = "mika-try-hide";
+pub const Events = enum(u32) {
+    mika_close_request,
+    mika_show_request,
+    mika_hide_request,
+    mika_open,
+    mika_close,
+    mika_show,
+    mika_hide,
+    tray_added,
+    tray_removed,
+    tray_changed,
+    notifd_added,
+    notifd_removed,
+    dock_added,
+    dock_changed,
+    dock_closed,
+    dock_enter,
+    dock_leave,
+    dock_activated,
+    libinput_pointer_motion,
+    libinput_pointer_button,
+    libinput_keyboard_key,
 };
-pub const Window = struct {
-    pub const show = "window-show";
-    pub const hide = "window-hide";
+pub const ChangeState = enum {
+    add,
+    remove,
 };
-pub const Layer = struct {
-    pub const show = "layer-show";
-    pub const hide = "layer-hide";
+const Allocator = std.mem.Allocator;
+pub const Event = struct {
+    allocator: Allocator,
+    dist: u64,
+    data: []const u8,
+    pub fn deinit(self: *Event) void {
+        self.allocator.free(self.data);
+    }
 };
-pub const Tray = struct {
-    pub const added = "tray-added";
-    pub const removed = "tray-removed";
-    pub const changed = "tray-changed";
-};
-pub const Notifd = struct {
-    pub const added = "notifd-added";
-    pub const removed = "notifd-removed";
-};
-pub const Dock = struct {
-    pub const added = "dock-added";
-    pub const changed = "dock-changed";
-    pub const closed = "dock-closed";
-    pub const enter = "dock-entered";
-    pub const leave = "dock-left";
-    pub const activated = "dock-activated";
-};
+fn Channel(comptime T: type, comptime size: usize) type {
+    return struct {
+        const Self = @This();
+        const Buffer = [size]T;
+        buf1: Buffer,
+        buf2: Buffer,
+        index1: std.atomic.Value(usize),
+        index2: std.atomic.Value(usize),
+        flag: std.atomic.Value(bool),
+        out: std.posix.fd_t,
+        in: std.posix.fd_t,
+        mutex: std.Thread.Mutex,
+        condition: std.Thread.Condition,
+        signalBuffer: [size]u8,
+        pub fn init() !Self {
+            const pipe = try std.posix.pipe();
+            return Self{
+                .buf1 = undefined,
+                .buf2 = undefined,
+                .signalBuffer = undefined,
+                .index1 = std.atomic.Value(usize).init(0),
+                .index2 = std.atomic.Value(usize).init(0),
+                .flag = std.atomic.Value(bool).init(false),
+                .mutex = std.Thread.Mutex{},
+                .out = pipe[0],
+                .in = pipe[1],
+                .condition = std.Thread.Condition{},
+            };
+        }
+        pub fn deinit(self: *Self) void {
+            std.posix.close(self.in);
+            std.posix.close(self.out);
+        }
+        pub fn store(self: *Self, event: T) !void {
+            const flag = self.flag.load(.acquire);
+            const index = if (flag) &self.index1 else &self.index2;
+            const buf = if (flag) &self.buf1 else &self.buf2;
+            const i = index.load(.acquire);
+            if (i == size) {
+                self.mutex.lock();
+                self.condition.wait(&self.mutex);
+                self.mutex.unlock();
+                return self.store(event);
+            }
+            buf[i] = event;
+            index.store(i + 1, .release);
+            _ = try std.posix.write(self.in, &.{1});
+        }
+        pub fn load(self: *Self) []T {
+            _ = std.posix.read(self.out, &self.signalBuffer) catch unreachable;
+            const flag = self.flag.load(.acquire);
+            const index = if (flag) &self.index1 else &self.index2;
+            const buf = if (flag) &self.buf1 else &self.buf2;
+            self.flag.store(!flag, .release);
+            const i = index.swap(0, .seq_cst);
+            self.condition.signal();
+            return buf[0..i];
+        }
+    };
+}
+pub const EventChannel = Channel(Event, 128);
+fn testChannel(c: *TestChannel) !void {
+    for (0..testCount) |i| {
+        try c.store(@intCast(i));
+    }
+}
+const testCount = 300;
+const print = std.debug.print;
+const glib = @import("glib");
+const testing = std.testing;
+const TestChannel = Channel(i32, 2);
+test {
+    var c = try TestChannel.init();
+    _ = try std.Thread.spawn(.{}, testChannel, .{&c});
+    const watch = try glib.FdWatch2(*TestChannel).add(c.out, glibCallback, &c);
+    defer watch.deinit();
+    glib.timeoutMainLoop(500);
+    try testing.expectEqual(testCount, count);
+}
+var count: i32 = 0;
+fn glibCallback(c: *TestChannel) bool {
+    const events = c.load();
+    for (events) |event| {
+        testing.expectEqual(count, event) catch return false;
+        count += 1;
+    }
+    return true;
+}

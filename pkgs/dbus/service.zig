@@ -509,7 +509,7 @@ pub const Emitter = struct {
             iter.fromAppend(msg);
             inline for (args.?, 0..) |arg, i| {
                 iter.append(Args[i], arg) catch |err| {
-                    std.log.err("failed to emit signal: {s} error: {any}", .{ name, err });
+                    std.log.err("Failed to emit signal: {s} error: {any}", .{ name, err });
                     return;
                 };
             }
@@ -520,7 +520,7 @@ pub const Emitter = struct {
     pub fn emitPropertiesChanged(self: Emitter, changed: []const []const u8, invalidated: []const []const u8) void {
         if (self.getter == null) @panic("No getter function provided for PropertiesChanged signal. Please provide a getter function for the interface");
         var err: ?anyerror = null;
-        defer if (err) |e| std.log.err("failed to emit PropertiesChanged signal, error: {any}", .{e});
+        defer if (err) |e| std.log.err("Failed to emit PropertiesChanged signal, error: {any}", .{e});
         const msg = libdbus.Message.newSignal(self.path, "org.freedesktop.DBus.Properties", "PropertiesChanged");
         defer msg.deinit();
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);

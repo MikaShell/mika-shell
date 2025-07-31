@@ -95,20 +95,9 @@ export function getMenu(service: string): Promise<MenuNode> {
 export function activateMenu(service: string, id: number): Promise<void> {
     return call("tray.activateMenu", service, id);
 }
-import { Emitter } from "./events";
-type Events = "added" | "changed" | "removed";
-const emitter = new Emitter("tray");
-emitter.init = subscribe;
-emitter.deinit = unsubscribe;
-export function on<T extends Events>(event: T, callback: (service: string) => void) {
-    emitter.on(event, callback);
-}
-export function off<T extends Events>(event: T, callback: (service: string) => void) {
-    emitter.off(event, callback);
-}
-export function once<T extends Events>(event: T, callback: (service: string) => void) {
-    emitter.once(event, callback);
-}
+type Events = keyof typeof Tray;
+import { Tray } from "./events-define";
+import * as events from "./events";
 const proxied: Array<Record<string, Item>> = [];
 const onAdded = async (service: string) => {
     const item = await getItem(service);
@@ -128,12 +117,17 @@ const onRemoved = async (service: string) => {
     }
 };
 export function proxy(data: Record<string, Item>) {
-    proxied.push(data);
-    if (proxied.length > 0) {
-        on("added", onAdded);
-        on("changed", onChanged);
-        on("removed", onRemoved);
+    if (proxied.length === 0) {
+        events.on(Tray.added, onAdded);
+        events.on(Tray.changed, onChanged);
+        events.on(Tray.removed, onRemoved);
     }
+    getItems().then((items) => {
+        for (const item of items) {
+            data[item.service] = item;
+        }
+    });
+    proxied.push(data);
 }
 export function unproxy(data: Record<string, Item>) {
     const index = proxied.indexOf(data);
@@ -141,8 +135,18 @@ export function unproxy(data: Record<string, Item>) {
         proxied.splice(index, 1);
     }
     if (proxied.length === 0) {
-        off("added", onAdded);
-        off("changed", onChanged);
-        off("removed", onRemoved);
+        events.off(Tray.added, onAdded);
+        events.off(Tray.changed, onChanged);
+        events.off(Tray.removed, onRemoved);
     }
+}
+
+export function on<K extends Events>(event: K, callback: (service: string) => void) {
+    events.on(Tray[event], callback);
+}
+export function off<K extends Events>(event: K, callback: (service: string) => void) {
+    events.off(Tray[event], callback);
+}
+export function once<K extends Events>(event: K, callback: (service: string) => void) {
+    events.once(Tray[event], callback);
 }

@@ -17,11 +17,13 @@ pub const OS = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "getEnv", getEnv },
-            .{ "getSystemInfo", getSystemInfo },
-            .{ "getUserInfo", getUserInfo },
-            .{ "exec", exec },
+        return .{
+            .exports = &.{
+                .{ "getEnv", getEnv },
+                .{ "getSystemInfo", getSystemInfo },
+                .{ "getUserInfo", getUserInfo },
+                .{ "exec", exec },
+            },
         };
     }
     pub fn getEnv(self: *Self, args: Args, result: *Result) !void {

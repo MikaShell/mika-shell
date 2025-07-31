@@ -62,7 +62,7 @@
             windowInit();
             // or
             // layerInit();
-            window.mikaShell.window.on("try-close", () => {
+            window.mikaShell.window.on("close-request", () => {
                 const result = confirm("Are you sure to close this window?");
                 if (result) {
                     return true;

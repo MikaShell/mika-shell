@@ -21,9 +21,11 @@ pub const Monitor = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "list", list },
-            .{ "get", get },
+        return .{
+            .exports = &.{
+                .{ "list", list },
+                .{ "get", get },
+            },
         };
     }
     pub fn list(self: *Self, _: Args, result: *Result) !void {

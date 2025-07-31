@@ -36,25 +36,23 @@ pub const Layer = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "init", initLayer },
-            .{ "getId", getId },
-            .{ "show", show },
-            .{ "hide", hide },
-            .{ "close", close },
-            .{ "openDevTools", openDevTools },
-            .{ "resetAnchor", resetAnchor },
-            .{ "setAnchor", setAnchor },
-            .{ "setLayer", setLayer },
-            .{ "setKeyboardMode", setKeyboardMode },
-            .{ "setNamespace", setNamespace },
-            .{ "setMargin", setMargin },
-            .{ "setExclusiveZone", setExclusiveZone },
-            .{ "autoExclusiveZoneEnable", autoExclusiveZoneEnable },
-            .{ "getSize", getSize },
-            .{ "setSize", setSize },
-            .{ "setInputRegion", setInputRegion },
-            .{ "getScale", getScale },
+        return .{
+            .exports = &.{
+                .{ "init", initLayer },
+                .{ "openDevTools", openDevTools },
+                .{ "resetAnchor", resetAnchor },
+                .{ "setAnchor", setAnchor },
+                .{ "setLayer", setLayer },
+                .{ "setKeyboardMode", setKeyboardMode },
+                .{ "setNamespace", setNamespace },
+                .{ "setMargin", setMargin },
+                .{ "setExclusiveZone", setExclusiveZone },
+                .{ "autoExclusiveZoneEnable", autoExclusiveZoneEnable },
+                .{ "getSize", getSize },
+                .{ "setSize", setSize },
+                .{ "setInputRegion", setInputRegion },
+                .{ "getScale", getScale },
+            },
         };
     }
     fn getWebview(self: *Self, args: Args) !*Webview {
@@ -114,27 +112,9 @@ pub const Layer = struct {
         }
         w.container.setDefaultSize(opt.width, opt.height);
         if (!opt.hidden) {
-            w.show();
+            self.app.showRequest(w);
         }
         w.options = .{ .layer = opt };
-    }
-    pub fn getId(_: *Self, args: Args, result: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        result.commit(id);
-    }
-    pub fn show(self: *Self, args: Args, _: *Result) !void {
-        const w = self.getWebview(args) catch unreachable;
-        if (w.container.asWidget().getVisible()) return error.LayerIsAlreadyVisible;
-        w.show();
-    }
-    pub fn hide(self: *Self, args: Args, _: *Result) !void {
-        const w = self.getWebview(args) catch unreachable;
-        if (!w.container.asWidget().getVisible()) return error.LayerIsAlreadyHidden;
-        w.hide();
-    }
-    pub fn close(self: *Self, args: Args, _: *Result) !void {
-        const w = self.getWebview(args) catch unreachable;
-        w.close();
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);

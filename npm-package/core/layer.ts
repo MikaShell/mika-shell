@@ -1,53 +1,4 @@
 import call from "./call";
-import * as events from "./events";
-
-type TryableEvents = "try-close" | "try-hide" | "try-show";
-type Events = TryableEvents | "show" | "hide";
-type Callback<T extends Events> = T extends TryableEvents
-    ? () => boolean | Promise<boolean>
-    : () => void;
-const emitter = new events.Emitter("layer");
-async function addListener<K extends Events>(
-    event: K,
-    callback: Callback<K>,
-    once: boolean = false
-) {
-    if (event === "try-close" || event === "try-hide" || event === "try-show") {
-        events.addTryableListener(
-            await call("layer.getId"),
-            event,
-            callback as Callback<TryableEvents>,
-            once
-        );
-    } else {
-        if (once) emitter.once(event, callback);
-        else emitter.on(event, callback);
-    }
-}
-
-async function removeListener<K extends Events>(event: K, callback: Callback<K>) {
-    if (event === "try-close" || event === "try-hide" || event === "try-show") {
-        events.removeTryableListener(
-            await call("layer.getId"),
-            event,
-            callback as Callback<TryableEvents>
-        );
-    } else {
-        emitter.off(event, callback);
-    }
-}
-
-export function on<K extends Events>(event: K, callback: Callback<K>) {
-    return addListener(event, callback);
-}
-export function off<K extends Events>(event: K, callback: Callback<K>) {
-    return removeListener(event, callback);
-}
-
-export function once<K extends Events>(event: K, callback: Callback<K>) {
-    return addListener(event, callback, true);
-}
-
 export type Edge = "left" | "right" | "top" | "bottom";
 export type Layers = "background" | "bottom" | "top" | "overlay";
 export type KeyboardMode = "none" | "exclusive" | "ondemand";
@@ -103,13 +54,13 @@ export function init(options: Partial<Options> = {}): Promise<void> {
     return call("layer.init", opt);
 }
 export function show(): Promise<void> {
-    return call("layer.show");
+    return call("mika.show", 0);
 }
 export function hide(): Promise<void> {
-    return call("layer.hide");
+    return call("mika.hide", 0);
 }
 export function close(): Promise<void> {
-    return call("layer.close");
+    return call("mika.close", 0);
 }
 export function openDevTools(): Promise<void> {
     return call("layer.openDevTools");
@@ -149,4 +100,63 @@ export function setInputRegion(): Promise<void> {
 }
 export function getScale(): Promise<number> {
     return call("layer.getScale");
+}
+import { Mika } from "./events-define";
+import * as mika from "./mika";
+type Events = "show" | "hide" | "show-request" | "hide-request" | "close-request";
+type EventMap = {
+    [K in Events]: K extends "hide" | "show"
+        ? () => void
+        : K extends "show-request" | "hide-request" | "close-request"
+        ? (prev: boolean) => boolean | Promise<boolean>
+        : never;
+};
+const listeners: Map<number, Array<() => void>> = new Map(); // only handle xxx-request event
+const onceListeners: Map<number, Array<() => void>> = new Map(); // only handle xxx-request event
+var selfId = 0;
+mika.getId().then((id_) => (selfId = id_));
+mika.on("show", (id: number) => {
+    if (id !== selfId) return;
+    listeners.get(Mika["show"])?.forEach((cb) => cb());
+    onceListeners.get(Mika["show"])?.forEach((cb) => cb());
+    onceListeners.delete(Mika["show"]);
+});
+mika.on("hide", (id: number) => {
+    if (id !== selfId) return;
+    listeners.get(Mika["hide"])?.forEach((cb) => cb());
+    onceListeners.get(Mika["hide"])?.forEach((cb) => cb());
+    onceListeners.delete(Mika["hide"]);
+});
+export function on<K extends Events>(event: K, callback: EventMap[K]) {
+    if (event === "show-request" || event === "hide-request" || event === "close-request") {
+        mika.on(event as any, callback);
+        return;
+    }
+    if (!listeners.has(Mika[event])) {
+        listeners.set(Mika[event], []);
+    }
+    listeners.get(Mika[event])!.push(callback as () => void);
+}
+export function off<K extends Events>(event: K, callback: EventMap[K]) {
+    if (event === "show-request" || event === "hide-request" || event === "close-request") {
+        mika.off(event as any, callback);
+        return;
+    }
+    if (!listeners.has(Mika[event])) {
+        return;
+    }
+    const index = listeners.get(Mika[event])!.indexOf(callback as () => void);
+    if (index !== -1) {
+        listeners.get(Mika[event])!.splice(index, 1);
+    }
+}
+export function once<K extends Events>(event: K, callback: EventMap[K]) {
+    if (event === "show-request" || event === "hide-request" || event === "close-request") {
+        mika.once(event as any, callback);
+        return;
+    }
+    if (!onceListeners.has(Mika[event])) {
+        onceListeners.set(Mika[event], []);
+    }
+    onceListeners.get(Mika[event])!.push(callback as () => void);
 }

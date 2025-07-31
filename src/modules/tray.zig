@@ -9,7 +9,7 @@ const tray = @import("../lib/tray.zig");
 const dbus = @import("dbus");
 const App = @import("../app.zig").App;
 const Webview = @import("../app.zig").Webview;
-const Events = @import("../events.zig").Tray;
+const Events = @import("../events.zig").Events;
 fn trayWatcherThread() !void {
     const allocator = std.heap.page_allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
@@ -17,7 +17,7 @@ fn trayWatcherThread() !void {
     const watcher = tray.Watcher.init(allocator, bus) catch return;
     defer watcher.deinit();
     watcher.publish() catch |err| {
-        std.log.err("failed to publish tray watcher: {any}", .{err});
+        std.log.err("Failed to publish tray watcher: {any}", .{err});
         return;
     };
 
@@ -32,7 +32,6 @@ pub const Tray = struct {
     app: *App,
     host: ?*tray.Host = null,
     bus: *dbus.Bus,
-    subscriber: std.ArrayList(u64),
     pub fn init(ctx: Context) !*Self {
         const allocator = ctx.allocator;
         const self = try allocator.create(Self);
@@ -40,30 +39,41 @@ pub const Tray = struct {
             .allocator = allocator,
             .app = ctx.app,
             .bus = ctx.sessionBus,
-            .subscriber = std.ArrayList(u64).init(allocator),
         };
         // TODO: 这个线程需要关闭吗?
         _ = try std.Thread.spawn(.{}, trayWatcherThread, .{});
         return self;
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
-        self.subscriber.deinit();
         if (self.host) |h| h.deinit();
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "getItem", getItem },
-            .{ "getItems", getItems },
-            .{ "subscribe", subscribe },
-            .{ "unsubscribe", unsubscribe },
-            .{ "activate", activate },
-            .{ "secondaryActivate", secondaryActivate },
-            .{ "scroll", scroll },
-            .{ "provideXdgActivationToken", provideXdgActivationToken },
-            .{ "getMenu", getMenu },
-            .{ "activateMenu", activateMenu },
+        return .{
+            .exports = &.{
+                .{ "getItem", getItem },
+                .{ "getItems", getItems },
+                .{ "activate", activate },
+                .{ "secondaryActivate", secondaryActivate },
+                .{ "scroll", scroll },
+                .{ "provideXdgActivationToken", provideXdgActivationToken },
+                .{ "getMenu", getMenu },
+                .{ "activateMenu", activateMenu },
+            },
+            .events = &.{
+                .tray_added,
+                .tray_removed,
+                .tray_changed,
+            },
         };
+    }
+    pub fn eventStart(self: *Self) !void {
+        const allocator = self.allocator;
+        const bus = self.bus;
+        if (self.host == null) {
+            self.host = try tray.Host.init(allocator, bus);
+            try self.host.?.addListener(onItemUpdated, self);
+        }
     }
     fn setup(self: *Self, result: *Result) !void {
         const allocator = self.allocator;
@@ -77,49 +87,12 @@ pub const Tray = struct {
     }
     fn onItemUpdated(_: *tray.Host, state: tray.ItemState, service: []const u8, data: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(data));
-        const app = self.app;
-        var event: []const u8 = undefined;
-        switch (state) {
-            .added => event = Events.added,
-            .removed => event = Events.removed,
-            .changed => event = Events.changed,
-        }
-        var i: usize = self.subscriber.items.len;
-        while (i > 0) {
-            i -= 1;
-            const id = self.subscriber.items[i];
-            const webview = app.getWebview(id) catch {
-                _ = self.subscriber.swapRemove(i);
-                continue;
-            };
-            webview.emitEvent(event, service);
-        }
-    }
-    pub fn subscribe(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const id = args.uInteger(0) catch unreachable;
-        blk: {
-            for (self.subscriber.items) |id_| {
-                if (id == id_) {
-                    break :blk;
-                }
-            }
-            try self.subscriber.append(id);
-        }
-        const webview = self.app.getWebview(id) catch unreachable;
-        const host = self.host.?;
-        for (host.items.items) |item| {
-            webview.emitEvent(Events.added, item.data.service);
-        }
-    }
-    pub fn unsubscribe(self: *Self, args: Args, _: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        for (self.subscriber.items, 0..) |id_, i| {
-            if (id == id_) {
-                _ = self.subscriber.swapRemove(i);
-                return;
-            }
-        }
+        const event = switch (state) {
+            .added => Events.tray_added,
+            .removed => Events.tray_removed,
+            .changed => Events.tray_changed,
+        };
+        self.app.emitEvent(event, service);
     }
     pub fn getItems(self: *Self, _: Args, result: *Result) !void {
         try self.setup(result);

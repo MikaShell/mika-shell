@@ -1,0 +1,61 @@
+const std = @import("std");
+const fs = std.fs;
+const Build = std.Build;
+pub fn events(b: *Build, comptime dist: []const u8) *Build.Step {
+    const Events = @import("./src/events.zig").Events;
+    const generate_events_step = b.step("generate-events", "Generate events ts file");
+    generate_events_step.makeFn = struct {
+        fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
+            const f = try fs.cwd().createFile(dist, .{});
+            defer f.close();
+            const typ = @typeInfo(Events);
+            var namespace: ?[]const u8 = null;
+            const format = std.fmt.allocPrint;
+            const allocator = step.owner.allocator;
+            inline for (typ.@"enum".fields) |field| {
+                var parts = std.mem.splitAny(u8, field.name, "_");
+                const first_part = parts.next().?;
+                var namespace_: []u8 = try allocator.dupe(u8, first_part);
+                namespace_[0] = std.ascii.toUpper(namespace_[0]);
+                if (namespace == null or !std.mem.eql(u8, namespace_, namespace.?)) {
+                    if (namespace != null) {
+                        _ = try f.write("};\n");
+                    }
+                    namespace = namespace_;
+                    _ = try f.write(try format(allocator, "export const {s} = {{\n", .{namespace_}));
+                }
+                const name = (try std.mem.replaceOwned(u8, allocator, field.name, "_", "-"))[namespace_.len + 1 ..];
+                const value = field.value;
+                if (std.mem.indexOf(u8, name, "-") != null) {
+                    _ = try f.write(std.fmt.allocPrint(allocator, "    \"{s}\": {d},\n", .{ name, value }) catch @panic("OOM"));
+                } else {
+                    _ = try f.write(std.fmt.allocPrint(allocator, "    {s}: {d},\n", .{ name, value }) catch @panic("OOM"));
+                }
+            }
+            _ = try f.write("};\n");
+        }
+    }.make;
+    return generate_events_step;
+}
+pub fn js_binding(b: *Build, optimize: std.builtin.Mode, comptime dist: []const u8) *Build.Step {
+    const cmd = b.addSystemCommand(&.{
+        "esbuild",
+        "npm-package/core/index.ts",
+        "--bundle",
+        std.fmt.allocPrint(b.allocator, "--minify={}", .{optimize != .Debug}) catch @panic("OOM"),
+        "--outfile=" ++ dist,
+    });
+    return &cmd.step;
+}
+
+pub fn extra_js_binding(b: *Build, comptime dist: []const u8) *Build.Step {
+    const cmd = b.addSystemCommand(&.{
+        "esbuild",
+        "npm-package/extra/index.ts",
+        "--format=esm",
+        "--platform=browser",
+        "--bundle",
+        "--outfile=" ++ dist,
+    });
+    return &cmd.step;
+}

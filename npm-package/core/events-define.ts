@@ -1,0 +1,31 @@
+export const Mika = {
+    "close-request": 0,
+    "show-request": 1,
+    "hide-request": 2,
+    open: 3,
+    close: 4,
+    show: 5,
+    hide: 6,
+};
+export const Tray = {
+    added: 7,
+    removed: 8,
+    changed: 9,
+};
+export const Notifd = {
+    added: 10,
+    removed: 11,
+};
+export const Dock = {
+    added: 12,
+    changed: 13,
+    closed: 14,
+    enter: 15,
+    leave: 16,
+    activated: 17,
+};
+export const Libinput = {
+    "pointer-motion": 18,
+    "pointer-button": 19,
+    "keyboard-key": 20,
+};

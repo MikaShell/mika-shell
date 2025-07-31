@@ -436,8 +436,10 @@ pub const Icon = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "lookup", lookup },
+        return .{
+            .exports = &.{
+                .{ "lookup", lookup },
+            },
         };
     }
 

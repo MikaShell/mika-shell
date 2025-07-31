@@ -1,5 +1,5 @@
 import call from "./call";
-import { Emitter } from "./events";
+import { Dock } from "./events-define";
 export type State = "maximized" | "minimized" | "activated" | "fullscreen";
 export type Item = {
     id: number;
@@ -31,25 +31,30 @@ export function setMinimized(id: number, minimized: boolean): Promise<void> {
 export function setFullscreen(id: number, fullscreen: boolean): Promise<void> {
     return call("dock.setFullscreen", id, fullscreen);
 }
-const emitter = new Emitter("dock");
-emitter.init = subscribe;
-emitter.deinit = unsubscribe;
 
+type Events = keyof typeof Dock;
 type EventMap = {
-    added: (item: Item) => void;
-    changed: (item: Item) => void;
-    closed: (id: number) => void;
-    enter: (id: number) => void;
-    leave: (id: number) => void;
-    activated: (id: number) => void;
+    [K in Events]: K extends "added"
+        ? (item: Item) => void
+        : K extends "changed"
+        ? (item: Item) => void
+        : K extends "closed"
+        ? (id: number) => void
+        : K extends "enter"
+        ? (id: number) => void
+        : K extends "leave"
+        ? (id: number) => void
+        : K extends "activated"
+        ? (id: number) => void
+        : never;
 };
-export type Events = keyof EventMap;
-export function on<K extends Events>(event: K, callback: EventMap[K]) {
-    emitter.on(event, callback);
+import * as events from "./events";
+export function on<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
+    events.on(Dock[event], callback);
 }
-export function off<K extends Events>(event: K, callback: EventMap[K]) {
-    emitter.off(event, callback);
+export function off<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
+    events.off(Dock[event], callback);
 }
-export function once<K extends Events>(event: K, callback: EventMap[K]) {
-    emitter.once(event, callback);
+export function once<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
+    events.once(Dock[event], callback);
 }

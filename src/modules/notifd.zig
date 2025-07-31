@@ -15,7 +15,6 @@ pub const Notifd = struct {
     app: *App,
     allocator: Allocator,
     bus: *dbus.Bus,
-    subscriber: std.ArrayList(u64),
     notifd: ?*notification.Notifd,
     dontDisturb: bool = false,
 
@@ -25,7 +24,6 @@ pub const Notifd = struct {
             .app = ctx.app,
             .allocator = ctx.allocator,
             .bus = ctx.sessionBus,
-            .subscriber = std.ArrayList(u64).init(ctx.allocator),
             .dontDisturb = false,
             .notifd = null,
         };
@@ -33,46 +31,31 @@ pub const Notifd = struct {
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
         if (self.notifd) |notifd| notifd.deinit();
-        self.subscriber.deinit();
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "subscribe", subscribe },
-            .{ "unsubscribe", unsubscribe },
-            .{ "get", get },
-            .{ "dismiss", dismiss },
-            .{ "activate", activate },
-            .{ "getAll", getAll },
-            .{ "setDontDisturb", setDontDisturb },
+        return .{
+            .exports = &.{
+                .{ "get", get },
+                .{ "dismiss", dismiss },
+                .{ "activate", activate },
+                .{ "getAll", getAll },
+                .{ "setDontDisturb", setDontDisturb },
+            },
+            .events = &.{
+                .notifd_added,
+                .notifd_removed,
+            },
         };
     }
 
     fn onNotificationAdded(self: *Self, id: u32) void {
         const app = self.app;
-        var i: usize = self.subscriber.items.len;
-        while (i > 0) {
-            i -= 1;
-            const wid = self.subscriber.items[i];
-            const webview = app.getWebview(wid) catch {
-                _ = self.subscriber.swapRemove(i);
-                continue;
-            };
-            webview.emitEvent(Events.added, id);
-        }
+        app.emitEvent(.notifd_added, id);
     }
     fn onNotificationRemoved(self: *Self, id: u32) void {
         const app = self.app;
-        var i: usize = self.subscriber.items.len;
-        while (i > 0) {
-            i -= 1;
-            const wid = self.subscriber.items[i];
-            const webview = app.getWebview(wid) catch {
-                _ = self.subscriber.swapRemove(i);
-                continue;
-            };
-            webview.emitEvent(Events.removed, id);
-        }
+        app.emitEvent(.notifd_removed, id);
     }
     fn initNotifd(self: *Self) !void {
         if (self.notifd == null) {
@@ -85,6 +68,14 @@ pub const Notifd = struct {
             self.notifd = notifd;
         }
     }
+    pub fn eventStart(self: *Self) !void {
+        self.initNotifd() catch |err| {
+            if (err == error.NameExists) {
+                return error.HasAnotherNotifdServiceRunning;
+            }
+            return error.FailedToInitNotifd;
+        };
+    }
     fn setup(self: *Self, result: *Result) !void {
         self.initNotifd() catch |err| {
             if (err == error.NameExists) {
@@ -96,27 +87,6 @@ pub const Notifd = struct {
     pub fn setDontDisturb(self: *Self, args: Args, _: *Result) !void {
         const enable = try args.bool(1);
         self.dontDisturb = enable;
-    }
-
-    pub fn subscribe(self: *Self, args: Args, result: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        try self.setup(result);
-        for (self.subscriber.items) |id_| {
-            if (id == id_) {
-                return;
-            }
-        }
-        try self.subscriber.append(id);
-    }
-    pub fn unsubscribe(self: *Self, args: Args, result: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        try self.setup(result);
-        for (self.subscriber.items, 0..) |id_, i| {
-            if (id == id_) {
-                _ = self.subscriber.swapRemove(i);
-                return;
-            }
-        }
     }
     pub fn get(self: *Self, args: Args, result: *Result) !void {
         const id = try args.uInteger(1);

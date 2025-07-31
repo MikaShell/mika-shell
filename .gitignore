@@ -11,7 +11,8 @@ npm-package/output/**/*.js
 zig-out
 .zig-cache
 zigfetch
-perf.data
+perf.data*
 src/bindings.js
 example/extra.js
 example/public/BongoCat
+npm-package/core/events-enum.ts

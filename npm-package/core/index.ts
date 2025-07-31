@@ -12,7 +12,7 @@ import * as network from "./network";
 import * as dock from "./dock";
 import * as libinput from "./libinput";
 function socket(path: string) {
-    return new WebSocket(["ws://localhost:6797", path].join("/"));
+    return new WebSocket(`ws://localhost:6797/${path}`);
 }
 const mikaShell = {
     tray,

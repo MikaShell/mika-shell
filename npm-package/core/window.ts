@@ -1,53 +1,6 @@
 import call from "./call";
 import * as events from "./events";
 
-type TryableEvents = "try-close" | "try-hide" | "try-show";
-type Events = TryableEvents | "show" | "hide";
-type Callback<T extends Events> = T extends TryableEvents
-    ? () => boolean | Promise<boolean>
-    : () => void;
-const emitter = new events.Emitter("window");
-async function addListener<K extends Events>(
-    event: K,
-    callback: Callback<K>,
-    once: boolean = false
-) {
-    if (event === "try-close" || event === "try-hide" || event === "try-show") {
-        events.addTryableListener(
-            await call("window.getId"),
-            event,
-            callback as Callback<TryableEvents>,
-            once
-        );
-    } else {
-        if (once) emitter.once(event, callback);
-        else emitter.on(event, callback);
-    }
-}
-
-async function removeListener<K extends Events>(event: K, callback: Callback<K>) {
-    if (event === "try-close" || event === "try-hide" || event === "try-show") {
-        events.removeTryableListener(
-            await call("window.getId"),
-            event,
-            callback as Callback<TryableEvents>
-        );
-    } else {
-        emitter.off(event, callback);
-    }
-}
-
-export function on<K extends Events>(event: K, callback: Callback<K>) {
-    return addListener(event, callback);
-}
-export function off<K extends Events>(event: K, callback: Callback<K>) {
-    return removeListener(event, callback);
-}
-
-export function once<K extends Events>(event: K, callback: Callback<K>) {
-    return addListener(event, callback, true);
-}
-
 export type Options = {
     title: string;
     class: string;
@@ -71,6 +24,7 @@ function _init(options: Partial<Options> = {}): Promise<void> {
 }
 export function init(options: Partial<Options> = {}): Promise<void> {
     if (options.resizable !== true) {
+        // 确保网页渲染完成后再显示, 防止窗口大小不正确
         return new Promise((resolve, reject) => {
             window.addEventListener("load", () => {
                 _init(options).then(resolve).catch(reject);
@@ -81,13 +35,13 @@ export function init(options: Partial<Options> = {}): Promise<void> {
     }
 }
 export function show(): Promise<void> {
-    return call("window.show");
+    return call("mika.show", 0);
 }
 export function hide(): Promise<void> {
-    return call("window.hide");
+    return call("mika.hide", 0);
 }
 export function close(): Promise<void> {
-    return call("window.close");
+    return call("mika.close", 0);
 }
 export function openDevTools(): Promise<void> {
     return call("window.openDevTools");
@@ -104,3 +58,7 @@ export function setInputRegion(): Promise<void> {
 export function getScale(): Promise<number> {
     return call("layer.getScale");
 }
+import * as layer from "./layer";
+export const on = layer.on;
+export const off = layer.off;
+export const once = layer.once;

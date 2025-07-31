@@ -599,9 +599,11 @@ pub const Apps = struct {
         return self;
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "list", list },
-            .{ "activate", activate },
+        return .{
+            .exports = &.{
+                .{ "list", list },
+                .{ "activate", activate },
+            },
         };
     }
     pub fn list(self: *Self, _: modules.Args, result: *modules.Result) !void {

@@ -1,5 +1,6 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
+const generate = @import("generate.zig");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -97,28 +98,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    const generate_js_binding = b.addSystemCommand(&.{
-        "esbuild",
-        "npm-package/core/index.ts",
-        "--bundle",
-        std.fmt.allocPrint(b.allocator, "--minify={}", .{optimize != .Debug}) catch @panic("OOM"),
-        "--outfile=src/bindings.js",
-    });
-    const generate_extra_js_binding = b.addSystemCommand(&.{
-        "esbuild",
-        "npm-package/extra/index.ts",
-        "--format=esm",
-        "--platform=browser",
-        "--bundle",
-        "--outfile=example/extra.js",
-    });
     const exe = b.addExecutable(.{
         .name = "mika-shell",
         .root_module = exe_mod,
         .optimize = optimize,
     });
-    exe.step.dependOn(&generate_js_binding.step);
-    exe.step.dependOn(&generate_extra_js_binding.step);
+    exe.step.dependOn(generate.js_binding(b, optimize, "src/bindings.js"));
+    exe.step.dependOn(generate.extra_js_binding(b, "example/extra.js"));
+    exe.step.dependOn(generate.events(b, "npm-package/core/events-define.ts"));
 
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);

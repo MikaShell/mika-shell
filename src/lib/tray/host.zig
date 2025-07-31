@@ -100,7 +100,7 @@ pub const Host = struct {
         const self: *Self = @ptrCast(@alignCast(data));
         const service = e.iter.next(dbus.String).?;
         const item = Item.init(self.allocator, self.bus, service) catch {
-            std.log.err("failed to create item: {s}", .{service});
+            std.log.err("Failed to create item: {s}", .{service});
             return;
         };
         item.addListener(onItemUpdated, self) catch unreachable;

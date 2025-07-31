@@ -21,10 +21,8 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    // Ignore all non-error logging from sources other than
-    // .my_project, .nice_library and the default
     const scope_prefix = "(" ++ switch (scope) {
-        .my_project, .nice_library, std.log.default_log_scope => @tagName(scope),
+        .dbus, .assets, .webview, std.log.default_log_scope => @tagName(scope),
         else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err))
             @tagName(scope)
         else
@@ -42,6 +40,7 @@ pub fn logFn(
 
 test {
     _ = @import("modules.zig");
+    _ = @import("events.zig");
     _ = @import("lib/tray.zig");
     _ = @import("lib/notifd.zig");
     _ = @import("lib/network.zig");

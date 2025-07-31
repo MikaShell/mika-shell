@@ -34,18 +34,16 @@ pub const Window = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "init", initWindow },
-            .{ "show", show },
-            .{ "hide", hide },
-            .{ "getId", getId },
-            .{ "openDevTools", openDevTools },
-            .{ "setTitle", setTitle },
-            .{ "close", close },
-            .{ "setSize", setSize },
-            .{ "getSize", getSize },
-            .{ "getScaleFactor", getScale },
-            .{ "setInputRegion", setInputRegion },
+        return .{
+            .exports = &.{
+                .{ "init", initWindow },
+                .{ "openDevTools", openDevTools },
+                .{ "setTitle", setTitle },
+                .{ "setSize", setSize },
+                .{ "getSize", getSize },
+                .{ "getScaleFactor", getScale },
+                .{ "setInputRegion", setInputRegion },
+            },
         };
     }
     fn getWindow(self: *Self, args: Args) !*Webview {
@@ -91,7 +89,7 @@ pub const Window = struct {
             w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
         }
         if (!opt.hidden) {
-            w.container.present();
+            self.app.showRequest(w);
         }
         w.container.setDefaultSize(opt.width, opt.height);
         w.options = .{ .window = opt };
@@ -104,22 +102,6 @@ pub const Window = struct {
         const w = try self.getWindow(args);
         const title = try args.string(1);
         w.container.setTitle(title);
-    }
-    pub fn getId(_: *Self, args: Args, result: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        result.commit(id);
-    }
-    pub fn show(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWindow(args);
-        w.show();
-    }
-    pub fn hide(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWindow(args);
-        w.hide();
-    }
-    pub fn close(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWindow(args);
-        w.close();
     }
     pub fn setSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);

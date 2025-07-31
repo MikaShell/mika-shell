@@ -22,49 +22,80 @@ pub const Mika = struct {
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
-        return &.{
-            .{ "open", open },
-            .{ "close", close },
-            .{ "forceClose", forceClose },
-            .{ "show", show },
-            .{ "forceShow", forceShow },
-            .{ "hide", hide },
-            .{ "forceHide", forceHide },
+        return .{
+            .exports = &.{
+                .{ "getId", getId },
+                .{ "open", open },
+                .{ "close", close },
+                .{ "forceClose", forceClose },
+                .{ "show", show },
+                .{ "forceShow", forceShow },
+                .{ "hide", hide },
+                .{ "forceHide", forceHide },
+                .{ "subscribe", subscribe },
+                .{ "unsubscribe", unsubcribe },
+            },
+            .events = &.{
+                .mika_close_request,
+                .mika_show_request,
+                .mika_hide_request,
+                .mika_open,
+                .mika_close,
+                .mika_show,
+                .mika_hide,
+            },
         };
+    }
+    pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
+        const event = try args.uInteger(1);
+        try self.app.emitter.subscribe(args, @enumFromInt(event));
+    }
+    pub fn unsubcribe(self: *Self, args: Args, _: *Result) !void {
+        const event = try args.uInteger(1);
+        try self.app.emitter.unsubscribe(args, @enumFromInt(event));
+    }
+    pub fn getId(_: *Self, args: Args, result: *Result) !void {
+        const id = args.uInteger(0) catch unreachable;
+        result.commit(id);
     }
     pub fn open(self: *Self, args: Args, result: *Result) !void {
         const pageName = try args.string(1);
         const webview = try self.app.open(pageName);
-        const id = webview.impl.getPageId();
-        result.commit(id);
+        result.commit(webview.id);
     }
     pub fn close(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
-        w.close();
+        self.app.closeRequest(w);
     }
     pub fn forceClose(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
         w.forceClose();
     }
     pub fn show(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
-        w.show();
+        self.app.showRequest(w);
     }
     pub fn forceShow(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
         w.forceShow();
     }
     pub fn hide(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
-        w.hide();
+        self.app.hideRequest(w);
     }
     pub fn forceHide(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+        var id = try args.uInteger(1);
+        if (id == 0) id = args.uInteger(0) catch unreachable;
         const w = try self.app.getWebview(id);
         w.forceHide();
     }

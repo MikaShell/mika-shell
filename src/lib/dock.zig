@@ -87,6 +87,7 @@ pub const Dock = struct {
     }
     pub fn list(self: *Self, allocator: Allocator) ![]Item {
         var items = std.ArrayList(Item).init(allocator);
+        errdefer items.deinit();
         var it = self.windows.iterator();
         while (it.next()) |kv| {
             const value = kv.value_ptr.*;

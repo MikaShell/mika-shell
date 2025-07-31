@@ -207,6 +207,7 @@ pub fn run() !void {
     return r.run(&cliApp);
 }
 const wayland = @import("wayland");
+const events = @import("events.zig");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -227,15 +228,17 @@ pub fn daemon() !void {
         },
         else => return err,
     };
+    var eventChannel = try events.EventChannel.init();
+    defer eventChannel.deinit();
 
-    var assetsserver = try assets.Server.init(allocator, configDir);
+    var assetsserver = try assets.Server.init(allocator, configDir, &eventChannel);
     defer {
         assetsserver.stop();
         assetsserver.deinit();
     }
     _ = try assetsserver.start();
 
-    const app = try App.init(allocator, configDir);
+    const app = try App.init(allocator, configDir, &eventChannel);
     defer app.deinit();
 
     try wayland.init(allocator);

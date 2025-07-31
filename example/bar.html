@@ -156,7 +156,7 @@
                 }
             );
             mikaShell.tray.proxy(proxy);
-            mikaShell.window.on("close", () => {
+            mikaShell.layer.on("close-request", () => {
                 tray.unproxy(proxy);
             });
         </script>

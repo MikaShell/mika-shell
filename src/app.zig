@@ -9,12 +9,14 @@ pub const WebviewType = enum {
 };
 pub const WindowOptions = @import("./modules/window.zig").Options;
 pub const LayerOptions = @import("./modules/layer.zig").Options;
+var idCount: u32 = 99;
 pub const Webview = struct {
     const Info = struct {
         type: []const u8,
         id: u64,
         uri: []const u8,
     };
+    id: u64,
     allocator: Allocator,
     name: []const u8,
     type: WebviewType,
@@ -28,7 +30,9 @@ pub const Webview = struct {
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
     pub fn init(allocator: Allocator, m: *Modules, name: []const u8) !*Webview {
         const w = try allocator.create(Webview);
+        idCount += 1;
         w.* = .{
+            .id = @intCast(idCount),
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .impl = webkit.WebView.new(),
@@ -37,26 +41,6 @@ pub const Webview = struct {
             .options = undefined,
             .type = .None,
         };
-        w.container.asWidget().connect(.hide, struct {
-            fn f(_: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const w_: *Webview = @ptrCast(@alignCast(data));
-                if (w_.type == .Layer) {
-                    w_.emitEvent(events.Layer.hide, null);
-                } else {
-                    w_.emitEvent(events.Window.hide, null);
-                }
-            }
-        }.f, w);
-        w.container.asWidget().connect(.show, struct {
-            fn f(_: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const w_: *Webview = @ptrCast(@alignCast(data));
-                if (w_.type == .Layer) {
-                    w_.emitEvent(events.Layer.show, null);
-                } else {
-                    w_.emitEvent(events.Window.show, null);
-                }
-            }
-        }.f, w);
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
         settings.setEnableDeveloperExtras(true);
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
@@ -98,12 +82,12 @@ pub const Webview = struct {
                 }
                 var args = std.ArrayList(std.json.Value).init(alc);
                 defer args.deinit();
-                args.append(std.json.Value{ .integer = @intCast(wv.impl.getPageId()) }) catch unreachable;
+                args.append(std.json.Value{ .integer = @intCast(wv.id) }) catch unreachable;
                 args.appendSlice(origin_args.?.array.items) catch unreachable;
                 const value = Args{
                     .items = args.items,
                 };
-                std.log.debug("Received message from JS: [{d}] {s}  ", .{ wv.impl.getPageId(), v.toJson(0) });
+                std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
                 wv._modules.call(method.?.string, value, &result) catch |err| blk: {
                     if (result.err != null) break :blk;
                     const msg = std.fmt.allocPrint(alc, "Failed to call method {s}: {s}", .{ method.?.string, @errorName(err) }) catch unreachable;
@@ -122,14 +106,6 @@ pub const Webview = struct {
         w.container.setChild(w.impl.asWidget());
         return w;
     }
-    pub fn emitEvent(self: *Webview, name: []const u8, data: anytype) void {
-        const alc = std.heap.page_allocator;
-        const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
-        defer alc.free(dataJson);
-        const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('mika-shell-event', {{ detail: {{ name: '{s}', data: {s} }} }}));", .{ name, dataJson }) catch unreachable;
-        defer alc.free(js);
-        self.impl.evaluateJavaScript(js);
-    }
     pub fn getInfo(self: *Webview) Info {
         return Info{
             .type = switch (self.type) {
@@ -137,26 +113,9 @@ pub const Webview = struct {
                 .Window => "window",
                 .Layer => "layer",
             },
-            .id = self.impl.getPageId(),
+            .id = self.id,
             .uri = self.impl.getUri(),
         };
-    }
-    pub fn close(self: *Webview) void {
-        const id = self.impl.getPageId();
-        self.emitEvent(events.Mika.tryClose, id);
-    }
-    pub fn show(self: *Webview) void {
-        if (self.container.asWidget().getVisible()) {
-            self.forceShow();
-            return;
-        }
-        const id = self.impl.getPageId();
-        self.emitEvent(events.Mika.tryShow, id);
-    }
-    pub fn hide(self: *Webview) void {
-        if (!self.container.asWidget().getVisible()) return;
-        const id = self.impl.getPageId();
-        self.emitEvent(events.Mika.tryHide, id);
     }
     pub fn forceClose(self: *Webview) void {
         self.allocator.free(self.name);
@@ -179,6 +138,7 @@ pub const Webview = struct {
 const dbus = @import("dbus");
 const Allocator = std.mem.Allocator;
 const Modules = @import("modules.zig").Modules;
+const Emitter = @import("modules.zig").Emitter;
 const Result = @import("modules/modules.zig").Result;
 const Args = @import("modules/modules.zig").Args;
 pub const Error = error{
@@ -247,7 +207,8 @@ pub const App = struct {
     systemBus: *dbus.Bus,
     sessionBusWatcher: dbus.GLibWatch,
     systemBusWatcher: dbus.GLibWatch,
-    pub fn init(allocator: Allocator, configDir: []const u8) !*App {
+    emitter: *Emitter,
+    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
         app.config = try Config.load(allocator, configDir);
@@ -286,6 +247,8 @@ pub const App = struct {
         try modules.mount(@import("modules/network.zig").Network, "network");
         try modules.mount(@import("modules/dock.zig").Dock, "dock");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
+
+        app.emitter = try Emitter.init(app, allocator, eventChannel, modules.eventGroups.items);
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
@@ -330,80 +293,88 @@ pub const App = struct {
         webview.container.asWidget().getStyleContext().addCssProvider(cssProvider);
         webview.container.connect(.closeRequest, struct {
             fn f(w: *gtk.Window, data: ?*anyopaque) callconv(.c) c_int {
-                const wb = w.asWidget().getFirstChild().?.as(webkit.WebView);
                 const a: *App = @ptrCast(@alignCast(data));
-                const targetID = wb.getPageId();
-                const target = a.getWebview(targetID) catch unreachable;
-                target.emitEvent(events.Mika.tryClose, targetID);
+                const wb = a.getWebview2(w.asWidget());
+                const id = wb.id;
+                a.emitEvent2(wb, .mika_close_request, id);
                 return 1;
             }
         }.f, self);
-        webview.impl.asWidget().connect(.destroy, &struct {
-            fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const target: *webkit.WebView = @ptrCast(widget);
+        webview.container.asWidget().connect(.destroy, &struct {
+            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const a: *App = @ptrCast(@alignCast(data));
                 if (a.isQuit) return;
-                const targetID = target.getPageId();
+                const id = a.getWebview2(w).id;
                 a.mutex.lock();
                 defer a.mutex.unlock();
-                for (a.webviews.items, 0..a.webviews.items.len) |w, i| {
-                    if (w.impl.getPageId() == targetID) {
+                for (a.webviews.items, 0..a.webviews.items.len) |w_, i| {
+                    if (w_.id == id) {
                         _ = a.webviews.orderedRemove(i);
+                        a.emitEvent2(null, .mika_close, id);
                         break;
                     }
                 }
-                a.emitEvent(events.Mika.close, targetID);
             }
         }.f, self);
         webview.container.asWidget().connect(.show, struct {
             fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const wb = w.getFirstChild().?.as(webkit.WebView);
                 const a: *App = @ptrCast(@alignCast(data));
-                const targetID = wb.getPageId();
-                const target = a.getWebview(targetID) catch unreachable;
-                target.emitEvent(events.Mika.show, targetID);
+                const wb = a.getWebview2(w);
+                a.emitEvent2(null, .mika_show, wb.id);
             }
         }.f, self);
         webview.container.asWidget().connect(.hide, struct {
             fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const wb = w.getFirstChild().?.as(webkit.WebView);
                 const a: *App = @ptrCast(@alignCast(data));
-                const targetID = wb.getPageId();
-                const target = a.getWebview(targetID) catch unreachable;
-                target.emitEvent(events.Mika.hide, targetID);
+                const wb = a.getWebview2(w);
+                a.emitEvent2(null, .mika_hide, wb.id);
             }
         }.f, self);
         const info = webview.getInfo();
-        self.emitEventIgnore(info.id, events.Mika.open, info);
+        self.emitEvent(.mika_open, info);
         return webview;
     }
     pub fn getWebview(self: *App, id: u64) !*Webview {
         for (self.webviews.items) |webview| {
-            if (webview.impl.getPageId() == id) {
+            if (webview.id == id) {
                 return webview;
             }
         }
         return Error.WebviewNotExists;
     }
-    /// 发送事件，忽略指定 id 的 webview
-    pub fn emitEventIgnore(self: *App, ignore: u64, name: []const u8, data: anytype) void {
+    fn getWebview2(self: *App, widget: *gtk.Widget) *Webview {
         for (self.webviews.items) |webview| {
-            if (webview.impl.getPageId() == ignore) {
-                continue;
+            if (webview.container.asWidget() == widget or webview.impl.asWidget() == widget) {
+                return webview;
             }
-            webview.emitEvent(name, data);
+        }
+        unreachable;
+    }
+    pub fn emitEvent(self: *App, event: events.Events, data: anytype) void {
+        self.emitter.emit(event, data);
+    }
+    pub fn emitEvent2(self: *App, dist: ?*Webview, event: events.Events, data: anytype) void {
+        const alc = std.heap.page_allocator;
+        const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
+        defer alc.free(dataJson);
+        const js = std.fmt.allocPrint(alc, "window.dispatchEvent(new CustomEvent('mika-shell-event', {{ detail: {{ event: {d}, data: {s} }} }}));", .{ @intFromEnum(event), dataJson }) catch unreachable;
+        defer alc.free(js);
+        if (dist) |w| {
+            w.impl.evaluateJavaScript(js);
+        } else {
+            for (self.webviews.items) |w| {
+                w.impl.evaluateJavaScript(js);
+            }
         }
     }
-    /// 向所有 webview 发送事件
-    pub fn emitEvent(self: *App, name: []const u8, data: anytype) void {
-        for (self.webviews.items) |webview| {
-            webview.emitEvent(name, data);
-        }
+    pub fn showRequest(self: *App, w: *Webview) void {
+        self.emitEvent2(w, .mika_show_request, w.id);
     }
-    pub fn emitEventTo(self: *App, id: u64, name: []const u8, data: anytype) bool {
-        const webview = self.getWebview(id) catch return false;
-        webview.emitEvent(name, data);
-        return true;
+    pub fn hideRequest(self: *App, w: *Webview) void {
+        self.emitEvent2(w, .mika_hide_request, w.id);
+    }
+    pub fn closeRequest(self: *App, w: *Webview) void {
+        self.emitEvent2(w, .mika_close_request, w.id);
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell
