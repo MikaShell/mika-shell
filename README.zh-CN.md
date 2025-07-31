@@ -88,29 +88,28 @@ mika-shell 将模块暴露到 window.mikaShell 中，我还编写了 npm 包用�
 
 配置文件和资源文件默认存放在 `$HOME/.config/mika-shell/` 中，可以使用命令行 `-c` 或者环境变量 `MIKASHELL_CONFIG_DIR` 来更改。配置文件 `mika-shell.json` 存放在其中，文件夹中的其他文件是前端资源。
 
-    ```json
-    {
-        "name": "Example",
-        "description": "This is an example mika-shell configuration file",
-        "pages": [
-            // 在这里声明前端拥有的页面，name 由你决定，但是必须唯一。你可以使用 `mika-shell pages` 命令来查看当前的页面列表。
-            // path 是前端页面的路径。
-            {
-                "name": "index",
-                "description": "This is the main page",
-                "path": "/index.html" // or '/'
-            },
-            {
-                "name": "tray",
-                "path": "/#/tray"
-            },
-            {
-                "name": "bongocat",
-                "path": "/bongocat.html"
-            }
-        ],
-        // 在 startup 数组中声明的页面会在 mika-shell 启动时自动打开。
-        "startup": ["bar", "bongocat"]
-    }
-
-    ```
+```jsonc
+{
+    "name": "Example",
+    "description": "This is an example mika-shell configuration file",
+    "pages": [
+        // 在这里声明前端拥有的页面，name 由你决定，但是必须唯一。你可以使用 `mika-shell pages` 命令来查看当前的页面列表。
+        // path 是前端页面的路径。
+        {
+            "name": "index",
+            "description": "This is the main page",
+            "path": "/index.html" // or '/'
+        },
+        {
+            "name": "tray",
+            "path": "/#/tray"
+        },
+        {
+            "name": "bongocat",
+            "path": "/bongocat.html"
+        }
+    ],
+    // 在 startup 数组中声明的页面会在 mika-shell 启动时自动打开。
+    "startup": ["bar", "bongocat"]
+}
+```
