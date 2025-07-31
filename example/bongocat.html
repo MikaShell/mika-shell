@@ -240,7 +240,7 @@ https://github.com/ayangweb/BongoCat 的简单实现
                     }
                 });
                 mikaShell.libinput.on("pointer-button", (e) => {
-                    if (e.button !== 272 || e.button !== 273) return;
+                    if (e.button !== 272 && e.button !== 273) return;
                     const id = e.button === 272 ? "ParamMouseLeftDown" : "ParamMouseRightDown";
                     setParameterValue(id, e.state === 1);
                 });

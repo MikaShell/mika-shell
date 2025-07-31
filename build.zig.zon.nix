@@ -132,11 +132,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AAIKCDgBX6hRMzFmvC-WAwrOH_ewvZgAzPGbBvavk";
+    name = "N-V-__8AAIKCDgB-xcOecIu1Xj1wfMd91LarDfqz7lLranYp";
     path = fetchZigArtifact {
       name = "wayland-protocols";
-      url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#1.45";
-      hash = "sha256-EKmoeF00BRhSY2bccLZTYH907fVy+tHm27ccvAPZTrQ=";
+      url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#b3f29d8a41320a9231587835ee5e485f4a5f6eba";
+      hash = "sha256-xkB9CYppLgp+cGlqb6teo+jS7qlp7akgIEv4mSdbvvg=";
     };
   }
   {

@@ -29,8 +29,8 @@
             .hash = "N-V-__8AAKq3AQDAxXNMWRVkNSQxyXYDjTZGuXQFj3G0CwAe",
         },
         .@"wayland-protocols" = .{
-            .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#1.45",
-            .hash = "N-V-__8AAIKCDgBX6hRMzFmvC-WAwrOH_ewvZgAzPGbBvavk",
+            .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#b3f29d8a41320a9231587835ee5e485f4a5f6eba",
+            .hash = "N-V-__8AAIKCDgB-xcOecIu1Xj1wfMd91LarDfqz7lLranYp",
         },
     },
 
