@@ -87,7 +87,7 @@ pub fn build(b: *std.Build) void {
 
     // EXAMPLE
     const example_mod = b.createModule(.{
-        .root_source_file = b.path("example/example.zig"),
+        .root_source_file = b.path("example.zig"),
         .target = target,
         .optimize = optimize,
     });
