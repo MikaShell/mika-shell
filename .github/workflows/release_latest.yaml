@@ -19,7 +19,12 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
-            - name: Download Artifact
+            - name: Download Debug Artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: mika-shell-debug
+
+            - name: Download Release Artifact
               uses: actions/download-artifact@v4
               with:
                   name: mika-shell
@@ -45,4 +50,6 @@ jobs:
                   body: "自动发布于 commit: ${{ env.sha_short }}"
                   draft: false
                   prerelease: false
-                  files: mika-shell
+                  files: |
+                      mika-shell
+                      mika-shell-debug

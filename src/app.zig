@@ -203,6 +203,7 @@ pub const App = struct {
     webviews: std.ArrayList(*Webview),
     allocator: Allocator,
     config: Config,
+    configDir: []const u8,
     sessionBus: *dbus.Bus,
     systemBus: *dbus.Bus,
     sessionBusWatcher: dbus.GLibWatch,
@@ -213,6 +214,7 @@ pub const App = struct {
         errdefer allocator.destroy(app);
         app.config = try Config.load(allocator, configDir);
         errdefer app.config.deinit(allocator);
+        app.configDir = try std.fs.path.resolve(allocator, &.{configDir});
         app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
@@ -268,7 +270,7 @@ pub const App = struct {
         self.systemBus.deinit();
 
         self.config.deinit(self.allocator);
-
+        self.allocator.free(self.configDir);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {

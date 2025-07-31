@@ -26,6 +26,9 @@ export function forceClose(id: number): Promise<void> {
 export function getId(): Promise<number> {
     return call("mika.getId");
 }
+export function getConfigDir(): Promise<string> {
+    return call("mika.getConfigDir");
+}
 function dispatch(event: number): boolean {
     var cando = true;
     if (listeners.has(event)) {

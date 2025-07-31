@@ -34,6 +34,7 @@ pub const Mika = struct {
                 .{ "forceHide", forceHide },
                 .{ "subscribe", subscribe },
                 .{ "unsubscribe", unsubcribe },
+                .{ "getConfigDir", getConfigDir },
             },
             .events = &.{
                 .mika_close_request,
@@ -45,6 +46,9 @@ pub const Mika = struct {
                 .mika_hide,
             },
         };
+    }
+    pub fn getConfigDir(self: *Self, _: Args, result: *Result) !void {
+        result.commit(self.app.configDir);
     }
     pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
         const event = try args.uInteger(1);
