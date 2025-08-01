@@ -42,9 +42,8 @@ in
     pname = "mika-shell";
     version = "0.0.0";
     src = ../.;
-    postPatch = ''
-      ln -s ${callPackage ../build.zig.zon.nix {name = "mika-shell-cache-${finalAttrs.version}";}} $ZIG_GLOBAL_CACHE_DIR/p
-    '';
+    deps = callPackage ../build.zig.zon.nix {name = "mika-shell-cache-${finalAttrs.version}";};
+    zigBuildFlags = ["--system" "${finalAttrs.deps}"];
     nativeBuildInputs = [
       custom-pkg-config
       pkg-config

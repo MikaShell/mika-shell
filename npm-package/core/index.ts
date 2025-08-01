@@ -11,6 +11,7 @@ import * as notifd from "./notifd";
 import * as network from "./network";
 import * as dock from "./dock";
 import * as libinput from "./libinput";
+
 function socket(path: string) {
     return new WebSocket(`ws://localhost:6797/${path}`);
 }
@@ -37,5 +38,20 @@ declare global {
     }
 }
 // @ts-ignore
-window.mikaShell = mikaShell;
-export default mikaShell;
+window.mikaShell = core;
+export {
+    tray,
+    icon,
+    os,
+    window_ as window,
+    layer,
+    mika,
+    call,
+    socket,
+    apps,
+    monitor,
+    notifd,
+    network,
+    dock,
+    libinput,
+};

@@ -2,6 +2,7 @@
 .envrc
 .vscode
 result
+node_modules
 npm-package/bindings
 npm-package/dist/*
 !npm-package/dist/package.json
@@ -15,4 +16,3 @@ perf.data*
 src/bindings.js
 example/extra.js
 example/public/BongoCat
-npm-package/core/events-enum.ts

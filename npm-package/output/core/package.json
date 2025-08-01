@@ -1,6 +1,6 @@
 {
     "name": "@mika-shell/core",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "description": "MikaShell frontend core library",
     "repository": {
         "type": "git",

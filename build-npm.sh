@@ -7,7 +7,9 @@ else
     echo "Invalid argument, please use either 'core' or 'extra'"
 fi
 
-
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
 if [ "$2" = "pack" ]; then
     npm pack ./npm-package/output/$1

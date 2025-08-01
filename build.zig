@@ -103,9 +103,13 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
         .optimize = optimize,
     });
-    exe.step.dependOn(generate.js_binding(b, optimize, "src/bindings.js"));
-    exe.step.dependOn(generate.extra_js_binding(b, "example/extra.js"));
-    exe.step.dependOn(generate.events(b, "npm-package/core/events-define.ts"));
+    const generate_js_binding_step = generate.js_binding(b, optimize, "src/bindings.js");
+    const generate_extra_js_binding_step = generate.extra_js_binding(b, "example/extra.js");
+    const generate_events_step = generate.events(b, "npm-package/core/events-define.ts");
+
+    exe.step.dependOn(generate_js_binding_step);
+    exe.step.dependOn(generate_extra_js_binding_step);
+    exe.step.dependOn(generate_events_step);
 
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
@@ -139,6 +143,11 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const generate_cmd = b.step("generate", "Generate bindings and events");
+    generate_cmd.dependOn(generate_js_binding_step);
+    generate_cmd.dependOn(generate_extra_js_binding_step);
+    generate_cmd.dependOn(generate_events_step);
     // TEST
     const test_step = b.step("test", "Run unit tests");
     const test_dbus_step = b.step("test-dbus", "Run dbus unit tests");
