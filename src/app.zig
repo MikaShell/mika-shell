@@ -421,5 +421,5 @@ pub fn getConfigDir(allocator: Allocator) ![]const u8 {
         return error.NoConfigDir;
     }
     defer allocator.free(baseConfigDir);
-    return try join(allocator, &.{ baseConfigDir, "mika-shell" });
+    return try std.fs.path.resolve(allocator, &.{ baseConfigDir, "mika-shell" });
 }

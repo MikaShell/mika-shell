@@ -29,12 +29,12 @@
     #!/usr/bin/env bash
     exec ${pkgs.pkg-config}/bin/pkg-config "$@" | sed 's/-mfpmath=sse//g'
   '';
-  optimize =
+  release =
     if debug
-    then "Debug"
-    else "ReleaseFast";
+    then "off"
+    else "fast";
   zig_hook = zig_0_14.hook.overrideAttrs {
-    zig_default_flags = "-Dcpu=baseline -Doptimize=${optimize} --color off";
+    zig_default_flags = "--release=${release} --color off";
   };
 in
   stdenv.mkDerivation (finalAttrs: {
@@ -52,6 +52,7 @@ in
       zig_hook
       wrapGAppsHook4
     ];
+    dontStrip = debug;
     buildInputs = [
       gtk4
       glib-networking

@@ -222,23 +222,43 @@ pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
     defer if (config.daemon.dev_server) |ds| allocator.free(ds);
-    // TODO: 完善报错信息
     const configDir = blk: {
         if (config.daemon.config_dir.len > 0) {
-            break :blk try std.fs.realpathAlloc(allocator, config.daemon.config_dir);
+            const absPath = abs: {
+                if (std.fs.path.isAbsolute(config.daemon.config_dir)) {
+                    break :abs try allocator.dupe(u8, config.daemon.config_dir);
+                }
+                const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+                defer allocator.free(cwd);
+                break :abs try std.fs.path.join(allocator, &.{ cwd, config.daemon.config_dir });
+            };
+            defer allocator.free(absPath);
+            break :blk try std.fs.path.resolve(allocator, &.{absPath});
         } else {
             break :blk try getConfigDir(allocator);
         }
     };
     defer allocator.free(configDir);
     std.log.info("ConfigDir: {s}", .{configDir});
-
-    std.fs.accessAbsolute(configDir, .{}) catch |err| switch (err) {
-        error.FileNotFound => {
-            try @import("example").write(configDir);
-        },
-        else => return err,
-    };
+    blk: {
+        if (config.daemon.dev_server != null) break :blk;
+        var err: ?anyerror = null;
+        if (std.fs.path.isAbsolute(configDir)) {
+            std.fs.accessAbsolute(configDir, .{}) catch |e| {
+                err = e;
+            };
+        } else {
+            std.fs.cwd().access(configDir, .{}) catch |e| {
+                err = e;
+            };
+        }
+        if (err) |e| switch (e) {
+            error.FileNotFound => {
+                try @import("example").write(configDir);
+            },
+            else => return e,
+        };
+    }
     var eventChannel = try events.EventChannel.init();
     defer eventChannel.deinit();
 

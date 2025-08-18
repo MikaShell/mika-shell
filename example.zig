@@ -1,3 +1,4 @@
+const prefix = "example/";
 const filenames = [_][]const u8{
     "example/mika-shell.json",
     "example/debug/style.css",
@@ -23,7 +24,7 @@ const File = struct {
 pub const files = blk: {
     var f: [filenames.len]File = undefined;
     for (filenames, 0..) |name, i| {
-        f[i].name = name;
+        f[i].name = name[prefix.len..];
         f[i].bytes = @embedFile(name);
     }
     break :blk f;
@@ -42,8 +43,9 @@ pub fn write(dirPath: []const u8) !void {
         try mkdir(dirPath);
         dir = try fs.openDirAbsolute(dirPath, .{});
     } else {
-        try dir.makePath(dirPath);
-        dir = try fs.cwd().openDir(dirPath, .{});
+        var cwd = fs.cwd();
+        try cwd.makePath(dirPath);
+        dir = try cwd.openDir(dirPath, .{});
     }
     defer dir.close();
     for (files) |file| {
@@ -58,4 +60,9 @@ fn mkdir(path: []const u8) !void {
         try fs.makeDirAbsolute(path);
         return;
     };
+}
+
+test "write" {
+    const path = "example_test_output";
+    try write(path);
 }

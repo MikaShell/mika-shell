@@ -11,7 +11,7 @@ const App = @import("../app.zig").App;
 const Webview = @import("../app.zig").Webview;
 const Events = @import("../events.zig").Events;
 fn trayWatcherThread(flag: *std.atomic.Value(bool)) !void {
-    defer flag.store(false, .release);
+    defer flag.store(true, .release);
     const allocator = std.heap.page_allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
     defer bus.deinit();
