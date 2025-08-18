@@ -26,7 +26,14 @@ mika-shell 在后端实现了一系列与桌面交互的部分，例如'通知�
 
 ### 模块
 
-mika-shell 将模块暴露到 window.mikaShell 中，我还编写了 npm 包用于从前端调用模块以实现类型提示，但是该项目还在前期开发阶段，npm 包还没有发布，你可以使用仓库中的 build-npm.sh 脚本来构建 npm 包。
+mika-shell 将模块暴露到 window.mikaShell 中，可以通过 npm 来安装：
+
+```bash
+# 主要用于类型提示，即使不安装 core, 你也可以直接通过 window.mikaShell 使用
+npm install -D @mika-shell/core
+# 一些与不由 mika-shell 后端直接实现的模块，例如 Hyprland 模块在 extra 包中
+npm install @mika-shell/extra
+```
 
 以下是目前已经实现或者部分实现的模块
 

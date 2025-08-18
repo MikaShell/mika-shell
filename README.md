@@ -27,7 +27,14 @@ MikaShell implements backend functionalities that handle desktop interactions, s
 
 ### Modules
 
-MikaShell exposes modules under `window.mikaShell`. An NPM package has also been written to enable type hints when calling these modules from the frontend. However, the project is still in an early development phase and the NPM package has not been published yet. You can build it manually using the `build-npm.sh` script in the repository.
+mika-shell exposes modules to `window.mikaShell`. You can install them via npm:
+
+```bash
+# The core module is required for type hinting, even if you don't install it directly.
+npm install -D @mika-shell/core
+# Some modules are implemented by mika-shell itself, such as Hyprland in the extra package.
+npm install @mika-shell/extra
+```
 
 Below is a list of modules that are currently implemented or partially implemented:
 
