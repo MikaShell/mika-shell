@@ -93,42 +93,11 @@
             }
         </style>
         <script>
-            const pickIcon = (icons, size) => {
-                if (!Array.isArray(icons) || icons.length === 0) return null;
-
-                let closest = icons[0];
-                let minDiff = Math.abs(closest.width - size);
-
-                for (let i = 1; i < icons.length; i++) {
-                    const diff = Math.abs(icons[i].width - size);
-                    if (diff < minDiff) {
-                        closest = icons[i];
-                        minDiff = diff;
-                    }
-                }
-
-                return closest;
-            };
-            const arrayToUrl = (arr) => {
-                const uint8Array = new Uint8Array(arr);
-                const blob = new Blob([uint8Array], { type: "image/png" });
-                const imageUrl = URL.createObjectURL(blob);
-                return imageUrl;
-            };
-            function updateTray(item) {
+            const addTrayIcon = async (item) => {
+                const tray = mikaShell.tray;
                 const div = document.getElementById("tray");
-                item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
-                const imageUrl = arrayToUrl(pickIcon(item.icon.pixmap, 32).webp);
-                for (let i = 0; i < div.children.length; i++) {
-                    const img = div.children[i];
-                    if (img.dataset.service !== item.service) continue;
-                    URL.revokeObjectURL(img.src);
-                    img.src = imageUrl;
-                    return;
-                }
-
                 const img = document.createElement("img");
-                img.src = imageUrl;
+                img.src = tray.pickIcon(item, 256);
                 img.className = "tray-icon";
                 img.dataset["service"] = item.service;
                 img.addEventListener("contextmenu", function (e) {
@@ -139,25 +108,23 @@
                 });
                 img.onclick = () => mikaShell.tray.activate(item.service, 0, 0);
                 div.appendChild(img);
-            }
-            const proxy = new Proxy(
-                {},
-                {
-                    set: (target, prop, value) => {
-                        updateTray(value);
-                        return Reflect.set(target, prop, value);
-                    },
-                    deleteProperty: (target, prop) => {
-                        const div = document.getElementById("tray");
-                        const img = div.querySelector(`img[data-service="${prop}"]`);
-                        if (img) div.removeChild(img);
-                        return Reflect.defineProperty(target, prop);
-                    },
+            };
+            mikaShell.tray.on("added", async (service) => {
+                addTrayIcon(await mikaShell.tray.getItem(service));
+            });
+            mikaShell.tray.on("removed", (service) => {
+                const img = div.querySelector(`img[data-service="${service}"]`);
+                if (img) img.parentNode.removeChild(img);
+            });
+            mikaShell.tray.on("changed", async (service) => {
+                const tray = mikaShell.tray;
+                const img = document.querySelector(`img[data-service="${service}"]`);
+                img.src = tray.pickIcon(await tray.getItem(service), 256);
+            });
+            mikaShell.tray.getItems().then((items) => {
+                for (const item of items) {
+                    addTrayIcon(item);
                 }
-            );
-            mikaShell.tray.proxy(proxy);
-            mikaShell.layer.on("close-request", () => {
-                tray.unproxy(proxy);
             });
         </script>
         <!-- Hyprland Workspace -->
@@ -179,19 +146,19 @@
                 width: 10px;
                 height: 10px;
                 box-sizing: border-box;
-                border: solid 1px #d1d1d199;
-                background-color: #5b5b5b8e;
                 border-radius: 50%;
                 transition: background-color 0.2s ease;
-            }
-
-            .hyprland-workspace[data-active="true"] {
-                border: none;
-                background-color: #42d475;
-            }
-            .hyprland-workspace[data-active="false"] {
                 border: none;
                 background-color: #4f96b6;
+            }
+
+            .hyprland-workspace-empty {
+                border: solid 1px #d1d1d199;
+                background-color: #5b5b5b8e;
+            }
+            .hyprland-workspace-active {
+                border: none;
+                background-color: #42d475 !important;
             }
         </style>
         <script type="module">
@@ -201,51 +168,51 @@
                 e.preventDefault();
                 hyprland.command.dispatch("workspace", e.deltaY > 0 ? "+1" : "-1");
             });
-
-            const removeWorkspace = (index) => {
-                const dom = hyprlandWorkspaces;
-                const el = dom.children[index];
-                dom.removeChild(el);
-            };
-            const addWorkspace = (index, value) => {
+            const addWorkspace = (isEmpty = false) => {
                 const dom = hyprlandWorkspaces;
                 const el = document.createElement("div");
                 el.classList.add("hyprland-workspace");
                 el.addEventListener("click", () => {
-                    hyprland.command.dispatch("workspace", index + 1);
+                    hyprland.command.dispatch("workspace", dom.children.length);
                 });
+                if (isEmpty) {
+                    el.classList.add("hyprland-workspace-empty");
+                }
                 dom.appendChild(el);
-                if (value === null) {
-                    delete el.dataset.active;
-                    return;
-                }
-                el.dataset.active = value;
             };
-            const updateWorkspace = (index, value) => {
+            const activateWorkspace = (id) => {
                 const dom = hyprlandWorkspaces;
-                const el = dom.children[index];
-                if (value === null) {
-                    delete el.dataset.active;
-                    return;
-                }
-                el.dataset.active = value;
-            };
-
-            const workspaces = new Proxy([], {
-                set: (target, prop, value) => {
-                    const isIndex = String(Number(prop)) === prop;
-                    if (isIndex) {
-                        if (target[prop] !== undefined) updateWorkspace(Number(prop), value);
-                        else addWorkspace(Number(prop), value);
+                for (let i = 0; i < dom.children.length; i++) {
+                    const el = dom.children[i];
+                    el.classList.remove("hyprland-workspace-active");
+                    if (i === id - 1) {
+                        el.classList.add("hyprland-workspace-active");
                     }
-                    return Reflect.set(target, prop, value);
-                },
-                deleteProperty: (target, prop) => {
-                    removeWorkspace(Number(prop));
-                    return Reflect.deleteProperty(target, prop);
-                },
-            });
-            hyprland.workspace.proxy(workspaces);
+                }
+            };
+            const updateWorkspace = async () => {
+                const dom = hyprlandWorkspaces;
+                const ws = await hyprland.workspace.list();
+                dom.innerHTML = "";
+                let index = 1;
+                ws.sort((a, b) => a.id - b.id);
+                for (let i = 0; i < ws.length; i++) {
+                    if (index !== ws[i].id) {
+                        addWorkspace(true);
+                        i--;
+                    } else {
+                        addWorkspace();
+                    }
+                    index++;
+                }
+                hyprland.workspace.active().then((w) => activateWorkspace(w.id));
+            };
+            hyprland.workspace.on("create", updateWorkspace);
+            hyprland.workspace.on("destroy", updateWorkspace);
+            hyprland.workspace.on("active", ({ workspaceId, workspaceName }) =>
+                activateWorkspace(workspaceId)
+            );
+            updateWorkspace();
         </script>
     </head>
     <body>

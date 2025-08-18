@@ -10,28 +10,30 @@ export type Options = {
     width: number;
     height: number;
 };
-function _init(options: Partial<Options> = {}): Promise<void> {
+var isLoaded = false;
+window.addEventListener("load", () => (isLoaded = true));
+function _init(options: Partial<Options>): Promise<void> {
+    return call("window.init", options);
+}
+export function init(options: Partial<Options> = {}): Promise<void> {
     const opt: any = {
         title: options.title ?? "MikaShell Window",
         class: options.class ?? "mika-shell",
         resizable: options.resizable ?? true,
         backgroundTransparent: options.backgroundTransparent ?? false,
         hidden: options.hidden ?? false,
-        width: options.width ?? 0,
-        height: options.height ?? 0,
+        width: options.width ?? 800,
+        height: options.height ?? 600,
     };
-    return call("window.init", opt);
-}
-export function init(options: Partial<Options> = {}): Promise<void> {
-    if (options.resizable !== true) {
+    if (opt.resizable !== true && !isLoaded) {
         // 确保网页渲染完成后再显示, 防止窗口大小不正确
         return new Promise((resolve, reject) => {
             window.addEventListener("load", () => {
-                _init(options).then(resolve).catch(reject);
+                _init(opt).then(resolve).catch(reject);
             });
         });
     } else {
-        return _init(options);
+        return _init(opt);
     }
 }
 export function show(): Promise<void> {

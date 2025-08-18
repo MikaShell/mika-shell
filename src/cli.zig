@@ -8,6 +8,7 @@ const cli = @import("cli");
 var config = struct {
     daemon: struct {
         config_dir: []const u8 = undefined,
+        dev_server: ?[]const u8 = null,
     } = undefined,
     open: struct {
         pageName: []const u8 = undefined,
@@ -31,14 +32,23 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
         .description = .{
             .one_line = "run mika-shell as a daemon",
         },
-        .options = try r.allocOptions(&.{.{
-            .long_name = "config-dir",
-            .short_alias = 'c',
-            .help = "directory to store configuration files, defaults to $XDG_CONFIG_HOME/mika-shell or $HOME/.config/mika-shell",
-            // This was defined but never used. Consider using app.getConfigDir instead.
-            .value_ref = r.mkRef(&config.daemon.config_dir),
-            .envvar = "MIKASHELL_CONFIG_DIR",
-        }}),
+        .options = try r.allocOptions(&.{
+            .{
+                .long_name = "config-dir",
+                .short_alias = 'c',
+                .help = "directory to store configuration files, defaults to $XDG_CONFIG_HOME/mika-shell or $HOME/.config/mika-shell",
+                // This was defined but never used. Consider using app.getConfigDir instead.
+                .value_ref = r.mkRef(&config.daemon.config_dir),
+                .envvar = "MIKASHELL_CONFIG_DIR",
+            },
+            .{
+                .long_name = "dev-server",
+                .short_alias = 'd',
+                .help = "url to use for development, defaults to null",
+                .value_ref = r.mkRef(&config.daemon.dev_server),
+                .envvar = "MIKASHELL_DEV_SERVER",
+            },
+        }),
         .target = .{
             .action = .{ .exec = daemon },
         },
@@ -211,6 +221,7 @@ const events = @import("events.zig");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
+    defer if (config.daemon.dev_server) |ds| allocator.free(ds);
     // TODO: 完善报错信息
     const configDir = blk: {
         if (config.daemon.config_dir.len > 0) {
@@ -238,7 +249,7 @@ pub fn daemon() !void {
     }
     _ = try assetsserver.start();
 
-    const app = try App.init(allocator, configDir, &eventChannel);
+    const app = try App.init(allocator, configDir, &eventChannel, config.daemon.dev_server);
     defer app.deinit();
 
     try wayland.init(allocator);

@@ -21,7 +21,7 @@ const KeyboardModeToNumber = {
 };
 export type Options = {
     anchor: Array<Edge>;
-    layer: number;
+    layer: Layers;
     monitor: number;
     keyboardMode: number;
     namespace: string;

@@ -43,6 +43,14 @@ fn pixmapToWebp(
     defer c.WebPFree(output_ptr);
     return try allocator.dupe(u8, output_ptr[0..size]);
 }
+fn pixmapToBase64(allocator: std.mem.Allocator, heigth: i32, width: i32, argb: []const u8) ![]u8 {
+    const webp = try pixmapToWebp(allocator, width, heigth, argb);
+    defer allocator.free(webp);
+    var base64 = std.ArrayList(u8).init(allocator);
+    defer base64.deinit();
+    try std.base64.standard.Encoder.encodeWriter(base64.writer(), webp);
+    return try std.fmt.allocPrint(allocator, "data:image/webp;base64,{s}", .{base64.items});
+}
 const DBusPixmap = dbus.Array(dbus.Struct(.{
     dbus.Int32,
     dbus.Int32,
@@ -66,7 +74,7 @@ pub const Item = struct {
     pub const Pixmap = struct {
         width: i32,
         height: i32,
-        webp: []const u8,
+        base64: []const u8,
     };
     pub const Attention = struct {
         iconName: []const u8,
@@ -76,7 +84,7 @@ pub const Item = struct {
     pub const Icon = struct {
         name: []const u8,
         themePath: []const u8,
-        pixmap: []const Pixmap, // TODO: 改成浏览器可以直接使用的 base64
+        pixmap: []const Pixmap,
     };
     pub const Overlay = struct {
         iconName: []const u8,
@@ -206,7 +214,6 @@ pub const Item = struct {
                 self_.triggerListener();
             }
         }.f, self);
-
         // overlay
         self.data.overlay.iconName = "";
         self.data.overlay.iconPixmap = &.{};
@@ -298,7 +305,7 @@ pub const Item = struct {
         allocator.free(self.data.attention.iconName);
         allocator.free(self.data.attention.movieName);
         for (self.data.attention.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.attention.iconPixmap);
         self.data.attention.iconName = "";
@@ -326,7 +333,7 @@ pub const Item = struct {
         for (iconPixmap.value, 0..) |pixmap, i| {
             pixmaps[i].width = pixmap[0];
             pixmaps[i].height = pixmap[1];
-            pixmaps[i].webp = pixmapToWebp(allocator, pixmap[0], pixmap[1], pixmap[2]) catch {
+            pixmaps[i].base64 = pixmapToBase64(allocator, pixmap[0], pixmap[1], pixmap[2]) catch {
                 continue;
             };
         }
@@ -338,7 +345,7 @@ pub const Item = struct {
         allocator.free(self.data.icon.name);
         allocator.free(self.data.icon.themePath);
         for (self.data.icon.pixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.icon.pixmap);
         self.data.icon.name = "";
@@ -362,7 +369,7 @@ pub const Item = struct {
             pixmap.* = Pixmap{
                 .width = iconPixmap.value[i][0],
                 .height = iconPixmap.value[i][1],
-                .webp = pixmapToWebp(
+                .base64 = pixmapToBase64(
                     allocator,
                     iconPixmap.value[i][0],
                     iconPixmap.value[i][1],
@@ -379,7 +386,7 @@ pub const Item = struct {
         const allocator = self._allocator;
         allocator.free(self.data.overlay.iconName);
         for (self.data.overlay.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.overlay.iconPixmap);
         self.data.overlay.iconName = "";
@@ -396,7 +403,7 @@ pub const Item = struct {
         for (iconPixmap.value, 0..) |pixmap, i| {
             pixmaps[i].width = pixmap[0];
             pixmaps[i].height = pixmap[1];
-            pixmaps[i].webp = pixmapToWebp(allocator, pixmap[0], pixmap[1], pixmap[2]) catch {
+            pixmaps[i].base64 = pixmapToBase64(allocator, pixmap[0], pixmap[1], pixmap[2]) catch {
                 continue;
             };
         }
@@ -407,7 +414,7 @@ pub const Item = struct {
         const allocator = self._allocator;
         self.data.tooltip.iconName = "";
         for (self.data.tooltip.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.tooltip.iconPixmap);
         allocator.free(self.data.tooltip.title);
@@ -429,7 +436,7 @@ pub const Item = struct {
             pixmap.* = Pixmap{
                 .width = tooltip.value[1][i][0],
                 .height = tooltip.value[1][i][1],
-                .webp = pixmapToWebp(allocator, tooltip.value[1][i][0], tooltip.value[1][i][1], tooltip.value[1][i][2]) catch continue,
+                .base64 = pixmapToBase64(allocator, tooltip.value[1][i][0], tooltip.value[1][i][1], tooltip.value[1][i][2]) catch continue,
             };
         }
         self.data.tooltip.iconPixmap = pixmaps;
@@ -449,26 +456,26 @@ pub const Item = struct {
         allocator.free(self.data.attention.iconName);
         allocator.free(self.data.attention.movieName);
         for (self.data.attention.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.attention.iconPixmap);
         // icon
         allocator.free(self.data.icon.name);
         allocator.free(self.data.icon.themePath);
         for (self.data.icon.pixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.icon.pixmap);
         // overlay
         allocator.free(self.data.overlay.iconName);
         for (self.data.overlay.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.overlay.iconPixmap);
         // tooltip
         allocator.free(self.data.tooltip.iconName);
         for (self.data.tooltip.iconPixmap) |*pixmap| {
-            allocator.free(pixmap.webp);
+            allocator.free(pixmap.base64);
         }
         allocator.free(self.data.tooltip.iconPixmap);
         allocator.free(self.data.tooltip.title);

@@ -82,12 +82,6 @@ export async function getAll(): Promise<Notification[]> {
 export function dismiss(id: number): Promise<void> {
     return call("notifd.dismiss", id);
 }
-export function subscribe(): Promise<void> {
-    return call("notifd.subscribe");
-}
-export function unsubscribe(): Promise<void> {
-    return call("notifd.unsubscribe");
-}
 export function activate(id: number, action: string = "default"): Promise<void> {
     return call("notifd.activate", id, action);
 }
@@ -105,48 +99,4 @@ export function off<K extends Events>(event: K, callback: (id: number) => void) 
 }
 export function once<K extends Events>(event: K, callback: (id: number) => void) {
     events.once(Notifd[event], callback);
-}
-
-const proxied: Array<Notification[]> = [];
-const onAdded = async (id: number) => {
-    const item = await get(id);
-    if (item.replacesId === 0) {
-        for (const p of proxied) {
-            p.push(item);
-        }
-    } else {
-        for (const p of proxied) {
-            const index = p.findIndex((item) => item.id === item.replacesId);
-            if (index >= 0) {
-                p[index] = item;
-            } else {
-                p.push(item);
-            }
-        }
-    }
-};
-const onRemoved = async (id: number) => {
-    for (const p of proxied) {
-        const index = p.findIndex((item) => item.id === id);
-        if (index >= 0) {
-            p.splice(index, 1);
-        }
-    }
-};
-export function proxy(data: Notification[]) {
-    if (proxied.length === 0) {
-        on("added", onAdded);
-        on("removed", onRemoved);
-    }
-    proxied.push(data);
-}
-export function unproxy(data: Notification[]) {
-    const index = proxied.indexOf(data);
-    if (index >= 0) {
-        proxied.splice(index, 1);
-    }
-    if (proxied.length === 0) {
-        off("added", onAdded);
-        off("removed", onRemoved);
-    }
 }

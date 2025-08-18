@@ -1184,6 +1184,9 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
             child.stderr_behavior = .Ignore;
             child.stdin_behavior = .Ignore;
             child.stdout_behavior = .Ignore;
+            const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
+            defer if (home) |h| allocator.free(h);
+            child.cwd = home;
             try child.spawn();
             try child.waitForSpawn();
         } else {
@@ -1199,6 +1202,9 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
             child.stderr_behavior = .Ignore;
             child.stdin_behavior = .Ignore;
             child.stdout_behavior = .Ignore;
+            const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
+            defer if (home) |h| allocator.free(h);
+            child.cwd = home;
             try child.spawn();
             try child.waitForSpawn();
         }

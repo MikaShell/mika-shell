@@ -1,0 +1,14 @@
+export const tray = globalThis.mikaShell.tray;
+export const icon = globalThis.mikaShell.icon;
+export const os = globalThis.mikaShell.os;
+export const window = globalThis.mikaShell.window;
+export const layer = globalThis.mikaShell.layer;
+export const mika = globalThis.mikaShell.mika;
+export const call = globalThis.mikaShell.call;
+export const socket = globalThis.mikaShell.socket;
+export const apps = globalThis.mikaShell.apps;
+export const monitor = globalThis.mikaShell.monitor;
+export const notifd = globalThis.mikaShell.notifd;
+export const network = globalThis.mikaShell.network;
+export const dock = globalThis.mikaShell.dock;
+export const libinput = globalThis.mikaShell.libinput;

@@ -10,7 +10,8 @@ const dbus = @import("dbus");
 const App = @import("../app.zig").App;
 const Webview = @import("../app.zig").Webview;
 const Events = @import("../events.zig").Events;
-fn trayWatcherThread() !void {
+fn trayWatcherThread(flag: *std.atomic.Value(bool)) !void {
+    defer flag.store(false, .release);
     const allocator = std.heap.page_allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
     defer bus.deinit();
@@ -20,7 +21,7 @@ fn trayWatcherThread() !void {
         std.log.err("Failed to publish tray watcher: {any}", .{err});
         return;
     };
-
+    flag.store(true, .release);
     while (true) {
         if (!bus.conn.readWrite(-1)) return;
         while (bus.conn.dispatch() != .Complete) {}
@@ -32,6 +33,7 @@ pub const Tray = struct {
     app: *App,
     host: ?*tray.Host = null,
     bus: *dbus.Bus,
+    isWatcherInitialized: bool = false,
     pub fn init(ctx: Context) !*Self {
         const allocator = ctx.allocator;
         const self = try allocator.create(Self);
@@ -40,8 +42,6 @@ pub const Tray = struct {
             .app = ctx.app,
             .bus = ctx.sessionBus,
         };
-        // TODO: 这个线程需要关闭吗?
-        _ = try std.Thread.spawn(.{}, trayWatcherThread, .{});
         return self;
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
@@ -70,6 +70,15 @@ pub const Tray = struct {
     pub fn eventStart(self: *Self) !void {
         const allocator = self.allocator;
         const bus = self.bus;
+        if (!self.isWatcherInitialized) {
+            self.isWatcherInitialized = true;
+            var flag = std.atomic.Value(bool).init(false);
+            (try std.Thread.spawn(.{}, trayWatcherThread, .{&flag})).detach();
+            while (!flag.load(.acquire)) {
+                try std.Thread.yield();
+            }
+        }
+
         if (self.host == null) {
             self.host = try tray.Host.init(allocator, bus);
             try self.host.?.addListener(onItemUpdated, self);

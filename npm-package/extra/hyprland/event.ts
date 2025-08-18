@@ -142,7 +142,7 @@ function parseMessage(message: string) {
     const args = (parts.shift() || "").split(",");
     return { name, args };
 }
-type EventMap = {
+export type EventMap = {
     workspace: {
         workspaceName: string;
     };

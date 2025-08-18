@@ -46,7 +46,7 @@ pub fn events(b: *Build, comptime dist: []const u8) *Build.Step {
 pub fn js_binding(b: *Build, optimize: std.builtin.Mode, comptime dist: []const u8) *Build.Step {
     const cmd = b.addSystemCommand(&.{
         "esbuild",
-        "npm-package/core/index.ts",
+        "npm-package/core/bindings.ts",
         "--bundle",
         std.fmt.allocPrint(b.allocator, "--minify={}", .{optimize != .Debug}) catch @panic("OOM"),
         "--outfile=" ++ dist,

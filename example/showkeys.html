@@ -138,8 +138,7 @@
                 106: "←",
                 108: "→",
             };
-        </script>
-        <script>
+
             mikaShell.layer.init({
                 anchor: ["bottom", "left", "right"],
                 height: 200,
@@ -168,10 +167,10 @@
                 addKey(e.key);
             };
             window.addEventListener("load", () => {
-                mikaShell.libinput.on("keyboardKey", onKey);
+                mikaShell.libinput.on("keyboard-key", onKey);
             });
             window.addEventListener("unload", () => {
-                mikaShell.libinput.off("keyboardKey", onKey);
+                mikaShell.libinput.off("keyboard-key", onKey);
             });
         </script>
     </head>

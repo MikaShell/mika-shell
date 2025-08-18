@@ -28,28 +28,11 @@
                 width: 800,
                 height: 500,
             });
-            const tray = window.mikaShell.tray;
-
-            const arrayToUrl = (arr) => {
-                const uint8Array = new Uint8Array(arr);
-                const blob = new Blob([uint8Array], { type: "image/png" });
-                const imageUrl = URL.createObjectURL(blob);
-                return imageUrl;
-            };
-            function updata(item) {
+            const addTrayIcon = async (item) => {
+                const tray = mikaShell.tray;
                 const div = document.getElementById("tray");
-                item.icon.pixmap.sort((a, b) => b.width * b.height - a.width * a.height);
-                const imageUrl = arrayToUrl(item.icon.pixmap[0].webp);
-                for (let i = 0; i < div.children.length; i++) {
-                    const img = div.children[i];
-                    if (img.dataset.service !== item.service) continue;
-                    URL.revokeObjectURL(img.src);
-                    img.src = imageUrl;
-                    return;
-                }
-
                 const img = document.createElement("img");
-                img.src = imageUrl;
+                img.src = tray.pickIcon(item, 256);
                 img.className = "tray-icon";
                 img.dataset["service"] = item.service;
                 img.addEventListener("contextmenu", function (e) {
@@ -58,33 +41,25 @@
                         console.log("tray-menu", menu);
                     });
                 });
-                img.onclick = () => tray.activate(item.service, 0, 0);
+                img.onclick = () => mikaShell.tray.activate(item.service, 0, 0);
                 div.appendChild(img);
-            }
-            const proxy = new Proxy(
-                {},
-                {
-                    get: (target, prop) => {
-                        return target[prop];
-                    },
-                    set: (target, prop, value) => {
-                        target[prop] = value;
-                        updata(value);
-                        return true;
-                    },
-                    deleteProperty: (target, prop) => {
-                        delete target[prop];
-                        console.log("tray-removed", prop);
-                        const div = document.getElementById("tray");
-                        const img = div.querySelector(`img[data-service="${prop}"]`);
-                        if (img) div.removeChild(img);
-                        return true;
-                    },
+            };
+            mikaShell.tray.on("added", async (service) => {
+                addTrayIcon(await mikaShell.tray.getItem(service));
+            });
+            mikaShell.tray.on("removed", (service) => {
+                const img = div.querySelector(`img[data-service="${service}"]`);
+                if (img) img.parentNode.removeChild(img);
+            });
+            mikaShell.tray.on("changed", async (service) => {
+                const tray = mikaShell.tray;
+                const img = document.querySelector(`img[data-service="${service}"]`);
+                img.src = tray.pickIcon(await tray.getItem(service), 256);
+            });
+            mikaShell.tray.getItems().then((items) => {
+                for (const item of items) {
+                    addTrayIcon(item);
                 }
-            );
-            tray.proxy(proxy);
-            window.mikaShell.window.on("close", () => {
-                tray.unproxy(proxy);
             });
         </script>
     </head>

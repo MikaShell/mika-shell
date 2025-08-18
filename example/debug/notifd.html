@@ -76,36 +76,14 @@
                 const notification = box.querySelector(`[data-id="${id}"]`);
                 box.removeChild(notification);
             }
-            const notifications = new Proxy([], {
-                get: (target, prop, receiver) => {
-                    const original = Reflect.get(target, prop, receiver);
-                    if (prop === "splice") {
-                        return function (...args) {
-                            const [start, deleteCount] = args;
-                            const removedItems = target.slice(start, start + deleteCount);
-                            removedItems.forEach((item, i) => remove(item.id));
-                            return original.apply(target, args);
-                        };
-                    }
-                    return original;
-                },
-                set: (target, prop, value, receiver) => {
-                    const isIndex = String(Number(prop)) === prop;
-                    if (isIndex) update(value);
-                    return Reflect.set(target, prop, value, receiver);
-                },
-            });
 
-            notifd.proxy(notifications);
+            notifd.on("added", async (id) => {
+                update(await notifd.get(id));
+            });
+            notifd.on("removed", remove);
             notifd.getAll().then((ns_) => {
-                ns_.forEach((n) => notifications.push(n));
+                ns_.forEach((n) => update(n));
             });
-            window.mikaShell.window.on("close", () => {
-                notifd.unproxy(notifications);
-            });
-            window.dismiss = (id) => {
-                notifd.dismiss(parseInt(id));
-            };
         </script>
         <style>
             #notifications {

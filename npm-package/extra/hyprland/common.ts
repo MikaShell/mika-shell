@@ -6,7 +6,7 @@ export async function getSocket(type: "event" | "command"): Promise<WebSocket> {
         xdgRuntimeDir = await os.getEnv("XDG_RUNTIME_DIR");
         his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
     }
-    return window.mikaShell.socket(
+    return window.mikaShell.utils.socket(
         `${xdgRuntimeDir}/hypr/${his}/.socket${type === "event" ? "2" : ""}.sock`
     );
 }

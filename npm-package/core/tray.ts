@@ -1,7 +1,7 @@
 export interface Pixmap {
     width: number;
     height: number;
-    webp: number[];
+    base64: string;
 }
 export interface Attention {
     iconName: string;
@@ -11,7 +11,7 @@ export interface Attention {
 export interface Icon {
     name: string;
     themePath: string;
-    pixmap: Pixmap;
+    pixmap: Pixmap[];
 }
 export interface Overlay {
     iconName: string;
@@ -59,19 +59,28 @@ export interface MenuNode {
     properties: Record<string, any>;
     children: MenuNode[];
 }
-export const ProxyData: Record<string, Item> = {};
 import call from "./call";
+export function pickIcon(item: Item, size: number): string {
+    const icons = item.icon.pixmap;
+    if (!Array.isArray(icons) || icons.length === 0) throw new Error("No icons provided");
+    let closest = icons[0];
+    let minDiff = Math.abs(closest.width - size);
+
+    for (let i = 1; i < icons.length; i++) {
+        const diff = Math.abs(icons[i].width - size);
+        if (diff < minDiff) {
+            closest = icons[i];
+            minDiff = diff;
+        }
+    }
+
+    return closest.base64;
+}
 export function getItem(service: string): Promise<Item> {
     return call("tray.getItem", service);
 }
 export function getItems(): Promise<Item[]> {
     return call("tray.getItems");
-}
-export function subscribe(): Promise<void> {
-    return call("tray.subscribe");
-}
-export function unsubscribe(): Promise<void> {
-    return call("tray.unsubscribe");
 }
 export function activate(service: string, x: number, y: number): Promise<void> {
     return call("tray.activate", service, x, y);
@@ -98,49 +107,6 @@ export function activateMenu(service: string, id: number): Promise<void> {
 type Events = keyof typeof Tray;
 import { Tray } from "./events-define";
 import * as events from "./events";
-const proxied: Array<Record<string, Item>> = [];
-const onAdded = async (service: string) => {
-    const item = await getItem(service);
-    for (const p of proxied) {
-        p[service] = item;
-    }
-};
-const onChanged = async (service: string) => {
-    const item = await getItem(service);
-    for (const p of proxied) {
-        p[service] = item;
-    }
-};
-const onRemoved = async (service: string) => {
-    for (const p of proxied) {
-        delete p[service];
-    }
-};
-export function proxy(data: Record<string, Item>) {
-    if (proxied.length === 0) {
-        events.on(Tray.added, onAdded);
-        events.on(Tray.changed, onChanged);
-        events.on(Tray.removed, onRemoved);
-    }
-    getItems().then((items) => {
-        for (const item of items) {
-            data[item.service] = item;
-        }
-    });
-    proxied.push(data);
-}
-export function unproxy(data: Record<string, Item>) {
-    const index = proxied.indexOf(data);
-    if (index >= 0) {
-        proxied.splice(index, 1);
-    }
-    if (proxied.length === 0) {
-        events.off(Tray.added, onAdded);
-        events.off(Tray.changed, onChanged);
-        events.off(Tray.removed, onRemoved);
-    }
-}
-
 export function on<K extends Events>(event: K, callback: (service: string) => void) {
     events.on(Tray[event], callback);
 }

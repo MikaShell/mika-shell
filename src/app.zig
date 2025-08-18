@@ -154,12 +154,31 @@ pub const Config = struct {
     description: ?[]const u8 = null,
     pages: []Page = &.{},
     startup: [][]const u8 = &.{},
-    pub fn load(allocator: Allocator, configDir: []const u8) !Config {
-        const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
-        defer allocator.free(config_path);
-        const file = try std.fs.openFileAbsolute(config_path, .{});
-        defer file.close();
-        const configJson = try file.readToEndAlloc(allocator, 1024 * 1024);
+    pub fn load(allocator: Allocator, configDir: []const u8, devServer: ?[]const u8) !Config {
+        const configJson = blk: {
+            if (devServer) |ds| {
+                const config_path = try std.fs.path.join(allocator, &.{ ds, "mika-shell.json" });
+                defer allocator.free(config_path);
+                var client = std.http.Client{ .allocator = allocator };
+                defer client.deinit();
+                var store = std.ArrayList(u8).init(allocator);
+                errdefer store.deinit();
+                const result = try client.fetch(.{
+                    .location = .{ .url = config_path },
+                    .response_storage = .{ .dynamic = &store },
+                });
+                if (result.status != .ok) {
+                    return error.FailedToFetchConfig;
+                }
+                break :blk try store.toOwnedSlice();
+            } else {
+                const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
+                defer allocator.free(config_path);
+                const file = try std.fs.openFileAbsolute(config_path, .{});
+                defer file.close();
+                break :blk try file.readToEndAlloc(allocator, 1024 * 1024);
+            }
+        };
         defer allocator.free(configJson);
         const cfgJson = try std.json.parseFromSlice(Config, allocator, configJson, .{});
         defer cfgJson.deinit();
@@ -199,7 +218,7 @@ pub const Config = struct {
 pub const App = struct {
     modules: *Modules,
     mutex: std.Thread.Mutex,
-    isQuit: bool = false,
+    isQuit: bool,
     webviews: std.ArrayList(*Webview),
     allocator: Allocator,
     config: Config,
@@ -209,15 +228,21 @@ pub const App = struct {
     sessionBusWatcher: dbus.GLibWatch,
     systemBusWatcher: dbus.GLibWatch,
     emitter: *Emitter,
-    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel) !*App {
+    devServer: ?[]const u8,
+    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel, devServer: ?[]const u8) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
-        app.config = try Config.load(allocator, configDir);
+        app.config = Config.load(allocator, configDir, devServer) catch |err| {
+            std.log.err("Failed to load config 'mika-shell.json' from {s}", .{if (devServer != null) devServer.? else configDir});
+            return err;
+        };
         errdefer app.config.deinit(allocator);
         app.configDir = try std.fs.path.resolve(allocator, &.{configDir});
         app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
+        app.isQuit = false;
+        app.devServer = if (devServer) |ds| try allocator.dupe(u8, ds) else null;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
             @panic("can not connect to session dbus");
         };
@@ -271,12 +296,15 @@ pub const App = struct {
 
         self.config.deinit(self.allocator);
         self.allocator.free(self.configDir);
+        if (self.devServer) |ds| self.allocator.free(ds);
+        self.emitter.deinit();
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {
         for (self.config.pages) |page| {
             if (std.mem.eql(u8, page.name, pageName)) {
-                const uri = std.fs.path.join(self.allocator, &.{ "http://localhost:6797", page.path }) catch unreachable;
+                const server = if (self.devServer) |ds| ds else "http://localhost:6797";
+                const uri = std.fs.path.join(self.allocator, &.{ server, page.path }) catch unreachable;
                 defer self.allocator.free(uri);
                 return self.openS(uri, pageName);
             }

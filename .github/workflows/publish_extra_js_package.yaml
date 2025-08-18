@@ -21,7 +21,6 @@ jobs:
             - name: Build
               run: |
                   chmod +x ./build-npm.sh
-                  ./build-npm.sh core
                   ./build-npm.sh extra
 
             - name: Publish Package

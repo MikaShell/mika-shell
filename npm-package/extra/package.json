@@ -1,6 +1,6 @@
 {
     "name": "@mika-shell/extra",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "description": "MikaShell frontend extras library",
     "main": "index.js",
     "repository": {

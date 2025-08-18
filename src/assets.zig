@@ -201,11 +201,11 @@ fn handler(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
                 res.body = "invalid event id";
                 return;
             };
-            log.debug("Websocket event: {}", .{id_});
+            log.debug("Websocket connect to event: {}", .{id_});
             h.upgradeWebsocket(req, res, .{ .event = .{ h.eventManager, id_ } });
         } else {
             const path = req.url.path[1..];
-            log.debug("Websocket proxy: {s}", .{path});
+            log.debug("Websocket connect to proxy: {s}", .{path});
             h.upgradeWebsocket(req, res, .{ .proxy = .{path} });
         }
         return;

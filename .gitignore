@@ -3,11 +3,7 @@
 .vscode
 result
 node_modules
-npm-package/bindings
-npm-package/dist/*
-!npm-package/dist/package.json
-npm-package/output/**/*.d.ts
-npm-package/output/**/*.js
+npm-package/output
 *.tgz
 zig-out
 .zig-cache

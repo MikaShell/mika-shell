@@ -361,6 +361,7 @@ pub const Bus = struct {
         NameAlreadyOwner,
     } || DBusError || Allocator.Error;
     pub fn requestName(self: *Self, name: []const u8, flag: libdbus.Connection.NameFlag) OwnerError!void {
+        self.err.reset();
         const r = try self.conn.requestName(name, flag, self.err);
         switch (r) {
             .PrimaryOwner => {
@@ -372,6 +373,7 @@ pub const Bus = struct {
         }
     }
     pub fn releaseName(self: *Self, name: []const u8) DBusError!void {
+        self.err.reset();
         _ = try self.conn.releaseName(name, self.err);
         for (self.ownerNames.items) |owner| {
             if (std.mem.eql(u8, owner, name)) {
@@ -414,11 +416,13 @@ pub const Bus = struct {
     pub fn addMatch(self: *Self, rule: MatchRule) (DBusError || Allocator.Error)!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
+        self.err.reset();
         try self.conn.addMatch(match, self.err);
     }
     pub fn removeMatch(self: *Self, rule: MatchRule) (DBusError || Allocator.Error)!void {
         const match = try rule.toString(self.allocator);
         defer self.allocator.free(match);
+        self.err.reset();
         try self.conn.removeMatch(match, self.err);
     }
 };

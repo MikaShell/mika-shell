@@ -68,8 +68,13 @@ pub const Object = struct {
         return obj;
     }
     pub fn deinit(self: *Self) void {
-        for (self.listeners.items) |listener| {
-            self.disconnect(listener.signal, listener.handler, listener.data) catch continue;
+        {
+            var i: usize = self.listeners.items.len;
+            while (i > 0) {
+                i -= 1;
+                const listener = self.listeners.items[i];
+                self.disconnect(listener.signal, listener.handler, listener.data) catch continue;
+            }
         }
         self.err.deinit();
         self.allocator.destroy(self.err);
@@ -283,7 +288,7 @@ pub const Object = struct {
 };
 fn signalHandler(data: ?*anyopaque, msg: *Message) void {
     const obj: *Object = @ptrCast(@alignCast(data));
-    const sender = msg.getSender();
+    const sender: []const u8 = msg.getSender();
     const iface_ = msg.getInterface();
     const path_ = msg.getPath();
     const member_ = msg.getMember();
@@ -294,6 +299,10 @@ fn signalHandler(data: ?*anyopaque, msg: *Message) void {
     const path = path_.?;
     const member = member_.?;
     const destination = msg.getDestination();
+    const eql = std.mem.eql;
+    if (!eql(u8, iface, obj.iface)) return;
+    if (!eql(u8, path, obj.path)) return;
+    if (!(eql(u8, sender, obj.uniqueName) or std.mem.eql(u8, sender, obj.name))) return;
     var event = common.Event{
         .sender = sender,
         .iface = iface,
@@ -305,11 +314,10 @@ fn signalHandler(data: ?*anyopaque, msg: *Message) void {
     };
     defer event.iter.deinit();
     for (obj.listeners.items) |listener| {
-        if (std.mem.eql(u8, listener.signal, member)) {
-            event.iter.reset();
-            _ = event.iter.fromResult(msg);
-            listener.handler(event, listener.data);
-        }
+        if (!eql(u8, listener.signal, member)) continue;
+        event.iter.reset();
+        _ = event.iter.fromResult(msg);
+        listener.handler(event, listener.data);
     }
 }
 const testing = std.testing;
