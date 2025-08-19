@@ -3,14 +3,7 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("webp/encode.h");
 });
-// 虽然这个函数本身似乎不能再优化, 但是考虑减少该函数的调用.
-// 目前的处理方式是为每一个 icon 都转换 webp
-fn pixmapToWebp(
-    allocator: std.mem.Allocator,
-    width: i32,
-    height: i32,
-    argb: []const u8,
-) ![]u8 {
+fn pixmapToBase64(allocator: std.mem.Allocator, height: i32, width: i32, argb: []const u8) ![]u8 {
     var rgba = try allocator.alloc(u8, argb.len);
     defer allocator.free(rgba);
 
@@ -41,15 +34,8 @@ fn pixmapToWebp(
         return error.WebPEncodingFailed;
     }
     defer c.WebPFree(output_ptr);
-    return try allocator.dupe(u8, output_ptr[0..size]);
-}
-fn pixmapToBase64(allocator: std.mem.Allocator, heigth: i32, width: i32, argb: []const u8) ![]u8 {
-    const webp = try pixmapToWebp(allocator, width, heigth, argb);
-    defer allocator.free(webp);
-    var base64 = std.ArrayList(u8).init(allocator);
-    defer base64.deinit();
-    try std.base64.standard.Encoder.encodeWriter(base64.writer(), webp);
-    return try std.fmt.allocPrint(allocator, "data:image/webp;base64,{s}", .{base64.items});
+    const webp = output_ptr[0..size];
+    return try @import("../utils.zig").webpToBase64(allocator, webp);
 }
 const DBusPixmap = dbus.Array(dbus.Struct(.{
     dbus.Int32,

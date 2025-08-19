@@ -13,6 +13,9 @@ var config = struct {
     open: struct {
         pageName: []const u8 = undefined,
     } = undefined,
+    toggle: struct {
+        pageName: []const u8 = undefined,
+    } = undefined,
     show: struct {
         id: u64 = undefined,
         force: bool = false,
@@ -51,6 +54,29 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
         }),
         .target = .{
             .action = .{ .exec = daemon },
+        },
+    };
+}
+fn cmdToggle(r: *cli.AppRunner) !cli.Command {
+    defer allocator.free(config.toggle.pageName);
+    return cli.Command{
+        .name = "toggle",
+        .description = .{
+            .one_line = "Toggle the open/close state of the webview",
+        },
+        .target = .{
+            .action = .{
+                .exec = toggle,
+                .positional_args = cli.PositionalArgs{
+                    .required = try r.allocPositionalArgs(&.{
+                        .{
+                            .name = "page",
+                            .help = "page name to toggle, defined in `mika-shell.json`, use `mika-shell pages` to list all pages",
+                            .value_ref = r.mkRef(&config.toggle.pageName),
+                        },
+                    }),
+                },
+            },
         },
     };
 }
@@ -202,6 +228,7 @@ pub fn run() !void {
                 .subcommands = try r.allocCommands(&.{
                     try cmdDaemon(r),
                     try cmdOpen(r),
+                    try cmdToggle(r),
                     try cmdList(r),
                     try cmdShow(r),
                     try cmdHide(r),
@@ -291,6 +318,13 @@ fn open() !void {
     try ipc.request(.{
         .type = "open",
         .pageName = config.open.pageName,
+    });
+}
+fn toggle() !void {
+    defer allocator.free(config.toggle.pageName);
+    try ipc.request(.{
+        .type = "toggle",
+        .pageName = config.toggle.pageName,
     });
 }
 fn list() !void {

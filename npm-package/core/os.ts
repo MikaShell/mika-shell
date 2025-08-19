@@ -23,14 +23,27 @@ export interface UserInfo {
     gid: number;
     avatar: string | null;
 }
+export type ExecOptions = {
+    needOutput: boolean;
+    block: boolean;
+};
 export function getSystemInfo(): Promise<SystemInfo> {
     return call("os.getSystemInfo");
 }
 export function getUserInfo(): Promise<UserInfo> {
     return call("os.getUserInfo");
 }
-export function exec(argv: string[], needOutput: true): Promise<string>;
-export function exec(argv: string[], needOutput?: false): Promise<void>;
-export function exec(argv: string[], needOutput: boolean = false): Promise<string | void> {
-    return call("os.exec", argv, needOutput);
+
+export function exec(argv: string[], options: Partial<ExecOptions> = {}): Promise<string | void> {
+    const opt: ExecOptions = {
+        needOutput: options.needOutput ?? false,
+        block: options.block ?? false,
+    };
+    return call("os.exec", argv, opt);
+}
+export function write(path: string, base64: string): Promise<void> {
+    return call("os.write", path, base64);
+}
+export function read(path: string): Promise<string> {
+    return call("os.read", path);
 }

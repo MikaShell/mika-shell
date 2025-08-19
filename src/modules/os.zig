@@ -23,6 +23,8 @@ pub const OS = struct {
                 .{ "getSystemInfo", getSystemInfo },
                 .{ "getUserInfo", getUserInfo },
                 .{ "exec", exec },
+                .{ "write", write },
+                .{ "read", read },
             },
         };
     }
@@ -44,6 +46,10 @@ pub const OS = struct {
         result.commit(info);
     }
     pub fn exec(self: *Self, args: Args, result: *Result) !void {
+        const Options = struct {
+            needOutput: bool,
+            block: bool,
+        };
         const allocator = self.allocator;
         const argvJson = try args.value(1);
         if (argvJson != .array) {
@@ -54,19 +60,54 @@ pub const OS = struct {
         for (argvJson.array.items, 0..) |item, i| {
             argv[i] = item.string;
         }
-        const needOutput = try args.bool(2);
+
+        const options = try std.json.parseFromValue(Options, allocator, try args.value(2), .{});
+        defer options.deinit();
         var child = std.process.Child.init(argv, allocator);
         child.stderr_behavior = .Ignore;
         child.stdin_behavior = .Ignore;
-        child.stdout_behavior = if (needOutput) .Pipe else .Ignore;
+        child.stdout_behavior = if (options.value.needOutput) .Pipe else .Ignore;
         try child.spawn();
         try child.waitForSpawn();
+        if (options.value.block) _ = try child.wait();
         if (child.stdout) |stdout| {
             defer stdout.close();
             const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024);
             defer allocator.free(stdoutBuf);
             result.commit(stdoutBuf);
         }
+    }
+    pub fn write(self: *Self, args: Args, _: *Result) !void {
+        const path = try args.string(1);
+        const base64 = try args.string(2);
+        const decoder = std.base64.standard.Decoder;
+        const data = try self.allocator.alloc(u8, try decoder.calcSizeForSlice(base64));
+        defer self.allocator.free(data);
+        try decoder.decode(data, base64);
+        var file: std.fs.File = undefined;
+        if (std.fs.path.isAbsolute(path)) {
+            file = try std.fs.openFileAbsolute(path, .{ .mode = .write_only });
+        } else {
+            file = try std.fs.cwd().openFile(path, .{ .mode = .write_only });
+        }
+        defer file.close();
+        try file.writeAll(data);
+    }
+    pub fn read(self: *Self, args: Args, result: *Result) !void {
+        const path = try args.string(1);
+        var file: std.fs.File = undefined;
+        if (std.fs.path.isAbsolute(path)) {
+            file = try std.fs.openFileAbsolute(path, .{});
+        } else {
+            file = try std.fs.cwd().openFile(path, .{});
+        }
+        defer file.close();
+        const data = try file.reader().readAllAlloc(self.allocator, 1024 * 1024 * 10);
+        defer self.allocator.free(data);
+        const encoder = std.base64.standard.Encoder;
+        const base64 = try self.allocator.alloc(u8, encoder.calcSize(data.len));
+        defer self.allocator.free(base64);
+        result.commit(encoder.encode(base64, data));
     }
 };
 const Allocator = std.mem.Allocator;

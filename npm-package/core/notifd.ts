@@ -1,4 +1,4 @@
-interface Notification {
+export interface Notification {
     id: number;
     appName: string;
     replacesId: number;
@@ -17,7 +17,7 @@ interface Notification {
             hasAlpha: boolean;
             bitsPerSample: number;
             channels: number;
-            webp: string;
+            base64: string;
         };
         imagePath?: string;
         resident?: boolean;

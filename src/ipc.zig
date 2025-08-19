@@ -76,6 +76,24 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
             else => return err,
         };
     }
+    if (eql(r.type, "toggle")) {
+        var i = app.webviews.items.len - 1;
+        while (i >= 0) {
+            const w = app.webviews.items[i];
+            if (std.mem.eql(u8, w.name, r.pageName.?)) {
+                app.closeRequest(w);
+                return;
+            }
+            if (i == 0) break;
+            i -= 1;
+        }
+        _ = app.open(r.pageName.?) catch |err| switch (err) {
+            error.PageNotFound => {
+                try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
+            },
+            else => return err,
+        };
+    }
     if (eql(r.type, "list")) {
         var isFirstLine = true;
         for (app.webviews.items) |w| {

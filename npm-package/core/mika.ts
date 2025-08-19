@@ -2,7 +2,7 @@ import call from "./call";
 import * as events from "./events";
 import { Mika } from "./events-define";
 
-export function open(name: string): Promise<void> {
+export function open(name: string): Promise<number> {
     return call("mika.open", name);
 }
 export function close(id: number): Promise<void> {

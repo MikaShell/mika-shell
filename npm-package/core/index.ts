@@ -30,16 +30,16 @@ declare global {
     var mikaShell: typeof core;
 }
 export default core;
+export * as mika from "./mika";
 export * as tray from "./tray";
-export const mika = core.mika;
-export const icon = core.icon;
-export const os = core.os;
-export const window = core.window;
-export const layer = core.layer;
-export const apps = core.apps;
-export const monitor = core.monitor;
-export const notifd = core.notifd;
-export const network = core.network;
-export const dock = core.dock;
-export const libinput = core.libinput;
-export const utils = core.utils;
+export * as icon from "./icon";
+export * as os from "./os";
+export * as window from "./window";
+export * as layer from "./layer";
+export * as apps from "./apps";
+export * as monitor from "./monitor";
+export * as notifd from "./notifd";
+export * as network from "./network";
+export * as dock from "./dock";
+export * as libinput from "./libinput";
+export * as utils from "./utils";

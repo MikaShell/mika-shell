@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("webp/encode.h");
 });
-fn pixmapToWebp(
+fn pixmapToBase64(
     allocator: Allocator,
     width: i32,
     height: i32,
@@ -38,7 +38,8 @@ fn pixmapToWebp(
         return error.WebPEncodingFailed;
     }
     defer c.WebPFree(output_ptr);
-    return try allocator.dupe(u8, output_ptr[0..size]);
+    const webp = output_ptr[0..size];
+    return try @import("utils.zig").webpToBase64(allocator, webp);
 }
 pub const ImageData = struct {
     width: i32,
@@ -47,7 +48,7 @@ pub const ImageData = struct {
     hasAlpha: bool,
     bitsPerSample: i32,
     channels: i32,
-    webp: []const u8,
+    base64: []const u8,
 };
 pub const Urgency = enum {
     low,
@@ -77,7 +78,7 @@ pub const Hint = union(enum) {
             .imagePath => |s| allocator.free(s),
             .soundFile => |s| allocator.free(s),
             .soundName => |s| allocator.free(s),
-            .imageData => |data| allocator.free(data.webp),
+            .imageData => |data| allocator.free(data.base64),
             else => {},
         }
     }
@@ -251,7 +252,7 @@ pub const Notifd = struct {
                     dbus.Int32, // channels
                     dbus.Array(dbus.Byte), // imageData
                 }));
-                const webp = try pixmapToWebp(allocator, data[0], data[1], data[2], data[3], data[6]);
+                const base64 = try pixmapToBase64(allocator, data[0], data[1], data[2], data[3], data[6]);
                 hint.* = Hint{ .imageData = ImageData{
                     .width = data[0],
                     .height = data[1],
@@ -259,7 +260,7 @@ pub const Notifd = struct {
                     .hasAlpha = data[3],
                     .bitsPerSample = data[4],
                     .channels = data[5],
-                    .webp = webp,
+                    .base64 = base64,
                 } };
             } else if (eql(u8, key, "image-path")) {
                 hint.* = Hint{ .imagePath = try allocator.dupe(u8, variant.as(dbus.String)) };
