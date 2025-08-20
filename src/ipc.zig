@@ -1,25 +1,30 @@
 const std = @import("std");
 const gtk = @import("gtk");
-const SOCKET_PATH = "/tmp/mika-shell.sock";
+fn socketPath(allocator: std.mem.Allocator, port: u16) ![]const u8 {
+    return try std.fmt.allocPrint(allocator, "/tmp/mika-shell-{d}.sock", .{port});
+}
 const glib = @import("glib");
 pub const Server = struct {
     allocator: std.mem.Allocator,
     s: std.net.Server,
     app: *App,
     watcher: glib.FdWatch(Server),
-    pub fn init(allocator: std.mem.Allocator, app: *App) !*Server {
+    path: []const u8,
+    pub fn init(allocator: std.mem.Allocator, app: *App, port: u16) !*Server {
         const self = try allocator.create(Server);
         self.* = .{
             .allocator = allocator,
             .s = undefined,
             .app = app,
             .watcher = undefined,
+            .path = try socketPath(allocator, port),
         };
         return self;
     }
     pub fn deinit(self: *Server) void {
         self.watcher.deinit();
         self.s.deinit();
+        self.allocator.free(self.path);
         self.allocator.destroy(self);
     }
 
@@ -38,8 +43,8 @@ pub const Server = struct {
     }
 
     pub fn listen(self: *Server) !void {
-        std.fs.deleteFileAbsolute(SOCKET_PATH) catch {};
-        const addr = try std.net.Address.initUnix(SOCKET_PATH);
+        std.fs.deleteFileAbsolute(self.path) catch {};
+        const addr = try std.net.Address.initUnix(self.path);
         const server = try addr.listen(.{});
         self.s = server;
         self.watcher = try glib.FdWatch(Server).add(server.stream.handle, &struct {
@@ -194,8 +199,11 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
 }
-pub fn request(req: Request) !void {
-    const c = try std.net.connectUnixSocket(SOCKET_PATH);
+pub fn request(req: Request, port: u16) !void {
+    const allocator = std.heap.page_allocator;
+    const path = try socketPath(allocator, port);
+    defer allocator.free(path);
+    const c = try std.net.connectUnixSocket(path);
     const alc = std.heap.page_allocator;
     const reqJSON = try std.json.stringifyAlloc(alc, req, .{ .emit_null_optional_fields = false });
     defer alc.free(reqJSON);

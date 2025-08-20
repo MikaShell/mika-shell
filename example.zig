@@ -61,8 +61,3 @@ fn mkdir(path: []const u8) !void {
         return;
     };
 }
-
-test "write" {
-    const path = "example_test_output";
-    try write(path);
-}

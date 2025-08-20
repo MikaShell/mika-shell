@@ -29,6 +29,7 @@
   typescript,
   esbuild,
   nodejs_24,
+  zon2nix,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -82,8 +83,10 @@ in
       devhelp
       d-spy
       linuxKernel.packages.linux_zen.perf
+      zon2nix
     ];
     MIKASHELL_CONFIG_DIR = "./example";
+    MIKASHELL_PORT = "6789";
     # dconf 使得 GTK 可以读取 dconf 配置, 例如主题
     GIO_EXTRA_MODULES = "${dconf.lib}/lib/gio/modules:${glib-networking.out}/lib/gio/modules";
     GST_PLUGIN_SYSTEM_PATH_1_0 = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [

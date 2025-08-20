@@ -161,7 +161,7 @@ pub const Server = struct {
     thread: std.Thread,
     handler: *Handler,
     // TODO: 增加验证机制
-    pub fn init(allocator: Allocator, assetsDir: []const u8, eventChannel: *events.EventChannel) !*Server {
+    pub fn init(allocator: Allocator, assetsDir: []const u8, eventChannel: *events.EventChannel, port: u16) !*Server {
         const server = try allocator.create(Server);
         errdefer allocator.destroy(server);
         server.handler = try allocator.create(Handler);
@@ -171,7 +171,7 @@ pub const Server = struct {
         server.handler.assetsDir = ownedAssetsDir;
         server.handler.eventManager = try EventManager.init(allocator, eventChannel);
         errdefer server.handler.eventManager.deinit();
-        server.server = try httpz.Server(*Handler).init(allocator, .{ .port = 6797 }, server.handler);
+        server.server = try httpz.Server(*Handler).init(allocator, .{ .port = port }, server.handler);
         return server;
     }
     pub fn start(self: *Server) !void {

@@ -28,7 +28,7 @@ pub const Webview = struct {
     container: *gtk.Window,
     _modules: *Modules,
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
-    pub fn init(allocator: Allocator, m: *Modules, name: []const u8) !*Webview {
+    pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backPort: u16) !*Webview {
         const w = try allocator.create(Webview);
         idCount += 1;
         w.* = .{
@@ -46,6 +46,9 @@ pub const Webview = struct {
         const manager = w.impl.getUserContentManager() orelse return error.FailedToGetUserContentManager;
         _ = manager.registerScriptMessageHandlerWithReply("mikaShell", null);
         manager.addScript(@embedFile("bindings.js"));
+        const setPortJs = std.fmt.allocPrint(allocator, "window.mikaShell.backPort = {d};", .{backPort}) catch unreachable;
+        defer allocator.free(setPortJs);
+        manager.addScript(setPortJs);
         manager.connect(.ScriptMessageWithReplyReceived, "mikaShell", &struct {
             fn f(_: *webkit.UserContentManager, v: *webkit.JSCValue, reply: *webkit.ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int {
                 const alc = std.heap.page_allocator;
@@ -229,7 +232,9 @@ pub const App = struct {
     systemBusWatcher: dbus.GLibWatch,
     emitter: *Emitter,
     devServer: ?[]const u8,
-    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel, devServer: ?[]const u8) !*App {
+    server: []const u8,
+    port: u16,
+    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel, devServer: ?[]const u8, port: u16) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
         app.config = Config.load(allocator, configDir, devServer) catch |err| {
@@ -237,6 +242,9 @@ pub const App = struct {
             return err;
         };
         errdefer app.config.deinit(allocator);
+        app.server = try std.fmt.allocPrint(allocator, "http://localhost:{d}/", .{port});
+        errdefer allocator.free(app.server);
+        app.port = port;
         app.configDir = try std.fs.path.resolve(allocator, &.{configDir});
         app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview).init(allocator);
@@ -298,12 +306,13 @@ pub const App = struct {
         self.allocator.free(self.configDir);
         if (self.devServer) |ds| self.allocator.free(ds);
         self.emitter.deinit();
+        self.allocator.free(self.server);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {
         for (self.config.pages) |page| {
             if (std.mem.eql(u8, page.name, pageName)) {
-                const server = if (self.devServer) |ds| ds else "http://localhost:6797";
+                const server = if (self.devServer) |ds| ds else self.server;
                 const uri = std.fs.path.join(self.allocator, &.{ server, page.path }) catch unreachable;
                 defer self.allocator.free(uri);
                 return self.openS(uri, pageName);
@@ -312,7 +321,7 @@ pub const App = struct {
         return error.PageNotFound;
     }
     fn openS(self: *App, uri: []const u8, name: []const u8) *Webview {
-        const webview = Webview.init(self.allocator, self.modules, name) catch unreachable;
+        const webview = Webview.init(self.allocator, self.modules, name, self.port) catch unreachable;
         webview.impl.loadUri(uri);
         self.mutex.lock();
         self.webviews.append(webview) catch unreachable;

@@ -120,6 +120,12 @@ pub fn build(b: *std.Build) void {
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
 
+    const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
+    exe_mod.addImport("zgtk", gobject.module("gtk4"));
+    exe_mod.addImport("zglib", gobject.module("glib2"));
+    exe_mod.addImport("zdbus", gobject.module("dbus1"));
+    exe_mod.addImport("zwebkit", gobject.module("webkit6"));
+
     exe_mod.addImport("example", example_mod);
     exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("cli", cli.module("cli"));

@@ -1,10 +1,10 @@
 import call from "./call";
-
+import { socket } from "./utils";
 const listeners: Map<number, Function[]> = new Map();
 const onceListeners: Map<number, Function[]> = new Map();
 call("mika.getId").then((id) => {
     try {
-        const ws = new WebSocket(`ws://localhost:6797?event=${id}`);
+        const ws = socket(`?event=${id}`);
         ws.onmessage = (event_) => {
             const { event, data } = JSON.parse(event_.data);
             dispatch(event, data);

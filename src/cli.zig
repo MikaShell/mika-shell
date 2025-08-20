@@ -1,11 +1,11 @@
 const std = @import("std");
-const gtk = @import("gtk");
 const assets = @import("assets.zig");
 const App = @import("app.zig").App;
 const getConfigDir = @import("app.zig").getConfigDir;
 const ipc = @import("ipc.zig");
 const cli = @import("cli");
 var config = struct {
+    port: u16 = 6797,
     daemon: struct {
         config_dir: []const u8 = undefined,
         dev_server: ?[]const u8 = null,
@@ -224,6 +224,15 @@ pub fn run() !void {
     const cliApp = cli.App{
         .command = .{
             .name = "mika-shell",
+            .options = try r.allocOptions(&.{
+                .{
+                    .long_name = "port",
+                    .short_alias = 'p',
+                    .help = "port to listen on, defaults to 6797",
+                    .value_ref = r.mkRef(&config.port),
+                    .envvar = "MIKASHELL_PORT",
+                },
+            }),
             .target = .{
                 .subcommands = try r.allocCommands(&.{
                     try cmdDaemon(r),
@@ -245,6 +254,7 @@ pub fn run() !void {
 }
 const wayland = @import("wayland");
 const events = @import("events.zig");
+const gtk = @import("zgtk");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -289,77 +299,76 @@ pub fn daemon() !void {
     var eventChannel = try events.EventChannel.init();
     defer eventChannel.deinit();
 
-    var assetsserver = try assets.Server.init(allocator, configDir, &eventChannel);
+    var assetsserver = try assets.Server.init(allocator, configDir, &eventChannel, config.port);
     defer {
         assetsserver.stop();
         assetsserver.deinit();
     }
     _ = try assetsserver.start();
-
-    const app = try App.init(allocator, configDir, &eventChannel, config.daemon.dev_server);
+    const app = try App.init(allocator, configDir, &eventChannel, config.daemon.dev_server, config.port);
     defer app.deinit();
 
     try wayland.init(allocator);
     const watch = try wayland.withGLib();
     defer watch.deinit();
 
-    const ipcServer = try ipc.Server.init(allocator, app);
+    const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();
     try ipcServer.listen();
 
     while (true) {
-        _ = glib.mainIteration();
+        const glib = @import("zglib");
+        _ = glib.MainContext.iteration(null, 1);
     }
 }
-const glib = @import("glib");
 
 fn open() !void {
     defer allocator.free(config.open.pageName);
     try ipc.request(.{
         .type = "open",
         .pageName = config.open.pageName,
-    });
+    }, config.port);
 }
 fn toggle() !void {
     defer allocator.free(config.toggle.pageName);
     try ipc.request(.{
         .type = "toggle",
         .pageName = config.toggle.pageName,
-    });
+    }, config.port);
 }
 fn list() !void {
     try ipc.request(.{
         .type = "list",
-    });
+    }, config.port);
 }
 fn pages() !void {
     try ipc.request(.{
         .type = "pages",
-    });
+    }, config.port);
 }
 fn about() !void {
     try ipc.request(.{
         .type = "about",
-    });
+    }, config.port);
 }
 fn show() !void {
     try ipc.request(.{
         .type = "show",
         .id = config.show.id,
         .force = config.show.force,
-    });
+    }, config.port);
 }
 fn hide() !void {
     try ipc.request(.{
         .type = "hide",
         .id = config.hide.id,
         .force = config.hide.force,
-    });
+    }, config.port);
 }
 fn close() !void {
     try ipc.request(.{
         .type = "close",
         .id = config.close.id,
         .force = config.close.force,
-    });
+    }, config.port);
 }

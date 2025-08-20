@@ -42,7 +42,7 @@ in
     pname = "mika-shell";
     version = "0.0.0";
     src = ../.;
-    deps = callPackage ../build.zig.zon.nix {name = "mika-shell-cache-${finalAttrs.version}";};
+    deps = callPackage ../build.zig.zon.nix {};
     zigBuildFlags = ["--system" "${finalAttrs.deps}"];
     nativeBuildInputs = [
       custom-pkg-config

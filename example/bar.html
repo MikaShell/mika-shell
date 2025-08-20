@@ -172,9 +172,10 @@
                 const dom = hyprlandWorkspaces;
                 const el = document.createElement("div");
                 el.classList.add("hyprland-workspace");
-                el.addEventListener("click", () => {
-                    hyprland.command.dispatch("workspace", dom.children.length);
-                });
+                const id = dom.children.length + 1;
+                el.onclick = () => {
+                    hyprland.command.dispatch("workspace", id);
+                };
                 if (isEmpty) {
                     el.classList.add("hyprland-workspace-empty");
                 }
