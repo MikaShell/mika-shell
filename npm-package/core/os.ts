@@ -26,6 +26,7 @@ export interface UserInfo {
 export type ExecOptions = {
     needOutput: boolean;
     block: boolean;
+    base64Output: boolean;
 };
 export function getSystemInfo(): Promise<SystemInfo> {
     return call("os.getSystemInfo");
@@ -38,6 +39,7 @@ export function exec(argv: string[], options: Partial<ExecOptions> = {}): Promis
     const opt: ExecOptions = {
         needOutput: options.needOutput ?? false,
         block: options.block ?? false,
+        base64Output: options.base64Output ?? false,
     };
     return call("os.exec", argv, opt);
 }

@@ -200,7 +200,7 @@ export namespace wifi {
     }
     // TODO: 使用更好的方法获取 Wifi 状态
     export async function isEnabled() {
-        const result: string = await os.exec(["rfkill", "list", "wifi"], true);
+        const result = (await os.exec(["rfkill", "list", "wifi"], { needOutput: true })) as string;
         return !result.includes(": yes");
     }
     export function enable() {

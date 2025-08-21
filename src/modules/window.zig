@@ -65,24 +65,36 @@ pub const Window = struct {
         const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
         defer options.deinit();
         const opt = options.value;
-        const ownedClass = try std.heap.page_allocator.dupeZ(u8, opt.class);
+        const onMapContext = struct {
+            id: c_ulong,
+            class: [*:0]const u8,
+            resizable: bool,
+        };
+        const onMap = struct {
+            fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
+                const ctx: *onMapContext = @alignCast(@ptrCast(data));
+                widget.disconnect(ctx.id);
+                widget.as(gtk.Window).setClass(std.mem.span(ctx.class));
+                std.heap.page_allocator.free(std.mem.span(ctx.class));
+                std.heap.page_allocator.destroy(ctx);
+            }
+        }.f;
+
         if (w.type == .None) {
             // 这个回调只会执行一次
-            w.container.asWidget().connect(.map, struct {
-                fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                    const class: [*:0]const u8 = @ptrCast(data);
-                    const class_ = std.mem.span(class);
-                    defer std.heap.page_allocator.free(class_);
-                    widget.as(gtk.Window).setClass(class_);
-                }
-            }.f, @ptrCast(ownedClass.ptr));
+            const ctx = try std.heap.page_allocator.create(onMapContext);
+            const id_ = w.container.asWidget().connect(.map, onMap, @ptrCast(ctx));
+            ctx.* = .{
+                .id = id_,
+                .class = (std.heap.page_allocator.dupeZ(u8, opt.class) catch unreachable).ptr,
+                .resizable = opt.resizable,
+            };
         }
         if (w.type == .Window) {
             w.container.setClass(opt.class);
         }
         w.type = .Window;
         w.container.setTitle(opt.title);
-        w.container.setResizable(opt.resizable);
         if (opt.backgroundTransparent) {
             w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 0 });
         } else {
@@ -92,7 +104,7 @@ pub const Window = struct {
             self.app.showRequest(w);
         }
         w.container.setDefaultSize(opt.width, opt.height);
-        w.options = .{ .window = opt };
+        w.container.setResizable(opt.resizable);
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
@@ -105,7 +117,7 @@ pub const Window = struct {
     }
     pub fn setSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        if (w.options.window.resizable) {
+        if (w.container.getResizable()) {
             return result.errors("setSize is not allowed for resizable window", .{});
         }
         const width = try args.integer(1);

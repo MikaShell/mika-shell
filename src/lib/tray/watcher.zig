@@ -126,7 +126,7 @@ pub const Watcher = struct {
         const oldOwner = e.iter.next(dbus.String).?;
         if (std.mem.eql(u8, oldOwner, "")) return;
         for (self.items.items, 0..) |item, i| {
-            if (std.mem.eql(u8, oldOwner, item)) {
+            if (std.mem.startsWith(u8, item, oldOwner)) {
                 _ = self.items.swapRemove(i);
                 self.emiter.emit("StatusNotifierItemUnregistered", .{dbus.String}, .{item});
                 self.allocator.free(item);
@@ -134,7 +134,7 @@ pub const Watcher = struct {
             }
         }
         for (self.hosts.items, 0..) |host, i| {
-            if (std.mem.eql(u8, oldOwner, host)) {
+            if (std.mem.startsWith(u8, host, oldOwner)) {
                 _ = self.hosts.swapRemove(i);
                 self.emiter.emit("StatusNotifierHostUnregistered", .{}, null);
                 self.allocator.free(host);

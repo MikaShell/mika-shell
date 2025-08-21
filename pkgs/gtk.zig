@@ -59,12 +59,12 @@ pub const Widget = extern struct {
         comptime signal: Signal,
         callback: *const fn (widget: *Self, data: ?*anyopaque) callconv(.c) void,
         data: ?*anyopaque,
-    ) void {
-        _ = c.g_signal_connect_data(@ptrCast(self), @ptrCast(@tagName(signal)), @ptrCast(callback), data, null, 0);
+    ) c_ulong {
+        return c.g_signal_connect_data(@ptrCast(self), @ptrCast(@tagName(signal)), @ptrCast(callback), data, null, 0);
     }
-    // pub fn disconnect(self: *Self, id: c_ulong) void {
-    //     c.g_signal_handler_disconnect(@ptrCast(self), id);
-    // }
+    pub fn disconnect(self: *Self, id: c_ulong) void {
+        c.g_signal_handler_disconnect(@ptrCast(self), id);
+    }
 };
 pub const CssProvider = extern struct {
     const Self = @This();
@@ -97,6 +97,7 @@ pub const Window = extern struct {
     extern fn gtk_window_set_title(window: *Window, title: [*c]const u8) void;
     extern fn gtk_window_set_resizable(window: *Window, resizable: c_int) void;
     extern fn gtk_window_set_focus_visible(window: *Window, setting: c_int) void;
+    extern fn gtk_window_get_resizable(window: *Window) c_int;
     pub fn getMonitor(self: *Self, allocator: std.mem.Allocator) !Monitor {
         const display = c.gdk_display_get_default();
         const surface = c.gtk_native_get_surface(@ptrCast(self));
@@ -155,6 +156,9 @@ pub const Window = extern struct {
     }
     pub fn setResizable(self: *Self, resizable: bool) void {
         gtk_window_set_resizable(self, @intFromBool(resizable));
+    }
+    pub fn getResizable(self: *Self) bool {
+        return gtk_window_get_resizable(self) == 1;
     }
     pub fn setDefaultSize(self: *Self, width: i32, height: i32) void {
         c.gtk_window_set_default_size(@ptrCast(self), @intCast(width), @intCast(height));

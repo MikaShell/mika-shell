@@ -90,8 +90,6 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
         if (entry.kind == .directory) continue;
         if (!std.mem.endsWith(u8, entry.path, ".desktop")) continue;
         var id: []const u8 = undefined;
-        var needFreeId = false;
-        defer if (needFreeId) allocator.free(id);
         const subDir = blk: {
             if (std.fs.path.dirname(entry.path)) |dirName| {
                 break :blk dirName;
@@ -100,10 +98,11 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
             }
         };
         if (subDir.len > 0) {
-            id = try std.fmt.allocPrint(allocator, "{s}-{s}", .{ subDir, std.mem.trimRight(u8, std.fs.path.basename(entry.path), ".desktop") });
-            needFreeId = true;
+            const base = std.fs.path.basename(entry.path);
+            id = try std.fmt.allocPrint(allocator, "{s}-{s}", .{ subDir, base[0 .. base.len - 8] });
         } else {
-            id = std.mem.trimRight(u8, std.fs.path.basename(entry.path), ".desktop");
+            const base = std.fs.path.basename(entry.path);
+            id = try allocator.dupe(u8, base[0 .. base.len - 8]);
         }
         for (usedID) |used| {
             if (std.mem.eql(u8, used, id)) continue :find;
@@ -115,9 +114,10 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
             e.deinit(allocator);
             continue;
         }
-        e.id = try allocator.dupe(u8, id);
+        e.id = id;
         if (e.dbusActivatable) {
-            e.dbusName = try allocator.dupe(u8, std.mem.trimRight(u8, std.fs.path.basename(entry.path), ".desktop"));
+            const base = std.fs.path.basename(entry.path);
+            e.dbusName = try allocator.dupe(u8, base[0 .. base.len - 8]);
         } else {
             e.dbusName = null;
         }

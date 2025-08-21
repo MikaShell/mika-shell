@@ -49,6 +49,7 @@ pub const OS = struct {
         const Options = struct {
             needOutput: bool,
             block: bool,
+            base64Output: bool,
         };
         const allocator = self.allocator;
         const argvJson = try args.value(1);
@@ -72,9 +73,16 @@ pub const OS = struct {
         if (options.value.block) _ = try child.wait();
         if (child.stdout) |stdout| {
             defer stdout.close();
-            const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024);
+            const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024 * 10);
             defer allocator.free(stdoutBuf);
-            result.commit(stdoutBuf);
+            if (options.value.base64Output) {
+                const encoder = std.base64.standard.Encoder;
+                const base64 = try self.allocator.alloc(u8, encoder.calcSize(stdoutBuf.len));
+                defer self.allocator.free(base64);
+                result.commit(encoder.encode(base64, stdoutBuf));
+            } else {
+                result.commit(stdoutBuf);
+            }
         }
     }
     pub fn write(self: *Self, args: Args, _: *Result) !void {

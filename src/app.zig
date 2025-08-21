@@ -20,10 +20,6 @@ pub const Webview = struct {
     allocator: Allocator,
     name: []const u8,
     type: WebviewType,
-    options: union {
-        window: WindowOptions,
-        layer: LayerOptions,
-    },
     impl: *webkit.WebView,
     container: *gtk.Window,
     _modules: *Modules,
@@ -38,7 +34,6 @@ pub const Webview = struct {
             .impl = webkit.WebView.new(),
             .container = gtk.Window.new(),
             ._modules = m,
-            .options = undefined,
             .type = .None,
         };
         const settings = w.impl.getSettings() orelse return error.FailedToGetSettings;
@@ -339,7 +334,7 @@ pub const App = struct {
                 return 1;
             }
         }.f, self);
-        webview.container.asWidget().connect(.destroy, &struct {
+        _ = webview.container.asWidget().connect(.destroy, &struct {
             fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const a: *App = @ptrCast(@alignCast(data));
                 if (a.isQuit) return;
@@ -355,14 +350,14 @@ pub const App = struct {
                 }
             }
         }.f, self);
-        webview.container.asWidget().connect(.show, struct {
+        _ = webview.container.asWidget().connect(.show, struct {
             fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const a: *App = @ptrCast(@alignCast(data));
                 const wb = a.getWebview2(w);
                 a.emitEvent2(null, .mika_show, wb.id);
             }
         }.f, self);
-        webview.container.asWidget().connect(.hide, struct {
+        _ = webview.container.asWidget().connect(.hide, struct {
             fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const a: *App = @ptrCast(@alignCast(data));
                 const wb = a.getWebview2(w);

@@ -114,7 +114,6 @@ pub const Layer = struct {
         if (!opt.hidden) {
             self.app.showRequest(w);
         }
-        w.options = .{ .layer = opt };
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);

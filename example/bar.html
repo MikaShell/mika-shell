@@ -113,7 +113,7 @@
                 addTrayIcon(await mikaShell.tray.getItem(service));
             });
             mikaShell.tray.on("removed", (service) => {
-                const img = div.querySelector(`img[data-service="${service}"]`);
+                const img = document.querySelector(`img[data-service="${service}"]`);
                 if (img) img.parentNode.removeChild(img);
             });
             mikaShell.tray.on("changed", async (service) => {
