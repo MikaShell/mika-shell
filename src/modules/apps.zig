@@ -1176,37 +1176,47 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
     defer allocator.free(cmds);
     defer for (cmds) |c| allocator.free(c);
     for (cmds) |cmd| {
-        const argv = try commandToArgv(allocator, cmd);
+        const argv = blk: {
+            const args = try commandToArgv(allocator, cmd);
+            if (!entry.terminal) {
+                break :blk args;
+            } else {
+                defer allocator.free(args);
+                defer for (args) |arg| allocator.free(arg);
+                const terminal = std.process.getEnvVarOwned(allocator, "TERMINAL") catch {
+                    return error.TERMINAL_EnvVarCannotBeFound;
+                };
+                if (terminal.len == 0) return error.TERMINAL_EnvVarCannotBeFound;
+                var args_ = try allocator.alloc([]const u8, args.len + 1);
+                args_[0] = terminal;
+                std.mem.copyForwards([]const u8, args_[1..], args);
+                break :blk args_;
+            }
+        };
         defer allocator.free(argv);
         defer for (argv) |arg| allocator.free(arg);
-        if (!entry.terminal) {
-            var child = std.process.Child.init(argv, allocator);
-            child.stderr_behavior = .Ignore;
-            child.stdin_behavior = .Ignore;
-            child.stdout_behavior = .Ignore;
-            const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
-            defer if (home) |h| allocator.free(h);
-            child.cwd = home;
-            try child.spawn();
-            try child.waitForSpawn();
-        } else {
-            const terminal = std.process.getEnvVarOwned(allocator, "TERMINAL") catch {
-                return error.TERMINAL_EnvVarCannotBeFound;
-            };
-            if (terminal.len == 0) return error.TERMINAL_EnvVarCannotBeFound;
-            var argv_ = try allocator.alloc([]const u8, argv.len + 1);
-            defer allocator.free(argv_);
-            argv_[0] = terminal;
-            std.mem.copyForwards([]const u8, argv_[1..], argv);
-            var child = std.process.Child.init(argv_, allocator);
-            child.stderr_behavior = .Ignore;
-            child.stdin_behavior = .Ignore;
-            child.stdout_behavior = .Ignore;
-            const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
-            defer if (home) |h| allocator.free(h);
-            child.cwd = home;
-            try child.spawn();
-            try child.waitForSpawn();
+
+        var child = std.process.Child.init(argv, allocator);
+        child.stderr_behavior = .Ignore;
+        child.stdin_behavior = .Ignore;
+        child.stdout_behavior = .Ignore;
+        const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
+        defer if (home) |h| allocator.free(h);
+        child.cwd = home;
+        try child.spawn();
+        try child.waitForSpawn();
+        {
+            const zglib = @import("zglib");
+            const child_ = try child.allocator.create(std.process.Child);
+            child_.* = child;
+            _ = zglib.childWatchAdd(child.id, struct {
+                fn f(_: zglib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
+                    const c: *std.process.Child = @alignCast(@ptrCast(data));
+                    const a = c.allocator;
+                    _ = c.kill() catch {};
+                    a.destroy(c);
+                }
+            }.f, child_);
         }
     }
 }

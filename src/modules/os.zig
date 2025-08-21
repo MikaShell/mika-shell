@@ -23,6 +23,7 @@ pub const OS = struct {
                 .{ "getSystemInfo", getSystemInfo },
                 .{ "getUserInfo", getUserInfo },
                 .{ "exec", exec },
+                .{ "exec2", exec2 },
                 .{ "write", write },
                 .{ "read", read },
             },
@@ -45,12 +46,38 @@ pub const OS = struct {
         defer info.deinit(self.allocator);
         result.commit(info);
     }
+    const Options = struct {
+        needOutput: bool,
+        block: bool,
+        base64Output: bool,
+    };
+    pub fn exec_(allocator: Allocator, argv: []const []const u8, options: Options) !std.process.Child {
+        var child = std.process.Child.init(argv, allocator);
+        const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
+        defer if (home) |h| allocator.free(h);
+        child.cwd = home;
+        child.stderr_behavior = .Ignore;
+        child.stdin_behavior = .Ignore;
+        child.stdout_behavior = if (options.needOutput) .Pipe else .Ignore;
+        try child.spawn();
+        try child.waitForSpawn();
+        {
+            const glib = @import("zglib");
+            const child_ = try child.allocator.create(std.process.Child);
+            child_.* = child;
+            _ = glib.childWatchAdd(child.id, struct {
+                fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
+                    const c: *std.process.Child = @alignCast(@ptrCast(data));
+                    const a = c.allocator;
+                    _ = c.kill() catch {};
+                    a.destroy(c);
+                }
+            }.f, child_);
+        }
+        if (options.block) _ = try child.wait();
+        return child;
+    }
     pub fn exec(self: *Self, args: Args, result: *Result) !void {
-        const Options = struct {
-            needOutput: bool,
-            block: bool,
-            base64Output: bool,
-        };
         const allocator = self.allocator;
         const argvJson = try args.value(1);
         if (argvJson != .array) {
@@ -64,13 +91,7 @@ pub const OS = struct {
 
         const options = try std.json.parseFromValue(Options, allocator, try args.value(2), .{});
         defer options.deinit();
-        var child = std.process.Child.init(argv, allocator);
-        child.stderr_behavior = .Ignore;
-        child.stdin_behavior = .Ignore;
-        child.stdout_behavior = if (options.value.needOutput) .Pipe else .Ignore;
-        try child.spawn();
-        try child.waitForSpawn();
-        if (options.value.block) _ = try child.wait();
+        const child = try exec_(allocator, argv, options.value);
         if (child.stdout) |stdout| {
             defer stdout.close();
             const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024 * 10);
@@ -85,6 +106,25 @@ pub const OS = struct {
             }
         }
     }
+    pub fn exec2(self: *Self, args: Args, result: *Result) !void {
+        const allocator = self.allocator;
+        const argvJson = try args.value(1);
+        if (argvJson != .array) {
+            return error.InvalidArgs;
+        }
+        var argv = try allocator.alloc([]const u8, argvJson.array.items.len);
+        defer allocator.free(argv);
+        for (argvJson.array.items, 0..) |item, i| {
+            argv[i] = item.string;
+        }
+        const child = try exec_(allocator, argv, .{
+            .needOutput = false,
+            .block = false,
+            .base64Output = false,
+        });
+        result.commit(child.id);
+    }
+
     pub fn write(self: *Self, args: Args, _: *Result) !void {
         const path = try args.string(1);
         const base64 = try args.string(2);

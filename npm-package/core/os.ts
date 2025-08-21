@@ -43,6 +43,9 @@ export function exec(argv: string[], options: Partial<ExecOptions> = {}): Promis
     };
     return call("os.exec", argv, opt);
 }
+export function exec2(argv: string[]): Promise<number> {
+    return call("os.exec2", argv);
+}
 export function write(path: string, base64: string): Promise<void> {
     return call("os.write", path, base64);
 }
