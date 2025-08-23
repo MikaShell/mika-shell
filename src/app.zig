@@ -305,15 +305,22 @@ pub const App = struct {
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {
-        for (self.config.pages) |page| {
-            if (std.mem.eql(u8, page.name, pageName)) {
-                const server = if (self.devServer) |ds| ds else self.server;
-                const uri = std.fs.path.join(self.allocator, &.{ server, page.path }) catch unreachable;
-                defer self.allocator.free(uri);
-                return self.openS(uri, pageName);
+        const server = if (self.devServer) |ds| ds else self.server;
+        const path = blk: {
+            if (std.mem.startsWith(u8, pageName, "/")) {
+                break :blk pageName;
+            } else {
+                for (self.config.pages) |page| {
+                    if (std.mem.eql(u8, page.name, pageName)) {
+                        break :blk page.path;
+                    }
+                }
+                break :blk pageName;
             }
-        }
-        return error.PageNotFound;
+        };
+        const url = std.fs.path.join(self.allocator, &.{ server, path }) catch unreachable;
+        defer self.allocator.free(url);
+        return self.openS(url, pageName);
     }
     fn openS(self: *App, uri: []const u8, name: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules, name, self.port) catch unreachable;
