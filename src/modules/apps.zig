@@ -1182,7 +1182,6 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
                 break :blk args;
             } else {
                 defer allocator.free(args);
-                defer for (args) |arg| allocator.free(arg);
                 const terminal = std.process.getEnvVarOwned(allocator, "TERMINAL") catch {
                     return error.TERMINAL_EnvVarCannotBeFound;
                 };
