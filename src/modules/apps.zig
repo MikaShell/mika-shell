@@ -105,12 +105,16 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
             id = try allocator.dupe(u8, base[0 .. base.len - 8]);
         }
         for (usedID) |used| {
-            if (std.mem.eql(u8, used, id)) continue :find;
+            if (std.mem.eql(u8, used, id)) {
+                allocator.free(id);
+                continue :find;
+            }
         }
         const fullPath = try entry.dir.realpathAlloc(allocator, entry.path);
         defer allocator.free(fullPath);
         var e = try parseEntry(allocator, fullPath, locals);
         if (e.hidden) {
+            allocator.free(id);
             e.deinit(allocator);
             continue;
         }
@@ -585,11 +589,14 @@ const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const icon = @import("icon.zig");
 const glib = @import("glib");
+const zglib = @import("zglib");
+const gio = @import("gio");
+const g = @import("gobject");
 pub const Apps = struct {
     const Self = @This();
     allocator: Allocator,
     entrys: ?[]Entry = null,
-    monitors: ?[]glib.FileMonitor = null,
+    monitors: ?[]*gio.FileMonitor = null,
     needReload: bool = false,
     pub fn init(ctx: Context) !*Self {
         const self = try ctx.allocator.create(Self);
@@ -625,17 +632,28 @@ pub const Apps = struct {
             const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
             defer allocator.free(xdgDataDirs);
             var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
-            var monitors = std.ArrayList(glib.FileMonitor).init(allocator);
+            var monitors = std.ArrayList(*gio.FileMonitor).init(allocator);
             defer monitors.deinit();
-            errdefer for (monitors.items) |m| m.deinit();
+            errdefer for (monitors.items) |m| m.unref();
             while (paths.next()) |path| {
-                const monitor = glib.FileMonitor.addDirectory(path, struct {
-                    fn f(data: ?*anyopaque, _: ?[]const u8, _: ?[]const u8, _: glib.FileMonitor.Event) void {
+                const path_ = try allocator.dupeZ(u8, path);
+                defer allocator.free(path_);
+                const gfile = gio.File.newForPath(path_);
+                defer gfile.unref();
+                var err: ?*zglib.Error = null;
+                const monitor = gfile.monitorDirectory(gio.FileMonitorFlags.flags_none, null, &err);
+                if (err) |e| {
+                    std.log.err("Failed to monitor {s}: {s}", .{ path, e.f_message.? });
+                    e.free();
+                    continue;
+                }
+                _ = g.signalConnectData(@ptrCast(monitor), "changed", @ptrCast(&struct {
+                    fn f(_: *gio.FileMonitor, _: ?*gio.File, _: ?*gio.File, _: gio.FileMonitorEvent, data: ?*anyopaque) void {
                         const flg: *bool = @ptrCast(@alignCast(data));
                         flg.* = true;
                     }
-                }.f, &self.needReload) catch continue;
-                try monitors.append(monitor);
+                }.f), &self.needReload, null, .flags_default);
+                try monitors.append(monitor.?);
             }
             self.monitors = try monitors.toOwnedSlice();
         }
@@ -646,7 +664,7 @@ pub const Apps = struct {
             self.allocator.free(entrys);
         }
         if (self.monitors) |monitors| {
-            for (monitors) |m| m.deinit();
+            for (monitors) |m| m.unref();
             self.allocator.free(monitors);
         }
         allocator.destroy(self);
@@ -1205,7 +1223,6 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
         try child.spawn();
         try child.waitForSpawn();
         {
-            const zglib = @import("zglib");
             const child_ = try child.allocator.create(std.process.Child);
             child_.* = child;
             _ = zglib.childWatchAdd(child.id, struct {

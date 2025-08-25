@@ -1,4 +1,6 @@
 const std = @import("std");
+const jsc = @import("jsc");
+const webkit = @import("webkit");
 /// 放心地在 Modules 回调中使用 try xxx(n), xxx是参数类型, n是参数的位置
 ///
 /// 如果参数不符合预期,则会返回 error.InvalidArgs, 可以直接将此错误返回给前端
@@ -83,12 +85,12 @@ pub const Result = struct {
         self.err = std.fmt.allocPrint(self.allocator, fmt, args) catch @panic("OOM");
         return error.HasError;
     }
-    pub fn toJSCValue(self: *Result, ctx: *webkit.JSCContext) *webkit.JSCValue {
+    pub fn toJSCValue(self: *Result, ctx: *jsc.Context) *jsc.Value {
         if (self.err != null) @panic("error message is not null, cannot convert to JSCValue");
-        if (self.buffer == null) return ctx.newUndefined();
+        if (self.buffer == null) return jsc.Value.newUndefined(ctx);
         const str = self.allocator.dupeZ(u8, self.buffer.?.items) catch @panic("OOM");
         defer self.allocator.free(str);
-        return ctx.newFromJson(str);
+        return jsc.Value.newFromJson(ctx, str.ptr);
     }
 };
 
@@ -108,6 +110,5 @@ pub fn Registry(T: type) type {
         events: []const events.Events = &.{},
     };
 }
-const webkit = @import("webkit");
 const dbus = @import("dbus");
 const events = @import("../events.zig");

@@ -13,12 +13,13 @@ pub const Options = struct {
     width: i32,
     height: i32,
 };
-
+const common = @import("common.zig");
 const std = @import("std");
 const webkit = @import("webkit");
 const Webview = @import("../app.zig").Webview;
 const App = @import("../app.zig").App;
 const modules = @import("modules.zig");
+const gtk = @import("gtk");
 const Args = modules.Args;
 const Result = modules.Result;
 const Context = modules.Context;
@@ -106,18 +107,18 @@ pub const Layer = struct {
             layer.autoExclusiveZoneEnable();
         }
         if (opt.backgroundTransparent) {
-            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 0 });
+            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 0 });
         } else {
-            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
+            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 1 });
         }
-        w.container.setDefaultSize(opt.width, opt.height);
+        w.container.setDefaultSize(@intCast(opt.width), @intCast(opt.height));
         if (!opt.hidden) {
             self.app.showRequest(w);
         }
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);
-        w.impl.openDevTools();
+        w.impl.getInspector().show();
     }
     pub fn resetAnchor(self: *Self, args: Args, _: *Result) !void {
         const layer = try self.getLayer(args);
@@ -161,10 +162,8 @@ pub const Layer = struct {
     }
     pub fn getSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWebview(args);
-        var width: i32 = 0;
-        var height: i32 = 0;
-        w.container.getSize(&width, &height);
-        result.commit(.{ .width = width, .height = height });
+        const surface = common.getSurface(w.container);
+        result.commit(.{ .width = surface.getWidth(), .height = surface.getHeight() });
     }
     pub fn setSize(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);
@@ -174,10 +173,15 @@ pub const Layer = struct {
     }
     pub fn getScale(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWebview(args);
-        result.commit(w.container.getScale());
+        const surface = common.getSurface(w.container);
+        result.commit(surface.getScale());
     }
     pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);
-        w.container.setInputRegion(null);
+        const surface = common.getSurface(w.container);
+        const cairo = @import("cairo");
+        const region = cairo.Region.create();
+        defer region.destroy();
+        surface.setInputRegion(region);
     }
 };

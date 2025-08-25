@@ -20,6 +20,7 @@ const Context = modules.Context;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const gtk = @import("gtk");
+const g = @import("gobject");
 pub const Window = struct {
     const Self = @This();
     app: *App,
@@ -68,15 +69,16 @@ pub const Window = struct {
         const opt = options.value;
         const onMapContext = struct {
             id: c_ulong,
-            class: [*:0]const u8,
+            class: []const u8,
             resizable: bool,
         };
-        const onMap = struct {
+        const onMap = &struct {
             fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
                 const ctx: *onMapContext = @alignCast(@ptrCast(data));
-                widget.disconnect(ctx.id);
-                widget.as(gtk.Window).setClass(std.mem.span(ctx.class));
-                std.heap.page_allocator.free(std.mem.span(ctx.class));
+                g.signalHandlerDisconnect(widget.as(g.Object), ctx.id);
+                const window = g.ext.cast(gtk.Window, widget).?;
+                setClass(window, ctx.class);
+                std.heap.page_allocator.free(ctx.class);
                 std.heap.page_allocator.destroy(ctx);
             }
         }.f;
@@ -84,41 +86,46 @@ pub const Window = struct {
         if (w.type == .None) {
             // 这个回调只会执行一次
             const ctx = try std.heap.page_allocator.create(onMapContext);
-            const id_ = w.container.asWidget().connect(.map, onMap, @ptrCast(ctx));
+            const id_ = g.signalConnectData(w.container.as(g.Object), "map", @ptrCast(onMap), ctx, null, .flags_default);
             ctx.* = .{
                 .id = id_,
-                .class = (std.heap.page_allocator.dupeZ(u8, opt.class) catch unreachable).ptr,
+                .class = std.heap.page_allocator.dupe(u8, opt.class) catch unreachable,
                 .resizable = opt.resizable,
             };
         }
         if (w.type == .Window) {
-            w.container.setClass(opt.class);
+            setClass(w.container, opt.class);
         }
         w.type = .Window;
-        w.container.setTitle(opt.title);
+        const title_ = try allocator.dupeZ(u8, opt.title);
+        defer allocator.free(title_);
+        w.container.setTitle(title_);
         if (opt.backgroundTransparent) {
-            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 0 });
+            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 0 });
         } else {
-            w.impl.setBackgroundColor(.{ .red = 1, .green = 1, .blue = 1, .alpha = 1 });
+            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 1 });
         }
         if (!opt.hidden) {
             self.app.showRequest(w);
         }
         w.container.setDefaultSize(opt.width, opt.height);
-        w.container.setResizable(opt.resizable);
+        w.container.setResizable(if (opt.resizable) 1 else 0);
     }
     pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
-        w.impl.openDevTools();
+        w.impl.getInspector().show();
     }
     pub fn setTitle(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
         const title = try args.string(1);
-        w.container.setTitle(title);
+        const allocator = std.heap.page_allocator;
+        const title_ = try allocator.dupeZ(u8, title);
+        defer allocator.free(title_);
+        w.container.setTitle(title_);
     }
     pub fn setSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        if (w.container.getResizable()) {
+        if (w.container.getResizable() == 1) {
             return result.errors("setSize is not allowed for resizable window", .{});
         }
         const width = try args.integer(1);
@@ -127,17 +134,31 @@ pub const Window = struct {
     }
     pub fn getSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        var width: i32 = undefined;
-        var height: i32 = undefined;
-        w.container.getSize(&width, &height);
-        result.commit(.{ .width = width, .height = height });
+        const surface = common.getSurface(w.container);
+        result.commit(.{ .width = surface.getWidth(), .height = surface.getHeight() });
     }
     pub fn getScale(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        result.commit(w.container.getScale());
+        const surface = common.getSurface(w.container);
+        result.commit(surface.getScale());
     }
     pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWindow(args);
-        w.container.setInputRegion(null);
+        const surface = common.getSurface(w.container);
+        const cairo = @import("cairo");
+        const region = cairo.Region.create();
+        defer region.destroy();
+        surface.setInputRegion(region);
     }
 };
+const common = @import("common.zig");
+const gdk = @import("gdk");
+fn setClass(window: *gtk.Window, class: []const u8) void {
+    const surface = common.getSurface(window);
+    const gdkWayland = @import("gdk-wayland");
+    const toplevel = g.ext.cast(gdkWayland.WaylandToplevel, surface).?;
+    const allocator = std.heap.page_allocator;
+    const class_ = allocator.dupeZ(u8, class) catch unreachable;
+    defer allocator.free(class_);
+    toplevel.setApplicationId(class_);
+}

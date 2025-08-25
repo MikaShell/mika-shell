@@ -5,9 +5,9 @@ export interface Monitor {
     height: number;
     widthMm: number;
     heightMm: number;
-    connector: string;
-    description: string;
-    model: string;
+    connector: string | null;
+    description: string | null;
+    model: string | null;
     refreshRate: number;
 }
 export function list(): Promise<Monitor[]> {

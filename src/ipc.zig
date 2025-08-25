@@ -1,16 +1,16 @@
 const std = @import("std");
-const gtk = @import("gtk");
-fn socketPath(allocator: std.mem.Allocator, port: u16) ![]const u8 {
+fn socketPath(allocator: mem.Allocator, port: u16) ![]const u8 {
     return try std.fmt.allocPrint(allocator, "/tmp/mika-shell-{d}.sock", .{port});
 }
 const glib = @import("glib");
+const mem = std.mem;
 pub const Server = struct {
-    allocator: std.mem.Allocator,
+    allocator: mem.Allocator,
     s: std.net.Server,
     app: *App,
     watcher: glib.FdWatch(Server),
     path: []const u8,
-    pub fn init(allocator: std.mem.Allocator, app: *App, port: u16) !*Server {
+    pub fn init(allocator: mem.Allocator, app: *App, port: u16) !*Server {
         const self = try allocator.create(Server);
         self.* = .{
             .allocator = allocator,
@@ -58,7 +58,7 @@ pub const Server = struct {
     }
 };
 fn eql(a: []const u8, b: []const u8) bool {
-    return std.mem.eql(u8, a, b);
+    return mem.eql(u8, a, b);
 }
 
 pub const Request = struct {
@@ -69,6 +69,7 @@ pub const Request = struct {
 };
 
 const app_ = @import("app.zig");
+const gtk = @import("gtk");
 const App = app_.App;
 fn handle(app: *App, r: Request, s: std.net.Stream) !void {
     std.log.debug("IPC: Received request: {s}", .{r.type});
@@ -85,7 +86,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         var i = app.webviews.items.len - 1;
         while (i >= 0) {
             const w = app.webviews.items[i];
-            if (std.mem.eql(u8, w.name, r.pageName.?)) {
+            if (mem.eql(u8, w.name, r.pageName.?)) {
                 app.closeRequest(w);
                 return;
             }
@@ -103,10 +104,10 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         var isFirstLine = true;
         for (app.webviews.items) |w| {
             const name = w.name;
-            const title = w.impl.getTitle() orelse "*unknown*";
+            const title = mem.span(w.impl.getTitle());
             const id = w.id;
-            const uri = w.impl.getUri();
-            const visible = w.container.asWidget().getVisible();
+            const uri = mem.span(w.impl.getUri());
+            const visible = w.container.as(gtk.Widget).getVisible();
             const t = switch (w.type) {
                 .None => "none",
                 .Layer => "layer",

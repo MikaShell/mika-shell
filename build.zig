@@ -8,29 +8,19 @@ pub fn build(b: *std.Build) void {
         .preferred_link_mode = .dynamic,
         .search_strategy = .mode_first,
     };
-    var gtk_mod: *std.Build.Module = undefined;
+
+    const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
+
     var layershell_mod: *std.Build.Module = undefined;
-    var webkit_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
     var glib_mod: *std.Build.Module = undefined;
     var wayland_mod: *std.Build.Module = undefined;
     // pkgs
     {
-        gtk_mod = b.createModule(.{
-            .root_source_file = b.path("pkgs/gtk.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
         layershell_mod = b.createModule(.{
             .root_source_file = b.path("pkgs/layershell.zig"),
             .target = target,
             .optimize = optimize,
-        });
-        webkit_mod = b.createModule(.{
-            .root_source_file = b.path("pkgs/webkit.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
         });
         dbus_mod = b.createModule(.{
             .root_source_file = b.path("pkgs/dbus/root.zig"),
@@ -69,14 +59,10 @@ pub fn build(b: *std.Build) void {
             wayland_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
         }
         // Linking
-        gtk_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
-        layershell_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
-        layershell_mod.addImport("gtk", gtk_mod);
-        webkit_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
-        webkit_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
+        layershell_mod.addImport("gdk", gobject.module("gdk4"));
+        layershell_mod.addImport("gtk", gobject.module("gtk4"));
 
-        webkit_mod.addImport("gtk", gtk_mod);
         dbus_mod.linkSystemLibrary("dbus-1", dynamic_link_opts);
         dbus_mod.addIncludePath(b.path("pkgs/dbus"));
         dbus_mod.addImport("glib", glib_mod);
@@ -112,30 +98,30 @@ pub fn build(b: *std.Build) void {
     exe.step.dependOn(generate_events_step);
 
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
-    exe_mod.linkSystemLibrary("gtk4", dynamic_link_opts);
-    exe_mod.linkSystemLibrary("webkitgtk-6.0", dynamic_link_opts);
     exe_mod.linkSystemLibrary("libudev", dynamic_link_opts);
     exe_mod.linkSystemLibrary("libinput", dynamic_link_opts);
     const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
 
-    const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
-    exe_mod.addImport("zgtk", gobject.module("gtk4"));
-    exe_mod.addImport("zglib", gobject.module("glib2"));
-    exe_mod.addImport("zdbus", gobject.module("dbus1"));
-    exe_mod.addImport("zwebkit", gobject.module("webkit6"));
-
     exe_mod.addImport("example", example_mod);
     exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("cli", cli.module("cli"));
     exe_mod.addImport("ini", ini.module("ini"));
-    exe_mod.addImport("gtk", gtk_mod);
-    exe_mod.addImport("layershell", layershell_mod);
-    exe_mod.addImport("webkit", webkit_mod);
+    exe_mod.addImport("layershell", layershell_mod); // layershell must be imported before gtk4
     exe_mod.addImport("glib", glib_mod);
     exe_mod.addImport("dbus", dbus_mod);
     exe_mod.addImport("wayland", wayland_mod);
+
+    exe_mod.addImport("gtk", gobject.module("gtk4"));
+    exe_mod.addImport("zglib", gobject.module("glib2"));
+    exe_mod.addImport("webkit", gobject.module("webkit6"));
+    exe_mod.addImport("gobject", gobject.module("gobject2"));
+    exe_mod.addImport("jsc", gobject.module("javascriptcore6"));
+    exe_mod.addImport("cairo", gobject.module("cairo1"));
+    exe_mod.addImport("gdk", gobject.module("gdk4"));
+    exe_mod.addImport("gio", gobject.module("gio2"));
+    exe_mod.addImport("gdk-wayland", gobject.module("gdkwayland4"));
 
     b.installArtifact(exe);
     // CMD
@@ -181,7 +167,6 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             });
-            modules_mod.addImport("webkit", webkit_mod);
 
             const modules_unit_tests = b.addTest(.{
                 .root_module = modules_mod,
@@ -216,7 +201,7 @@ pub fn build(b: *std.Build) void {
             run_dbus_service.step.dependOn(&check_dbus_service.step);
             run_dbus_unit_tests.step.dependOn(&run_dbus_service.step);
             kill_dbus_service.step.dependOn(&run_dbus_unit_tests.step);
-            test_step.dependOn(&kill_dbus_service.step);
+            test_dbus_step.dependOn(&kill_dbus_service.step);
             test_dbus_step.dependOn(&run_dbus_unit_tests.step);
         }
     }

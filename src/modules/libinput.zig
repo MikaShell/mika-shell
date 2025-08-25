@@ -26,6 +26,7 @@ pub const Libinput = struct {
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
         self.count.deinit();
+        self.input.deinit();
         allocator.destroy(self);
     }
     pub fn eventStart(self: *Self) !void {

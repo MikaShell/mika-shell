@@ -234,7 +234,7 @@ pub fn run() !void {
 }
 const wayland = @import("wayland");
 const events = @import("events.zig");
-const gtk = @import("zgtk");
+const gtk = @import("gtk");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -295,7 +295,6 @@ pub fn daemon() !void {
     const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();
     try ipcServer.listen();
-
     while (true) {
         const glib = @import("zglib");
         _ = glib.MainContext.iteration(null, 1);

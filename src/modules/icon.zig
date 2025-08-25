@@ -416,9 +416,9 @@ test {
 //     const end = std.time.nanoTimestamp();
 //     std.debug.print("Time elapsed: {}ns {d}\n", .{ end - start, cache.len });
 // }
-const c = @cImport({
-    @cInclude("gtk/gtk.h");
-});
+const gtk = @import("gtk");
+const gdk = @import("gdk");
+const glib = @import("zglib");
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;
@@ -458,22 +458,20 @@ pub const Icon = struct {
     }
 };
 fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]const u8 {
-    const theme = c.gtk_icon_theme_get_for_display(c.gdk_display_get_default());
+    const theme = gtk.IconTheme.getForDisplay(gdk.Display.getDefault().?);
     const name_c = try allocator.dupeZ(u8, name);
     defer allocator.free(name_c);
-    const icon = c.gtk_icon_theme_lookup_icon(theme, name_c.ptr, null, size, scale, c.GTK_TEXT_DIR_LTR, c.GTK_ICON_LOOKUP_NONE);
-    if (icon == null) return error.IconNotFound;
-    defer c.g_object_unref(icon);
-    const gotIconName_c = c.gtk_icon_paintable_get_icon_name(icon);
+    const icon = theme.lookupIcon(name_c, null, @intCast(size), @intCast(scale), .none, gtk.IconLookupFlags.flags_preload);
+    defer icon.unref();
+    const gotIconName_c = icon.getIconName() orelse return error.IconNotFound;
     const gotIconName = std.mem.span(gotIconName_c);
     if (std.mem.eql(u8, gotIconName, "image-missing")) {
         return error.IconNotFound;
     }
-    const file = c.gtk_icon_paintable_get_file(icon);
-    if (file == null) return error.IconNotSupported;
-    const path_c = c.g_file_get_path(file);
-    if (path_c == null) return error.IconMissing;
-    defer c.g_free(path_c);
+    const file = icon.getFile() orelse return error.IconNotSupported;
+    defer file.unref();
+    const path_c = file.getPath() orelse return error.IconMissing;
+    defer glib.free(@ptrCast(path_c));
     const path = std.mem.span(path_c);
     return try makeHtmlImg(allocator, path);
 }

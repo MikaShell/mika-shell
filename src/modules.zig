@@ -164,8 +164,7 @@ const TestModule = struct {
         _ = try args.object(4);
     }
 };
-const webkit = @import("webkit");
-
+const jsc = @import("jsc");
 test "register and call" {
     const allocator = std.testing.allocator;
     var m = Modules.init(allocator, undefined, undefined, undefined);
@@ -190,9 +189,11 @@ test "register and call" {
     defer result.deinit();
     try m.call("test.show", value, &result);
     try std.testing.expectEqualStrings("\"Hello, world!\"", result.buffer.?.items);
-    const ctx = webkit.JSCContext.new();
+    const ctx = jsc.Context.new();
+    defer ctx.unref();
     const jsvalue = result.toJSCValue(ctx);
-    try std.testing.expectEqualStrings("\"Hello, world!\"", jsvalue.toJson(0));
+    defer jsvalue.unref();
+    try std.testing.expectEqualStrings("\"Hello, world!\"", std.mem.span(jsvalue.toJson(0)));
     try std.testing.expectError(error.TestError, m.call("test.throw", value, &result));
 
     try m.call("test.testArgs", value, &result);
