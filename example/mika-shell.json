@@ -1,53 +1,10 @@
 {
-    "name": "Example",
-    "description": "This is an example mika-shell configuration file",
-    "pages": [
-        {
-            "name": "debug",
-            "description": "This is the debug page",
-            "path": "/debug/index.html"
-        },
-        {
-            "name": "debug-tray",
-            "path": "/debug/tray.html"
-        },
-        {
-            "name": "debug-apps",
-            "path": "/debug/apps.html"
-        },
-        {
-            "name": "debug-hyprland",
-            "path": "/debug/hyprland.html"
-        },
-        {
-            "name": "debug-notifd",
-            "path": "/debug/notifd.html"
-        },
-        {
-            "name": "debug-network",
-            "path": "/debug/network.html"
-        },
-        {
-            "name": "debug-404",
-            "description": "This page is used to test the built-in 404 page",
-            "path": "/unknown.html"
-        },
-        {
-            "name": "bar",
-            "path": "/bar.html"
-        },
-        {
-            "name": "dock",
-            "path": "/dock.html"
-        },
-        {
-            "name": "showkeys",
-            "path": "/showkeys.html"
-        },
-        {
-            "name": "bongocat",
-            "path": "/bongocat.html"
-        }
-    ],
+    "alias": {
+        "debug": "/debug/index.html",
+        "bar": "/bar.html",
+        "dock": "/dock.html",
+        "showkeys": "/showkeys.html",
+        "bongocat": "/bongocat.html"
+    },
     "startup": ["bar", "dock", "bongocat"]
 }

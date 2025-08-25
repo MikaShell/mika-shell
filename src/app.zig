@@ -143,16 +143,9 @@ pub const Error = error{
     WebviewNotExists,
 };
 pub const Config = struct {
-    const Page = struct {
-        name: []const u8,
-        path: []const u8,
-        description: ?[]const u8 = null,
-    };
-    name: []const u8,
-    description: ?[]const u8 = null,
-    pages: []Page = &.{},
+    alias: std.StringHashMap([]const u8),
     startup: [][]const u8 = &.{},
-    pub fn load(allocator: Allocator, configDir: []const u8, devServer: ?[]const u8) !Config {
+    pub fn load(allocator: Allocator, configDir: []const u8, devServer: ?[]const u8) !*Config {
         const configJson = blk: {
             if (devServer) |ds| {
                 const config_path = try std.fs.path.join(allocator, &.{ ds, "mika-shell.json" });
@@ -178,39 +171,52 @@ pub const Config = struct {
             }
         };
         defer allocator.free(configJson);
-        const cfgJson = try std.json.parseFromSlice(Config, allocator, configJson, .{});
+        const cfgJson = try std.json.parseFromSlice(std.json.Value, allocator, configJson, .{});
         defer cfgJson.deinit();
-        var cfg: Config = undefined;
-        cfg.name = try allocator.dupe(u8, cfgJson.value.name);
-        cfg.description = if (cfgJson.value.description) |desc| try allocator.dupe(u8, desc) else null;
-        cfg.pages = try allocator.alloc(Page, cfgJson.value.pages.len);
-        for (cfg.pages, 0..) |*page, i| {
-            const page_ = cfgJson.value.pages[i];
-            page.* = Page{
-                .name = try allocator.dupe(u8, page_.name),
-                .path = try allocator.dupe(u8, page_.path),
-                .description = if (page_.description) |desc| try allocator.dupe(u8, desc) else null,
-            };
+        const value = cfgJson.value.object;
+        const cfg = try allocator.create(Config);
+        errdefer allocator.destroy(cfg);
+        cfg.alias = std.StringHashMap([]const u8).init(allocator);
+        if (value.get("alias")) |alias_| {
+            const alias__ = alias_.object;
+            var it = alias__.iterator();
+            while (it.next()) |kv| {
+                const key = kv.key_ptr.*;
+                const val = switch (kv.value_ptr.*) {
+                    .string => |v| v,
+                    else => {
+                        @panic("invalid alias value type, expected string");
+                    },
+                };
+                try cfg.alias.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
+            }
         }
+        var startup = std.ArrayList([]const u8).init(allocator);
+        if (value.get("startup")) |startup_| {
+            const startup__ = startup_.array;
+            for (startup__.items) |item| {
+                switch (item) {
+                    .string => |v| try startup.append(v),
+                    else => {
+                        @panic("invalid startup value type, expected string");
+                    },
+                }
+            }
+        }
+        cfg.startup = try startup.toOwnedSlice();
 
-        cfg.startup = try allocator.alloc([]const u8, cfgJson.value.startup.len);
-        for (cfg.startup, 0..) |*p, i| {
-            const s = cfgJson.value.startup[i];
-            p.* = try allocator.dupe(u8, s);
-        }
         return cfg;
     }
-    pub fn deinit(self: Config, allocator: Allocator) void {
-        for (self.pages) |page| {
-            allocator.free(page.name);
-            allocator.free(page.path);
-            if (page.description) |desc| allocator.free(desc);
+    pub fn deinit(self: *Config, allocator: Allocator) void {
+        var it = self.alias.iterator();
+        while (it.next()) |kv| {
+            allocator.free(kv.key_ptr.*);
+            allocator.free(kv.value_ptr.*);
         }
-        allocator.free(self.pages);
-        if (self.description) |desc| allocator.free(desc);
+        self.alias.deinit();
         for (self.startup) |p| allocator.free(p);
         allocator.free(self.startup);
-        allocator.free(self.name);
+        allocator.destroy(self);
     }
 };
 pub const App = struct {
@@ -219,7 +225,7 @@ pub const App = struct {
     isQuit: bool,
     webviews: std.ArrayList(*Webview),
     allocator: Allocator,
-    config: Config,
+    config: *Config,
     configDir: []const u8,
     sessionBus: *dbus.Bus,
     systemBus: *dbus.Bus,
@@ -310,11 +316,7 @@ pub const App = struct {
             if (std.mem.startsWith(u8, pageName, "/")) {
                 break :blk pageName;
             } else {
-                for (self.config.pages) |page| {
-                    if (std.mem.eql(u8, page.name, pageName)) {
-                        break :blk page.path;
-                    }
-                }
+                if (self.config.alias.get(pageName)) |alias| break :blk alias;
                 break :blk pageName;
             }
         };

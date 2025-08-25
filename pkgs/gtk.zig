@@ -152,7 +152,10 @@ pub const Window = extern struct {
         gtk_window_destroy(self);
     }
     pub fn setTitle(self: *Self, title: []const u8) void {
-        gtk_window_set_title(self, title.ptr);
+        const allocator = std.heap.c_allocator;
+        const title_ = allocator.dupeZ(u8, title) catch unreachable;
+        defer allocator.free(title_);
+        gtk_window_set_title(self, title_.ptr);
     }
     pub fn setResizable(self: *Self, resizable: bool) void {
         gtk_window_set_resizable(self, @intFromBool(resizable));

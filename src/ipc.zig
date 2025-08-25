@@ -124,39 +124,6 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
             try out.print("    visible: {}\n", .{visible});
         }
     }
-    if (eql(r.type, "pages")) {
-        for (app.config.pages) |page| {
-            try out.print("{s}\n", .{page.name});
-            if (page.description) |desc| {
-                try out.print("    {s}\n", .{desc});
-            }
-        }
-    }
-    if (eql(r.type, "about")) {
-        const cfg = app.config;
-        try out.print("Name: {s}\n", .{cfg.name});
-        if (cfg.description) |desc| {
-            try out.print("Description: {s}\n", .{desc});
-        }
-        try out.print("Pages:\n", .{});
-        for (cfg.pages) |page| {
-            var isStartup = false;
-            for (cfg.startup) |su| {
-                if (eql(su, page.name)) {
-                    isStartup = true;
-                    break;
-                }
-            }
-            if (isStartup) {
-                try out.print("    {s} (*startup*)\n", .{page.name});
-            } else {
-                try out.print("    {s}\n", .{page.name});
-            }
-            if (page.description) |desc| {
-                try out.print("        {s}\n", .{desc});
-            }
-        }
-    }
     if (eql(r.type, "show")) {
         const w = app.getWebview(r.id.?) catch {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});

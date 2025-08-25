@@ -60,9 +60,9 @@ export interface MenuNode {
     children: MenuNode[];
 }
 import call from "./call";
-export function pickIcon(item: Item, size: number): string {
+export function pickIcon(item: Item, size: number): string | undefined {
     const icons = item.icon.pixmap;
-    if (!Array.isArray(icons) || icons.length === 0) throw new Error("No icons provided");
+    if (!Array.isArray(icons) || icons.length === 0) return undefined;
     let closest = icons[0];
     let minDiff = Math.abs(closest.width - size);
 

@@ -112,24 +112,6 @@ fn cmdList(_: *cli.AppRunner) !cli.Command {
         .target = .{ .action = .{ .exec = list } },
     };
 }
-fn cmdPages(_: *cli.AppRunner) !cli.Command {
-    return cli.Command{
-        .name = "pages",
-        .description = .{
-            .one_line = "list all pages can be opened",
-        },
-        .target = .{ .action = .{ .exec = pages } },
-    };
-}
-fn cmdAbout(_: *cli.AppRunner) !cli.Command {
-    return cli.Command{
-        .name = "about",
-        .description = .{
-            .one_line = "display details of the current configuration",
-        },
-        .target = .{ .action = .{ .exec = about } },
-    };
-}
 fn cmdShow(r: *cli.AppRunner) !cli.Command {
     return cli.Command{
         .name = "show",
@@ -242,8 +224,6 @@ pub fn run() !void {
                     try cmdShow(r),
                     try cmdHide(r),
                     try cmdClose(r),
-                    try cmdPages(r),
-                    try cmdAbout(r),
                 }),
             },
         },
@@ -339,16 +319,6 @@ fn toggle() !void {
 fn list() !void {
     try ipc.request(.{
         .type = "list",
-    }, config.port);
-}
-fn pages() !void {
-    try ipc.request(.{
-        .type = "pages",
-    }, config.port);
-}
-fn about() !void {
-    try ipc.request(.{
-        .type = "about",
     }, config.port);
 }
 fn show() !void {

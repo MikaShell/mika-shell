@@ -54,6 +54,7 @@ pub const Window = struct {
         }
         return w;
     }
+    // TODO: window 和 layer 增加 background-color 选项
     pub fn initWindow(self: *Self, args: Args, _: *Result) !void {
         const id = args.uInteger(0) catch unreachable;
         const w = self.app.getWebview(id) catch unreachable;
