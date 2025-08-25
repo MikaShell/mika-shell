@@ -13,7 +13,6 @@ pub const Options = struct {
     width: i32,
     height: i32,
 };
-const common = @import("common.zig");
 const std = @import("std");
 const webkit = @import("webkit");
 const Webview = @import("../app.zig").Webview;
@@ -162,8 +161,11 @@ pub const Layer = struct {
     }
     pub fn getSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWebview(args);
-        const surface = common.getSurface(w.container);
-        result.commit(.{ .width = surface.getWidth(), .height = surface.getHeight() });
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
+        result.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
     }
     pub fn setSize(self: *Self, args: Args, _: *Result) !void {
         const w = try self.getWebview(args);
@@ -173,15 +175,21 @@ pub const Layer = struct {
     }
     pub fn getScale(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWebview(args);
-        const surface = common.getSurface(w.container);
-        result.commit(surface.getScale());
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
+        result.commit(surface.?.getScale());
     }
-    pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
+    pub fn setInputRegion(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWebview(args);
-        const surface = common.getSurface(w.container);
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
         const cairo = @import("cairo");
         const region = cairo.Region.create();
         defer region.destroy();
-        surface.setInputRegion(region);
+        surface.?.setInputRegion(region);
     }
 };

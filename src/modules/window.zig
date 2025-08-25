@@ -77,7 +77,7 @@ pub const Window = struct {
                 const ctx: *onMapContext = @alignCast(@ptrCast(data));
                 g.signalHandlerDisconnect(widget.as(g.Object), ctx.id);
                 const window = g.ext.cast(gtk.Window, widget).?;
-                setClass(window, ctx.class);
+                setClass(window, ctx.class) catch unreachable;
                 std.heap.page_allocator.free(ctx.class);
                 std.heap.page_allocator.destroy(ctx);
             }
@@ -94,7 +94,7 @@ pub const Window = struct {
             };
         }
         if (w.type == .Window) {
-            setClass(w.container, opt.class);
+            setClass(w.container, opt.class) catch unreachable;
         }
         w.type = .Window;
         const title_ = try allocator.dupeZ(u8, opt.title);
@@ -134,29 +134,40 @@ pub const Window = struct {
     }
     pub fn getSize(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        const surface = common.getSurface(w.container);
-        result.commit(.{ .width = surface.getWidth(), .height = surface.getHeight() });
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
+        result.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
     }
     pub fn getScale(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        const surface = common.getSurface(w.container);
-        result.commit(surface.getScale());
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
+        result.commit(surface.?.getScale());
     }
-    pub fn setInputRegion(self: *Self, args: Args, _: *Result) !void {
+    pub fn setInputRegion(self: *Self, args: Args, result: *Result) !void {
         const w = try self.getWindow(args);
-        const surface = common.getSurface(w.container);
+        const surface = w.container.as(gtk.Native).getSurface();
+        if (surface == null) {
+            return result.errors("you should call this function after the window is realized", .{});
+        }
         const cairo = @import("cairo");
         const region = cairo.Region.create();
         defer region.destroy();
-        surface.setInputRegion(region);
+        surface.?.setInputRegion(region);
     }
 };
-const common = @import("common.zig");
 const gdk = @import("gdk");
-fn setClass(window: *gtk.Window, class: []const u8) void {
-    const surface = common.getSurface(window);
+fn setClass(window: *gtk.Window, class: []const u8) !void {
+    const surface = window.as(gtk.Native).getSurface();
+    if (surface == null) {
+        return error.CanNotGetSurface;
+    }
     const gdkWayland = @import("gdk-wayland");
-    const toplevel = g.ext.cast(gdkWayland.WaylandToplevel, surface).?;
+    const toplevel = g.ext.cast(gdkWayland.WaylandToplevel, surface.?).?;
     const allocator = std.heap.page_allocator;
     const class_ = allocator.dupeZ(u8, class) catch unreachable;
     defer allocator.free(class_);

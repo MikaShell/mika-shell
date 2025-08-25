@@ -41,11 +41,11 @@ pub const Monitor = struct {
         const display = gdk.Display.getDefault().?;
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            @panic("you should call this function after the window is realized");
+            return result.errors("you should call this function after the window is realized", .{});
         }
         const monitor = gdk.Display.getMonitorAtSurface(display, surface.?);
         if (monitor == null) {
-            @panic("you should call this function after the window is realized");
+            return result.errors("can't get monitor from surface", .{});
         }
         const m = try Monitor_.init(monitor.?);
         defer m.deinit();
