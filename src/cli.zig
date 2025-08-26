@@ -232,7 +232,6 @@ pub fn run() !void {
     };
     return r.run(&cliApp);
 }
-const wayland = @import("wayland");
 const events = @import("events.zig");
 const gtk = @import("gtk");
 pub fn daemon() !void {
@@ -287,10 +286,6 @@ pub fn daemon() !void {
     _ = try assetsserver.start();
     const app = try App.init(allocator, configDir, &eventChannel, config.daemon.dev_server, config.port);
     defer app.deinit();
-
-    try wayland.init(allocator);
-    const watch = try wayland.withGLib();
-    defer watch.deinit();
 
     const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();

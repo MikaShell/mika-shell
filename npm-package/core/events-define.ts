@@ -19,15 +19,13 @@ export const Notifd = {
     removed: 11,
 };
 export const Dock = {
-    added: 12,
-    changed: 13,
-    closed: 14,
-    enter: 15,
-    leave: 16,
-    activated: 17,
+    changed: 12,
+    closed: 13,
+    enter: 14,
+    leave: 15,
 };
 export const Libinput = {
-    "pointer-motion": 18,
-    "pointer-button": 19,
-    "keyboard-key": 20,
+    "pointer-motion": 16,
+    "pointer-button": 17,
+    "keyboard-key": 18,
 };

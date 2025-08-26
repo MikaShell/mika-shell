@@ -1,19 +1,13 @@
 import call from "./call";
 import { Dock } from "./events-define";
 export type State = "maximized" | "minimized" | "activated" | "fullscreen";
-export type Item = {
+export type Client = {
     id: number;
     title: string;
     appId: string;
     state: State[];
 };
-export function subscribe(): Promise<void> {
-    return call("dock.subscribe");
-}
-export function unsubscribe(): Promise<void> {
-    return call("dock.unsubscribe");
-}
-export function list(): Promise<Item[]> {
+export function list(): Promise<Client[]> {
     return call("dock.list");
 }
 export function activate(id: number): Promise<void> {
@@ -34,10 +28,8 @@ export function setFullscreen(id: number, fullscreen: boolean): Promise<void> {
 
 type Events = keyof typeof Dock;
 type EventMap = {
-    [K in Events]: K extends "added"
-        ? (item: Item) => void
-        : K extends "changed"
-        ? (item: Item) => void
+    [K in Events]: K extends "changed"
+        ? (item: Client) => void
         : K extends "closed"
         ? (id: number) => void
         : K extends "enter"

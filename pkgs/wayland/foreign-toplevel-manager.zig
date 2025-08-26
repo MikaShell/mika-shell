@@ -1,80 +1,233 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const wayland = @import("zig-wayland");
 const wl = wayland.client.wl;
-pub const Manager = wayland.client.zwlr.ForeignToplevelManagerV1;
-pub const Handle = wayland.client.zwlr.ForeignToplevelHandleV1;
-pub const ToplevelListener = struct {
-    onChanged: ?*const fn (?*anyopaque, Toplevel) void = null,
-    onClosed: ?*const fn (?*anyopaque, u32) void = null,
-    onEnter: ?*const fn (?*anyopaque, u32) void = null,
-    onLeave: ?*const fn (?*anyopaque, u32) void = null,
+const ForeignToplevelManager = wayland.client.zwlr.ForeignToplevelManagerV1;
+const ForeignToplevelHandle = wayland.client.zwlr.ForeignToplevelHandleV1;
+pub const Listener = struct {
+    userdata: ?*anyopaque = null,
+    changed: ?*const fn (?*anyopaque, Toplevel) void = null,
+    closed: ?*const fn (?*anyopaque, u32) void = null,
+    enter: ?*const fn (?*anyopaque, u32) void = null,
+    leave: ?*const fn (?*anyopaque, u32) void = null,
 };
 
-pub const Toplevel = struct {
-    id: u32,
-    title: []const u8,
-    appId: []const u8,
-    state: []Handle.State,
-};
-
-pub const Context = struct {
-    allocator: std.mem.Allocator,
-    listener: *ToplevelListener,
-    userData: ?*anyopaque = null,
-    handlers: *std.AutoHashMap(u32, *Handle),
-    closed: bool = false,
-    id: u32,
-    title: []const u8 = "",
-    appId: []const u8 = "",
-    state: []Handle.State = &.{},
-};
-pub fn handleToplevel(h: *Handle, event: Handle.Event, t: *Context) void {
+fn handleToplevel(h: *ForeignToplevelHandle, event: ForeignToplevelHandle.Event, ctx: *Manager) void {
+    const node = blk: {
+        var it = ctx.toplevels.first;
+        while (it) |node| {
+            if (node.data.handler == h) {
+                break :blk node;
+            }
+            it = node.next;
+        }
+        return;
+    };
+    const t = &node.data;
+    const allocator = ctx.allocator;
+    const span = std.mem.span;
     switch (event) {
         .app_id => |appId| {
-            if (t.closed) return;
-            t.allocator.free(t.appId);
-            t.appId = t.allocator.dupe(u8, std.mem.span(appId.app_id)) catch return;
+            allocator.free(t.appId);
+            t.appId = allocator.dupe(u8, span(appId.app_id)) catch return;
         },
         .title => |title| {
-            if (t.closed) return;
-            t.allocator.free(t.title);
-            t.title = t.allocator.dupe(u8, std.mem.span(title.title)) catch return;
+            allocator.free(t.title);
+            t.title = allocator.dupe(u8, span(title.title)) catch return;
         },
         .state => |state| {
-            if (t.closed) return;
-            t.allocator.free(t.state);
+            allocator.free(t.state);
             const status = state.state.slice(c_int);
-            var status_ = t.allocator.alloc(Handle.State, status.len) catch return;
+            var status_ = allocator.alloc(ForeignToplevelHandle.State, status.len) catch return;
             for (status, 0..) |s, i| {
                 status_[i] = @enumFromInt(s);
             }
             t.state = status_;
         },
         .done => {
-            if (t.closed) return;
-            if (t.listener.onChanged) |onChanged| onChanged(t.userData, .{
-                .id = t.id,
-                .title = t.title,
-                .appId = t.appId,
-                .state = t.state,
-            });
+            const toplevelData = t.make();
+            if (ctx.listener.changed) |callback| callback(ctx.listener.userdata, toplevelData);
         },
         .closed => {
-            t.closed = true;
-            if (t.listener.onClosed) |onRemoved| onRemoved(t.userData, t.id);
-            h.destroy();
-            _ = t.handlers.remove(t.id);
-            t.allocator.free(t.title);
-            t.allocator.free(t.appId);
-            t.allocator.free(t.state);
-            t.allocator.destroy(t);
+            if (ctx.listener.closed) |callback| callback(ctx.listener.userdata, h.getId());
+            ctx.remove(node);
         },
         .output_enter => {
-            if (t.listener.onEnter) |onEnter| onEnter(t.userData, t.id);
+            if (ctx.listener.enter) |callback| callback(ctx.listener.userdata, h.getId());
         },
         .output_leave => {
-            if (t.listener.onLeave) |onLeave| onLeave(t.userData, t.id);
+            if (ctx.listener.leave) |callback| callback(ctx.listener.userdata, h.getId());
         },
         else => {},
+    }
+}
+fn foreignToplevelManagerListener(_: *ForeignToplevelManager, event: ForeignToplevelManager.Event, ctx: *Manager) void {
+    switch (event) {
+        .toplevel => |t| {
+            ctx.append(t.toplevel);
+        },
+        .finished => {
+            ctx.destroy();
+        },
+    }
+}
+const ToplevelList = std.DoublyLinkedList(ToplevelContext);
+
+pub const Toplevel = struct {
+    id: u32,
+    title: []const u8,
+    appId: []const u8,
+    state: []ForeignToplevelHandle.State,
+};
+const ToplevelContext = struct {
+    allocator: Allocator,
+    handler: *ForeignToplevelHandle,
+    title: []const u8,
+    appId: []const u8,
+    state: []ForeignToplevelHandle.State,
+    fn init(allocator: Allocator, handler: *ForeignToplevelHandle) ToplevelContext {
+        return .{
+            .allocator = allocator,
+            .handler = handler,
+            .title = "",
+            .appId = "",
+            .state = &.{},
+        };
+    }
+    fn deinit(self: *ToplevelContext) void {
+        self.allocator.free(self.title);
+        self.allocator.free(self.appId);
+        self.allocator.free(self.state);
+        self.handler.destroy();
+    }
+    fn make(self: *ToplevelContext) Toplevel {
+        return .{
+            .id = self.handler.getId(),
+            .title = self.title,
+            .appId = self.appId,
+            .state = self.state,
+        };
+    }
+};
+const common = @import("common.zig");
+pub const Manager = struct {
+    const Self = @This();
+    listener: Listener,
+    allocator: Allocator,
+    foreignToplevelManager: *ForeignToplevelManager,
+    seat: *wl.Seat,
+    toplevels: ToplevelList,
+    glibWatch: common.GLibWatch,
+    pub fn init(allocator: Allocator, listener: Listener) !*Self {
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        self.allocator = allocator;
+        self.listener = listener;
+        self.toplevels = .{};
+
+        const display = try wl.Display.connect(null);
+        errdefer self.glibWatch.deinit();
+
+        const registry = try display.getRegistry();
+        defer registry.destroy();
+        registry.setListener(*Self, registryListener, self);
+        _ = display.roundtrip();
+        self.foreignToplevelManager.setListener(*Self, foreignToplevelManagerListener, self);
+        self.glibWatch = try common.withGLibMainLoop(display);
+        return self;
+    }
+    fn getHandler(self: *Self, id: u32) ?*ForeignToplevelHandle {
+        var it = self.toplevels.first;
+        while (it) |node| {
+            if (node.data.handler.getId() == id) {
+                return node.data.handler;
+            }
+            it = node.next;
+        }
+        return null;
+    }
+    pub fn deinit(self: *Self) void {
+        self.foreignToplevelManager.stop();
+        _ = self.glibWatch.display.roundtrip();
+        self.glibWatch.deinit();
+        self.allocator.destroy(self);
+    }
+    fn append(self: *Self, t: *ForeignToplevelHandle) void {
+        const node = self.allocator.create(ToplevelList.Node) catch unreachable;
+        node.* = .{
+            .data = ToplevelContext.init(self.allocator, t),
+            .prev = null,
+            .next = null,
+        };
+        self.toplevels.append(node);
+        t.setListener(*Self, handleToplevel, self);
+    }
+    fn remove(self: *Self, node: *ToplevelList.Node) void {
+        self.toplevels.remove(node);
+        node.data.deinit();
+        self.allocator.destroy(node);
+    }
+    // 由 wayland 回调的 finish 事件调用
+    fn destroy(self: *Self) void {
+        while (self.toplevels.pop()) |node| {
+            node.data.deinit();
+        }
+    }
+    pub fn list(self: *Self, allocator: Allocator) ![]Toplevel {
+        var result = std.ArrayList(Toplevel).init(allocator);
+        errdefer result.deinit();
+        var it = self.toplevels.first;
+        while (it) |node| {
+            try result.append(node.data.make());
+            it = node.next;
+        }
+        return try result.toOwnedSlice();
+    }
+    pub fn activate(self: *Self, id: u32) void {
+        const handle = self.getHandler(id) orelse return;
+        handle.activate(self.seat);
+    }
+    pub fn close(self: *Self, id: u32) void {
+        const handle = self.getHandler(id) orelse return;
+        handle.close();
+    }
+    pub fn setMaximized(self: *Self, id: u32, maximized: bool) void {
+        const handle = self.getHandler(id) orelse return;
+        if (maximized) {
+            handle.setMaximized();
+        } else {
+            handle.unsetMaximized();
+        }
+    }
+    pub fn setMinimized(self: *Self, id: u32, minimized: bool) void {
+        const handle = self.getHandler(id) orelse return;
+        if (minimized) {
+            handle.setMinimized();
+        } else {
+            handle.unsetMinimized();
+        }
+    }
+    pub fn setFullscreen(self: *Self, id: u32, fullscreen: bool) void {
+        const handle = self.getHandler(id) orelse return;
+        if (fullscreen) {
+            handle.setFullscreen(null);
+        } else {
+            handle.unsetFullscreen();
+        }
+    }
+};
+
+fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, ctx: *Manager) void {
+    const mem = std.mem;
+    switch (event) {
+        .global => |global| {
+            if (mem.orderZ(u8, global.interface, ForeignToplevelManager.interface.name) == .eq) {
+                ctx.foreignToplevelManager = registry.bind(global.name, ForeignToplevelManager, 3) catch return;
+            } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
+                ctx.seat = registry.bind(global.name, wl.Seat, 1) catch return;
+            }
+        },
+        .global_remove => @panic("global_remove not implemented"),
     }
 }

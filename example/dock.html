@@ -54,38 +54,36 @@
                 dock.classList.remove("hidden");
                 tryHideDock();
             };
-            const onActivated = (id) => {
+            const onChanged = (item) => {
                 const dock = document.getElementById("dock");
-                for (const item of dock.children) {
-                    if (item.dataset.id === id.toString()) {
-                        item.dataset.activated = true;
-                    } else {
-                        item.dataset.activated = false;
-                    }
-                }
-            };
-            const onAdded = (item) => {
-                const dock = document.getElementById("dock");
-                const newItem = document.createElement("div");
-                const img = document.createElement("img");
-                newItem.appendChild(img);
-                newItem.classList.add("item");
-                newItem.dataset.id = item.id;
-                newItem.dataset.activated = item.state.includes("activated");
-                newItem.addEventListener("click", () => {
-                    mikaShell.dock.activate(item.id);
-                    hyprland.command.dispatch("focusurgentorlast");
-                });
-                dock.appendChild(newItem);
-                mikaShell.icon
-                    .lookup(item.appId.toLowerCase(), 512)
-                    .then((icon) => {
-                        img.src = icon;
-                    })
-                    .catch(async () => {
-                        const icon = await mikaShell.icon.lookup("application-x-executable", 32);
-                        img.src = icon;
+
+                var el = document.querySelector(`.item[data-id="${item.id}"]`);
+                if (el === null) {
+                    el = document.createElement("div");
+                    const img = document.createElement("img");
+                    el.appendChild(img);
+                    el.classList.add("item");
+                    el.dataset.id = String(item.id);
+                    el.addEventListener("click", () => {
+                        mikaShell.dock.activate(item.id);
+                        hyprland.command.dispatch("focusurgentorlast");
                     });
+                    dock.appendChild(el);
+                    mikaShell.icon
+                        .lookup(item.appId.toLowerCase(), 512)
+                        .then((icon) => {
+                            img.src = icon;
+                        })
+                        .catch(async () => {
+                            const icon = await mikaShell.icon.lookup(
+                                "application-x-executable",
+                                32
+                            );
+                            img.src = icon;
+                        });
+                }
+                el.dataset.activated = item.state.includes("activated");
+
                 showDock();
             };
             const onClosed = (id) => {
@@ -98,18 +96,16 @@
             };
 
             window.addEventListener("load", async () => {
-                mikaShell.dock.on("activated", onActivated);
-                mikaShell.dock.on("added", onAdded);
+                mikaShell.dock.on("changed", onChanged);
                 mikaShell.dock.on("closed", onClosed);
                 mikaShell.dock.list().then((items) => {
                     for (const item of items) {
-                        onAdded(item);
+                        onChanged(item);
                     }
                 });
             });
             window.addEventListener("unload", () => {
-                mikaShell.dock.off("activated", onActivated);
-                mikaShell.dock.off("added", onAdded);
+                mikaShell.dock.off("changed", onChanged);
                 mikaShell.dock.off("closed", onClosed);
             });
         </script>

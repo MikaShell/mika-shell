@@ -6,29 +6,42 @@ const Context = modules.Context;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
-const dock = @import("../lib/dock.zig");
+const ForeignToplevelManager = @import("wayland").ForeignToplevelManager;
 pub const Dock = struct {
     const Self = @This();
     allocator: Allocator,
     app: *App,
-    dock: *dock.Dock,
+    manager: ?*ForeignToplevelManager.Manager,
     pub fn init(ctx: Context) !*Self {
         const self = try ctx.allocator.create(Self);
         const allocator = ctx.allocator;
         self.allocator = allocator;
         self.app = ctx.app;
-        const dock_ = try dock.Dock.init(self.allocator, self);
-        dock_.onAdded = @ptrCast(&onAdded);
-        dock_.onChanged = @ptrCast(&onChanged);
-        dock_.onClosed = @ptrCast(&onClosed);
-        dock_.onEnter = @ptrCast(&onEnter);
-        dock_.onLeave = @ptrCast(&onLeave);
-        dock_.onActivated = @ptrCast(&onActivated);
-        self.dock = dock_;
+        self.manager = null;
         return self;
     }
+    fn setup(self: *Self) !void {
+        if (self.manager == null) {
+            self.manager = try ForeignToplevelManager.Manager.init(self.allocator, .{
+                .userdata = @ptrCast(self),
+                .changed = @ptrCast(&onChanged),
+                .closed = @ptrCast(&onClosed),
+                .enter = @ptrCast(&onEnter),
+                .leave = @ptrCast(&onLeave),
+            });
+        }
+    }
+    pub fn eventStart(self: *Self) !void {
+        try self.setup();
+    }
+    pub fn eventStop(self: *Self) !void {
+        if (self.manager) |m| {
+            m.deinit();
+            self.manager = null;
+        }
+    }
     pub fn deinit(self: *Self, allocator: Allocator) void {
-        self.dock.deinit();
+        if (self.manager) |m| m.deinit();
         allocator.destroy(self);
     }
     pub fn register() Registry(Self) {
@@ -42,20 +55,15 @@ pub const Dock = struct {
                 .{ "fullscreen", setFullscreen },
             },
             .events = &.{
-                .dock_added,
                 .dock_changed,
                 .dock_closed,
                 .dock_enter,
                 .dock_leave,
-                .dock_activated,
             },
         };
     }
-    fn onAdded(self: *Self, item: dock.Item) void {
-        self.app.emitEvent(.dock_added, item);
-    }
-    fn onChanged(self: *Self, item: dock.Item) void {
-        self.app.emitEvent(.dock_changed, item);
+    fn onChanged(self: *Self, client: ForeignToplevelManager.Toplevel) void {
+        self.app.emitEvent(.dock_changed, client);
     }
     fn onClosed(self: *Self, id: u32) void {
         self.app.emitEvent(.dock_closed, id);
@@ -66,36 +74,44 @@ pub const Dock = struct {
     fn onLeave(self: *Self, id: u32) void {
         self.app.emitEvent(.dock_leave, id);
     }
-    fn onActivated(self: *Self, id: u32) void {
-        self.app.emitEvent(.dock_activated, id);
-    }
     pub fn list(self: *Self, _: Args, result: *Result) !void {
-        const items = try self.dock.list(self.allocator);
+        try self.setup();
+        const manager = self.manager.?;
+        const items = try manager.list(self.allocator);
         defer self.allocator.free(items);
-        defer for (items) |item| item.deinit(self.allocator);
         result.commit(items);
     }
-    pub fn activate(_: *Self, args: Args, _: *Result) !void {
+    pub fn activate(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
-        dock.activate(@intCast(id));
+        try self.setup();
+        const manager = self.manager.?;
+        manager.activate(@intCast(id));
     }
-    pub fn close(_: *Self, args: Args, _: *Result) !void {
+    pub fn close(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
-        dock.close(@intCast(id));
+        try self.setup();
+        const manager = self.manager.?;
+        manager.close(@intCast(id));
     }
-    pub fn setMaximized(_: *Self, args: Args, _: *Result) !void {
+    pub fn setMaximized(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const maximized = try args.bool(2);
-        dock.setMaximized(@intCast(id), maximized);
+        try self.setup();
+        const manager = self.manager.?;
+        manager.setMaximized(@intCast(id), maximized);
     }
-    pub fn setMinimized(_: *Self, args: Args, _: *Result) !void {
+    pub fn setMinimized(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const minimized = try args.bool(2);
-        dock.setMinimized(@intCast(id), minimized);
+        try self.setup();
+        const manager = self.manager.?;
+        manager.setMinimized(@intCast(id), minimized);
     }
-    pub fn setFullscreen(_: *Self, args: Args, _: *Result) !void {
+    pub fn setFullscreen(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const fullscreen = try args.bool(2);
-        dock.setFullscreen(@intCast(id), fullscreen);
+        try self.setup();
+        const manager = self.manager.?;
+        manager.setFullscreen(@intCast(id), fullscreen);
     }
 };
