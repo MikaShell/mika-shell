@@ -144,7 +144,7 @@ pub const Watcher = struct {
     }
 };
 const WatcherInterface = dbus.Interface(Watcher);
-const glib = @import("glib");
+const utils = @import("../../utils.zig");
 const std = @import("std");
 const testing = std.testing;
 const print = std.debug.print;
@@ -160,5 +160,5 @@ test "tray-watcher" {
         print("src/lib/tray/watcher.zig: Cannot init Watcher: {any}\n", .{err});
         return;
     };
-    glib.timeoutMainLoop(200);
+    utils.timeoutMainLoop(200);
 }

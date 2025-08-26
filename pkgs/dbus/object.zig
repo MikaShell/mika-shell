@@ -1,6 +1,5 @@
 const libdbus = @import("libdbus.zig");
 const std = @import("std");
-const glib = @import("glib");
 const common = @import("common.zig");
 const Allocator = std.mem.Allocator;
 const Error = libdbus.Error;
@@ -402,6 +401,7 @@ fn test_on_signal1(event: common.Event, err_: ?*anyopaque) void {
         return;
     };
 }
+const utils = @import("utils.zig");
 test "signal" {
     const allocator = testing.allocator;
     const bus = Bus.init(allocator, .Session) catch unreachable;
@@ -412,7 +412,7 @@ test "signal" {
     defer proxy.deinit();
     var err: ?anyerror = null;
     try proxy.connect("Signal1", test_on_signal1, &err);
-    glib.timeoutMainLoop(200);
+    utils.timeoutMainLoop(200);
     try testing.expect(err != null);
     try testing.expect(err.? == error.OK);
 }
@@ -423,7 +423,7 @@ test "signal" {
 //     defer bus.deinit();
 //     var proxy = try bus.proxy("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher");
 //     defer proxy.deinit();
-//     glib.timeoutMainLoop(300);
+//     utils.timeoutMainLoop(300);
 // }
 test "signal-disconnect" {
     const allocator = testing.allocator;

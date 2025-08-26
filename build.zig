@@ -13,7 +13,6 @@ pub fn build(b: *std.Build) void {
 
     var layershell_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
-    var glib_mod: *std.Build.Module = undefined;
     var wayland_mod: *std.Build.Module = undefined;
     // pkgs
     {
@@ -24,12 +23,6 @@ pub fn build(b: *std.Build) void {
         });
         dbus_mod = b.createModule(.{
             .root_source_file = b.path("pkgs/dbus/root.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        });
-        glib_mod = b.createModule(.{
-            .root_source_file = b.path("pkgs/glib.zig"),
             .target = target,
             .optimize = optimize,
             .link_libc = true,
@@ -64,11 +57,9 @@ pub fn build(b: *std.Build) void {
         layershell_mod.addImport("gtk", gobject.module("gtk4"));
 
         dbus_mod.linkSystemLibrary("dbus-1", dynamic_link_opts);
-        dbus_mod.addIncludePath(b.path("pkgs/dbus"));
-        dbus_mod.addImport("glib", glib_mod);
-        glib_mod.linkSystemLibrary("glib-2.0", dynamic_link_opts);
-        glib_mod.linkSystemLibrary("gio-2.0", dynamic_link_opts);
-        wayland_mod.addImport("glib", glib_mod);
+        dbus_mod.addImport("glib", gobject.module("glib2"));
+
+        wayland_mod.addImport("glib", gobject.module("glib2"));
     }
 
     // EXAMPLE
@@ -109,12 +100,11 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("cli", cli.module("cli"));
     exe_mod.addImport("ini", ini.module("ini"));
     exe_mod.addImport("layershell", layershell_mod); // layershell must be imported before gtk4
-    exe_mod.addImport("glib", glib_mod);
     exe_mod.addImport("dbus", dbus_mod);
     exe_mod.addImport("wayland", wayland_mod);
 
     exe_mod.addImport("gtk", gobject.module("gtk4"));
-    exe_mod.addImport("zglib", gobject.module("glib2"));
+    exe_mod.addImport("glib", gobject.module("glib2"));
     exe_mod.addImport("webkit", gobject.module("webkit6"));
     exe_mod.addImport("gobject", gobject.module("gobject2"));
     exe_mod.addImport("jsc", gobject.module("javascriptcore6"));

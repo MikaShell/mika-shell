@@ -589,7 +589,6 @@ const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const icon = @import("icon.zig");
 const glib = @import("glib");
-const zglib = @import("zglib");
 const gio = @import("gio");
 const g = @import("gobject");
 pub const Apps = struct {
@@ -640,7 +639,7 @@ pub const Apps = struct {
                 defer allocator.free(path_);
                 const gfile = gio.File.newForPath(path_);
                 defer gfile.unref();
-                var err: ?*zglib.Error = null;
+                var err: ?*glib.Error = null;
                 const monitor = gfile.monitorDirectory(gio.FileMonitorFlags.flags_none, null, &err);
                 if (err) |e| {
                     std.log.err("Failed to monitor {s}: {s}", .{ path, e.f_message.? });
@@ -1225,8 +1224,8 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
         {
             const child_ = try child.allocator.create(std.process.Child);
             child_.* = child;
-            _ = zglib.childWatchAdd(child.id, struct {
-                fn f(_: zglib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
+            _ = glib.childWatchAdd(child.id, struct {
+                fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
                     const c: *std.process.Child = @alignCast(@ptrCast(data));
                     const a = c.allocator;
                     _ = c.kill() catch {};

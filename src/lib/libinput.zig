@@ -26,7 +26,7 @@ pub const Libinput = struct {
     allocator: Allocator,
     libinput: *c.struct_libinput,
     udev: *c.struct_udev,
-    watch: glib.FdWatch2(*Self),
+    watch: c_uint,
     userData: ?*anyopaque,
     onEvent: ?*const fn (?*anyopaque, Event) void,
     onError: ?*const fn (?*anyopaque, anyerror) void,
@@ -43,7 +43,9 @@ pub const Libinput = struct {
         const libinput = c.libinput_udev_create_context(&libinputIface, self, udev);
         if (libinput == null) return error.LibinputInitFailed;
         _ = c.libinput_udev_assign_seat(libinput, "seat0");
-        const watch = try glib.FdWatch2(*Self).add(c.libinput_get_fd(libinput), onEvent, self);
+        const ch = glib.IOChannel.unixNew(c.libinput_get_fd(libinput));
+        defer ch.unref();
+        const watch = glib.ioAddWatch(ch, .{ .in = true }, onEvent, self);
         self.* = Self{
             .allocator = allocator,
             .libinput = libinput.?,
@@ -59,7 +61,8 @@ pub const Libinput = struct {
     pub fn deinit(self: *Self) void {
         _ = c.libinput_unref(self.libinput);
         _ = c.udev_unref(self.udev);
-        self.watch.deinit();
+        _ = glib.Source.remove(self.watch);
+        self.listen.deinit();
         self.allocator.destroy(self);
     }
     pub fn addListener(self: *Self, e: EventType) void {
@@ -69,17 +72,18 @@ pub const Libinput = struct {
         _ = self.listen.remove(e);
     }
 };
-fn onEvent(self: *Libinput) bool {
+fn onEvent(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+    const self: *Libinput = @alignCast(@ptrCast(data));
     const libinput = self.libinput;
     while (true) {
         if (c.libinput_dispatch(libinput) != 0) {
             if (self.onError) |onError| {
                 onError(self.userData, error.LibinputDispatchFailed);
             }
-            return false;
+            return 0;
         }
         const e = c.libinput_get_event(libinput);
-        if (e == null) return true;
+        if (e == null) return 1;
         defer c.libinput_event_destroy(e);
         const eventType: EventType = @enumFromInt(c.libinput_event_get_type(e));
         if (self.onEvent) |handle| {
@@ -88,7 +92,7 @@ fn onEvent(self: *Libinput) bool {
             handle(self.userData, event);
         }
     }
-    return true;
+    return 1;
 }
 fn makeEvent(t: EventType, e: ?*c.struct_libinput_event) Event {
     switch (t) {

@@ -1,11 +1,10 @@
 const std = @import("std");
 const gtk = @import("gtk");
-const zglib = @import("zglib");
+const glib = @import("glib");
 const webkit = @import("webkit");
 const g = @import("gobject");
 const jsc = @import("jsc");
 const events = @import("events.zig");
-const glib = @import("zglib");
 pub const WebviewType = enum {
     None,
     Window,

@@ -103,23 +103,27 @@ fn testChannel(c: *TestChannel) !void {
 }
 const testCount = 300;
 const print = std.debug.print;
-const glib = @import("glib");
+const utils = @import("utils.zig");
 const testing = std.testing;
 const TestChannel = Channel(i32, 2);
+const glib = @import("glib");
 test {
     var c = try TestChannel.init();
     _ = try std.Thread.spawn(.{}, testChannel, .{&c});
-    const watch = try glib.FdWatch2(*TestChannel).add(c.out, glibCallback, &c);
-    defer watch.deinit();
-    glib.timeoutMainLoop(500);
+    const ch = glib.IOChannel.unixNew(c.out);
+    defer ch.unref();
+    const watch = glib.ioAddWatch(ch, .{ .in = true }, glibCallback, &c);
+    defer _ = glib.Source.remove(watch);
+    utils.timeoutMainLoop(500);
     try testing.expectEqual(testCount, count);
 }
 var count: i32 = 0;
-fn glibCallback(c: *TestChannel) bool {
+fn glibCallback(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+    const c: *TestChannel = @alignCast(@ptrCast(data));
     const events = c.load();
     for (events) |event| {
-        testing.expectEqual(count, event) catch return false;
+        testing.expectEqual(count, event) catch return 0;
         count += 1;
     }
-    return true;
+    return 1;
 }

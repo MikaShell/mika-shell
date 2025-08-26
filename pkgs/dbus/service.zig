@@ -1,6 +1,5 @@
 const libdbus = @import("libdbus.zig");
 const std = @import("std");
-const glib = @import("glib");
 const Allocator = std.mem.Allocator;
 const Error = libdbus.Error;
 const Type = libdbus.Types;
@@ -748,5 +747,5 @@ test "service" {
             },
         },
     }, &testInterface, &testInterface.emitter);
-    glib.timeoutMainLoop(200);
+    @import("utils.zig").timeoutMainLoop(200);
 }

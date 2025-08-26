@@ -8,7 +8,7 @@ pub const Server = struct {
     allocator: mem.Allocator,
     s: std.net.Server,
     app: *App,
-    watcher: glib.FdWatch(Server),
+    watcher: c_uint,
     path: []const u8,
     pub fn init(allocator: mem.Allocator, app: *App, port: u16) !*Server {
         const self = try allocator.create(Server);
@@ -22,7 +22,7 @@ pub const Server = struct {
         return self;
     }
     pub fn deinit(self: *Server) void {
-        self.watcher.deinit();
+        _ = glib.Source.remove(self.watcher);
         self.s.deinit();
         self.allocator.free(self.path);
         self.allocator.destroy(self);
@@ -47,12 +47,15 @@ pub const Server = struct {
         const addr = try std.net.Address.initUnix(self.path);
         const server = try addr.listen(.{});
         self.s = server;
-        self.watcher = try glib.FdWatch(Server).add(server.stream.handle, &struct {
-            fn f(s: *Server) bool {
+        const ch = glib.IOChannel.unixNew(server.stream.handle);
+        defer ch.unref();
+        self.watcher = glib.ioAddWatch(ch, .{ .in = true }, &struct {
+            fn f(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+                const s: *Server = @alignCast(@ptrCast(data));
                 s.handleConnection() catch |err| {
                     std.debug.print("Can not handle message, error: {s}", .{@errorName(err)});
                 };
-                return true;
+                return 1;
             }
         }.f, self);
     }

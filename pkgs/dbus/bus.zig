@@ -17,15 +17,24 @@ pub fn readWrite(bus: *Bus, timeout_milliseconds: i32) bool {
 pub fn dispatch(bus: *Bus) libdbus.DispatchStatus {
     return bus.conn.dispatch();
 }
-pub const GLibWatch = glib.FdWatch(Bus);
+pub const GLibWatch = struct {
+    source: c_uint,
+    pub fn deinit(self: @This()) void {
+        _ = glib.Source.remove(self.source);
+    }
+};
 pub fn withGLibLoop(bus: *Bus) !GLibWatch {
-    return try GLibWatch.add(try bus.conn.getUnixFd(), struct {
-        fn cb(b: *Bus) bool {
-            if (!b.conn.readWrite(-1)) return false;
+    const ch = glib.IOChannel.unixNew(try bus.conn.getUnixFd());
+    defer ch.unref();
+    const source = glib.ioAddWatch(ch, .{ .in = true }, &struct {
+        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.C) c_int {
+            const b: *Bus = @alignCast(@ptrCast(data));
+            if (!b.conn.readWrite(-1)) return 0;
             while (b.conn.dispatch() != .Complete) {}
-            return true;
+            return 1;
         }
     }.cb, bus);
+    return .{ .source = source };
 }
 pub const MatchRule = struct {
     type: ?enum {

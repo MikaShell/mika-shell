@@ -62,7 +62,7 @@ pub const OS = struct {
         try child.spawn();
         try child.waitForSpawn();
         {
-            const glib = @import("zglib");
+            const glib = @import("glib");
             const child_ = try child.allocator.create(std.process.Child);
             child_.* = child;
             _ = glib.childWatchAdd(child.id, struct {

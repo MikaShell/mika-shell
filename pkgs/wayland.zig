@@ -13,14 +13,23 @@ const Allocator = std.mem.Allocator;
 const glib = @import("glib");
 var display: *wl.Display = undefined;
 var context: Context = undefined;
-pub fn withGLib() !glib.FdWatch(wl.Display) {
-    const watch = try glib.FdWatch(wl.Display).add(display.getFd(), struct {
-        fn f(d: *wl.Display) bool {
-            return d.roundtrip() == .SUCCESS;
+pub const GLibWatch = struct {
+    source: c_uint,
+    pub fn deinit(self: @This()) void {
+        _ = glib.Source.remove(self.source);
+    }
+};
+pub fn withGLib() !GLibWatch {
+    const ch = glib.IOChannel.unixNew(display.getFd());
+    defer ch.unref();
+    const source = glib.ioAddWatch(ch, .{ .in = true }, &struct {
+        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.C) c_int {
+            const d: *wl.Display = @alignCast(@ptrCast(data));
+            if (d.roundtrip() == .SUCCESS) return 1;
+            return 0;
         }
-    }.f, display);
-    _ = display.flush();
-    return watch;
+    }.cb, display);
+    return .{ .source = source };
 }
 pub fn init(allocator: Allocator) !void {
     display = try wl.Display.connect(null);

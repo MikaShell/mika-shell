@@ -296,7 +296,7 @@ pub fn daemon() !void {
     defer ipcServer.deinit();
     try ipcServer.listen();
     while (true) {
-        const glib = @import("zglib");
+        const glib = @import("glib");
         _ = glib.MainContext.iteration(null, 1);
     }
 }

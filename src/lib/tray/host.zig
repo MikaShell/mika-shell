@@ -138,7 +138,7 @@ pub const Host = struct {
     }
 };
 
-const glib = @import("glib");
+const utils = @import("../../utils.zig");
 const std = @import("std");
 const testing = std.testing;
 const print = std.debug.print;
@@ -155,5 +155,5 @@ const print = std.debug.print;
 //             print("state: {}, services: {s}\n", .{ state, services });
 //         }
 //     }.f, null);
-//     glib.timeoutMainLoop(10_000);
+//     utils.timeoutMainLoop(10_000);
 // }

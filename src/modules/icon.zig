@@ -418,7 +418,7 @@ test {
 // }
 const gtk = @import("gtk");
 const gdk = @import("gdk");
-const glib = @import("zglib");
+const glib = @import("glib");
 const modules = @import("modules.zig");
 const Args = modules.Args;
 const Result = modules.Result;

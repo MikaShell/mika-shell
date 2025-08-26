@@ -59,7 +59,7 @@ pub const ProxyHandler = struct {
         unixSock: std.net.Stream,
     };
     ctx: *Context,
-    watch: glib.FdWatch2(*Context),
+    watch: c_uint,
     pub fn init(conn: *ws.Conn, path: []const u8) !ProxyHandler {
         // TODO: 剔除路径防止注入
         const sock = try std.net.connectUnixSocket(path);
@@ -70,29 +70,32 @@ pub const ProxyHandler = struct {
             .conn = conn,
             .unixSock = sock,
         };
+        const ch = glib.IOChannel.unixNew(sock.handle);
+        defer ch.unref();
         return .{
             .ctx = ctx,
-            .watch = try glib.FdWatch2(*Context).add(sock.handle, onUnixSockMessage, ctx),
+            .watch = glib.ioAddWatch(ch, .{ .in = true }, onUnixSockMessage, ctx),
         };
     }
-    fn onUnixSockMessage(ctx: *Context) bool {
+    fn onUnixSockMessage(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+        const ctx: *Context = @alignCast(@ptrCast(data));
         var buf: [512]u8 = undefined;
         const n = ctx.unixSock.read(&buf) catch {
             _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
-            return false;
+            return 0;
         };
         if (n == 0) {
             _ = ctx.conn.close(.{ .code = 1000, .reason = "EOF" }) catch {};
-            return false;
+            return 0;
         }
         ctx.conn.write(buf[0..n]) catch {
             _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
-            return false;
+            return 0;
         };
-        return true;
+        return 1;
     }
     pub fn close(h: *ProxyHandler) void {
-        h.watch.deinit();
+        _ = glib.Source.remove(h.watch);
         h.ctx.unixSock.close();
         std.heap.page_allocator.destroy(h.ctx);
     }
@@ -119,7 +122,7 @@ const EventManager = struct {
     const Self = @This();
     allocator: Allocator,
     channel: *events.EventChannel,
-    watch: glib.FdWatch2(*Self),
+    watch: c_uint,
     sockets: std.AutoHashMap(u64, *ws.Conn),
     pub fn add(self: *Self, id: u64, conn: *ws.Conn) !void {
         if (self.sockets.contains(id)) {
@@ -134,23 +137,26 @@ const EventManager = struct {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
         self.channel = channel;
-        self.watch = try glib.FdWatch2(*Self).add(self.channel.out, onEvent, self);
+        const ch = glib.IOChannel.unixNew(channel.out);
+        defer ch.unref();
+        self.watch = glib.ioAddWatch(ch, .{ .in = true }, onEvent, self);
         self.allocator = allocator;
         self.sockets = std.AutoHashMap(u64, *ws.Conn).init(allocator);
         return self;
     }
     pub fn deinit(self: *Self) void {
-        self.watch.deinit();
+        _ = glib.Source.remove(self.watch);
         self.allocator.destroy(self);
     }
-    fn onEvent(self: *Self) bool {
+    fn onEvent(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Self = @alignCast(@ptrCast(data));
         const es: []events.Event = self.channel.load();
         for (es) |*e| {
             defer e.deinit();
             const dist = self.sockets.get(e.dist) orelse continue;
             dist.write(e.data) catch unreachable;
         }
-        return true;
+        return 1;
     }
 };
 const log = std.log.scoped(.assets);

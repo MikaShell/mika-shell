@@ -53,7 +53,7 @@ pub const Monitor = struct {
     }
 };
 const gdk = @import("gdk");
-const glib = @import("zglib");
+const glib = @import("glib");
 const mem = std.mem;
 const g = @import("gobject");
 const Monitor_ = struct {

@@ -362,7 +362,7 @@ const Interface = dbus.Interface(Notifd){
         },
     },
 };
-const glib = @import("glib");
+const utils = @import("../utils.zig");
 test {
     const allocator = testing.allocator;
     const bus = try dbus.Bus.init(allocator, .Session);
@@ -375,5 +375,5 @@ test {
     };
     const watch = try dbus.withGLibLoop(bus);
     defer watch.deinit();
-    glib.timeoutMainLoop(200);
+    utils.timeoutMainLoop(200);
 }
