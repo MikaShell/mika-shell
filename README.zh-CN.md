@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**MikaShell** 是一个在 Wayland 桌面环境下使用 web 技术构建桌面组件的工具。灵感来自 [https://github.com/aylur/astal](Astal/Ags) 项目。
+**MikaShell** 是一个在 Wayland 桌面环境下使用 web 技术构建桌面组件的工具。灵感来自 [Astal/Ags](https://github.com/aylur/astal) 项目。
 
 ## 目录
 
