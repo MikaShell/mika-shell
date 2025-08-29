@@ -22,3 +22,26 @@ pub fn withGLibMainLoop(display: *wl.Display) !GLibWatch {
     _ = display.flush();
     return .{ .source = source, .display = display };
 }
+// connect to the display and set the listener for the registry
+pub fn init(comptime T: type, listener: *const fn (registry: *wl.Registry, event: wl.Registry.Event, data: T) void, data: T) !*wl.Display {
+    const display = try wl.Display.connect(null);
+    errdefer display.disconnect();
+    const registry = try display.getRegistry();
+    defer registry.destroy();
+    registry.setListener(T, listener, data);
+    _ = display.roundtrip();
+    return display;
+}
+
+// testing use only
+pub fn timeoutMainLoop(timeout_ms: u32) void {
+    const loop = glib.MainLoop.new(null, 0);
+    _ = glib.timeoutAddOnce(timeout_ms, @ptrCast(&struct {
+        fn timeout(data: ?*anyopaque) callconv(.c) c_int {
+            const loop_: *glib.MainLoop = @ptrCast(@alignCast(data));
+            loop_.quit();
+            return 0;
+        }
+    }.timeout), loop);
+    loop.run();
+}

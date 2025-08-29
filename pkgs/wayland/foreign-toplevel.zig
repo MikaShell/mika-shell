@@ -114,8 +114,8 @@ pub const Manager = struct {
     const Self = @This();
     listener: Listener,
     allocator: Allocator,
-    foreignToplevelManager: *ForeignToplevelManager,
-    seat: *wl.Seat,
+    foreignToplevelManager: ?*ForeignToplevelManager,
+    seat: ?*wl.Seat,
     toplevels: ToplevelList,
     glibWatch: common.GLibWatch,
     pub fn init(allocator: Allocator, listener: Listener) !*Self {
@@ -125,17 +125,16 @@ pub const Manager = struct {
         self.allocator = allocator;
         self.listener = listener;
         self.toplevels = .{};
-
-        const display = try wl.Display.connect(null);
-        errdefer self.glibWatch.deinit();
-
-        const registry = try display.getRegistry();
-        defer registry.destroy();
-        registry.setListener(*Self, registryListener, self);
-        _ = display.roundtrip();
-        self.foreignToplevelManager.setListener(*Self, foreignToplevelManagerListener, self);
+        const display = try common.init(*Self, registryListener, self);
+        errdefer display.disconnect();
+        try self.check();
+        self.foreignToplevelManager.?.setListener(*Self, foreignToplevelManagerListener, self);
         self.glibWatch = try common.withGLibMainLoop(display);
         return self;
+    }
+    fn check(self: *Self) !void {
+        if (self.foreignToplevelManager == null) return error.NotAvailable;
+        if (self.seat == null) return error.NotAvailable;
     }
     fn getHandler(self: *Self, id: u32) ?*ForeignToplevelHandle {
         var it = self.toplevels.first;
@@ -148,8 +147,12 @@ pub const Manager = struct {
         return null;
     }
     pub fn deinit(self: *Self) void {
-        self.foreignToplevelManager.stop();
-        _ = self.glibWatch.display.roundtrip();
+        if (self.foreignToplevelManager) |m| {
+            m.stop();
+            _ = self.glibWatch.display.roundtrip();
+        } else {
+            self.destroy();
+        }
         self.glibWatch.deinit();
         self.allocator.destroy(self);
     }
@@ -172,6 +175,7 @@ pub const Manager = struct {
     fn destroy(self: *Self) void {
         while (self.toplevels.pop()) |node| {
             node.data.deinit();
+            self.allocator.destroy(node);
         }
     }
     pub fn list(self: *Self, allocator: Allocator) ![]Toplevel {
@@ -184,15 +188,18 @@ pub const Manager = struct {
         }
         return try result.toOwnedSlice();
     }
-    pub fn activate(self: *Self, id: u32) void {
+    pub fn activate(self: *Self, id: u32) !void {
+        try self.check();
         const handle = self.getHandler(id) orelse return;
-        handle.activate(self.seat);
+        handle.activate(self.seat.?);
     }
-    pub fn close(self: *Self, id: u32) void {
+    pub fn close(self: *Self, id: u32) !void {
+        try self.check();
         const handle = self.getHandler(id) orelse return;
         handle.close();
     }
-    pub fn setMaximized(self: *Self, id: u32, maximized: bool) void {
+    pub fn setMaximized(self: *Self, id: u32, maximized: bool) !void {
+        try self.check();
         const handle = self.getHandler(id) orelse return;
         if (maximized) {
             handle.setMaximized();
@@ -200,7 +207,8 @@ pub const Manager = struct {
             handle.unsetMaximized();
         }
     }
-    pub fn setMinimized(self: *Self, id: u32, minimized: bool) void {
+    pub fn setMinimized(self: *Self, id: u32, minimized: bool) !void {
+        try self.check();
         const handle = self.getHandler(id) orelse return;
         if (minimized) {
             handle.setMinimized();
@@ -208,7 +216,8 @@ pub const Manager = struct {
             handle.unsetMinimized();
         }
     }
-    pub fn setFullscreen(self: *Self, id: u32, fullscreen: bool) void {
+    pub fn setFullscreen(self: *Self, id: u32, fullscreen: bool) !void {
+        try self.check();
         const handle = self.getHandler(id) orelse return;
         if (fullscreen) {
             handle.setFullscreen(null);
@@ -225,9 +234,33 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, ctx: *Mana
             if (mem.orderZ(u8, global.interface, ForeignToplevelManager.interface.name) == .eq) {
                 ctx.foreignToplevelManager = registry.bind(global.name, ForeignToplevelManager, 3) catch return;
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
-                ctx.seat = registry.bind(global.name, wl.Seat, 1) catch return;
+                ctx.seat = registry.bind(global.name, wl.Seat, 9) catch return;
             }
         },
-        .global_remove => @panic("global_remove not implemented"),
+        .global_remove => |global| {
+            if (global.name == ctx.foreignToplevelManager.?.getId()) {
+                ctx.foreignToplevelManager = null;
+            } else if (global.name == ctx.seat.?.getId()) {
+                ctx.seat = null;
+            }
+        },
     }
+}
+
+test "foreign-toplevel" {
+    const allocator = std.testing.allocator;
+    const manager = try Manager.init(allocator, .{});
+    defer manager.deinit();
+
+    const glib = @import("glib");
+    _ = glib.idleAdd(@ptrCast(&struct {
+        fn f(data: ?*anyopaque) callconv(.C) c_int {
+            const m: *Manager = @alignCast(@ptrCast(data));
+            const toplevels = m.list(allocator) catch unreachable;
+            allocator.free(toplevels);
+            if (toplevels.len == 0) return 1;
+            return 0;
+        }
+    }.f), @ptrCast(manager));
+    common.timeoutMainLoop(100);
 }

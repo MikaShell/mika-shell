@@ -6,7 +6,7 @@ const Context = modules.Context;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
-const ForeignToplevelManager = @import("wayland").ForeignToplevelManager;
+const ForeignToplevelManager = @import("wayland").ForeignToplevel;
 pub const Dock = struct {
     const Self = @This();
     allocator: Allocator,
@@ -85,33 +85,33 @@ pub const Dock = struct {
         const id = try args.uInteger(1);
         try self.setup();
         const manager = self.manager.?;
-        manager.activate(@intCast(id));
+        try manager.activate(@intCast(id));
     }
     pub fn close(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         try self.setup();
         const manager = self.manager.?;
-        manager.close(@intCast(id));
+        try manager.close(@intCast(id));
     }
     pub fn setMaximized(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const maximized = try args.bool(2);
         try self.setup();
         const manager = self.manager.?;
-        manager.setMaximized(@intCast(id), maximized);
+        try manager.setMaximized(@intCast(id), maximized);
     }
     pub fn setMinimized(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const minimized = try args.bool(2);
         try self.setup();
         const manager = self.manager.?;
-        manager.setMinimized(@intCast(id), minimized);
+        try manager.setMinimized(@intCast(id), minimized);
     }
     pub fn setFullscreen(self: *Self, args: Args, _: *Result) !void {
         const id = try args.uInteger(1);
         const fullscreen = try args.bool(2);
         try self.setup();
         const manager = self.manager.?;
-        manager.setFullscreen(@intCast(id), fullscreen);
+        try manager.setFullscreen(@intCast(id), fullscreen);
     }
 };

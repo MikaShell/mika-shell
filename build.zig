@@ -44,12 +44,16 @@ pub fn build(b: *std.Build) void {
             const wayland_protocols = b.dependency("wayland-protocols", .{});
             _ = wayland_protocols;
             scanner.addCustomProtocol(wlr_protocols.path("unstable/wlr-foreign-toplevel-management-unstable-v1.xml"));
+            scanner.addCustomProtocol(wlr_protocols.path("unstable/wlr-screencopy-unstable-v1.xml"));
             scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
-            scanner.generate("wl_output", 1);
-            scanner.generate("wl_seat", 1);
+            scanner.generate("zwlr_screencopy_manager_v1", 3);
+            scanner.generate("wl_output", 4);
+            scanner.generate("wl_seat", 9);
+            scanner.generate("wl_shm", 2);
 
             wayland_mod.addImport("zig-wayland", zig_wayland);
             wayland_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
+            wayland_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
         }
         // Linking
         layershell_mod.linkSystemLibrary("gtk4-layer-shell-0", dynamic_link_opts);
@@ -133,6 +137,7 @@ pub fn build(b: *std.Build) void {
     // TEST
     const test_step = b.step("test", "Run unit tests");
     const test_dbus_step = b.step("test-dbus", "Run dbus unit tests");
+    const test_wayland_step = b.step("test-wayland", "Run wayland unit tests");
     {
         // MAIN
         {
@@ -193,6 +198,14 @@ pub fn build(b: *std.Build) void {
             kill_dbus_service.step.dependOn(&run_dbus_unit_tests.step);
             test_dbus_step.dependOn(&kill_dbus_service.step);
             test_dbus_step.dependOn(&run_dbus_unit_tests.step);
+        }
+        // PKGS/WAYLAND
+        {
+            const wayland_unit_tests = b.addTest(.{
+                .root_module = wayland_mod,
+            });
+            const run_wayland_unit_tests = b.addRunArtifact(wayland_unit_tests);
+            test_wayland_step.dependOn(&run_wayland_unit_tests.step);
         }
     }
 }
