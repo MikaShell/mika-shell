@@ -40,31 +40,43 @@ pub const Monitor = struct {
             return;
         }
 
-        const quality: f32 = blk: {
-            const i: ?i64 = ctx.args.integer(1) catch null;
-            if (i == null) {
-                break :blk @floatCast(try ctx.args.float(1));
-            } else {
-                break :blk @floatFromInt(i.?);
-            }
-        };
-        if (quality > 100 or quality < 0) {
-            ctx.errors("Invalid quality, should be a number between 0 and 100", .{});
-            return;
-        }
-        const overlayCursor = try ctx.args.bool(2);
-
-        const x = try ctx.args.integer(3);
-        const y = try ctx.args.integer(4);
-        const w = try ctx.args.integer(5);
-        const h = try ctx.args.integer(6);
+        const x = try ctx.args.integer(1);
+        const y = try ctx.args.integer(2);
+        const w = try ctx.args.integer(3);
+        const h = try ctx.args.integer(4);
         if (x < 0 or y < 0 or w < 0 or h < 0) {
             ctx.errors("Invalid coordinates, should be positive integers", .{});
             return;
         }
+        const overlayCursor = try ctx.args.bool(5);
+        const encode = try ctx.args.string(6);
+        const eql = std.mem.eql;
+        if (!(eql(u8, encode, "png") or eql(u8, encode, "webp"))) {
+            ctx.errors("Invalid encode format, should be 'png' or 'webp'", .{});
+            return;
+        }
+        const webpQuality: f32 = blk: {
+            const i: ?i64 = ctx.args.integer(7) catch null;
+            if (i == null) {
+                break :blk @floatCast(try ctx.args.float(7));
+            } else {
+                break :blk @floatFromInt(i.?);
+            }
+        };
+        if (webpQuality > 100 or webpQuality < 0) {
+            ctx.errors("Invalid webp quality, should be a number between 0 and 100", .{});
+            return;
+        }
+        const pngCompression = try ctx.args.integer(8);
+        if (pngCompression < 0 or pngCompression > 9) {
+            ctx.errors("Invalid png compression, should be a number between 0 and 9", .{});
+            return;
+        }
+
         const Ctx = struct {
             result: modules.Async,
             allocator: Allocator,
+            usePng: bool,
         };
         if (self.screencopy == null) {
             self.screencopy = try Screencopy.Manager.init(self.allocator);
@@ -73,6 +85,7 @@ pub const Monitor = struct {
         ctx_.* = .{
             .result = ctx.@"async"(),
             .allocator = self.allocator,
+            .usePng = eql(u8, encode, "png"),
         };
         const screencopy = self.screencopy.?;
         try screencopy.capture(struct {
@@ -84,7 +97,10 @@ pub const Monitor = struct {
                     return;
                 }
                 const allocator = ctx__.allocator;
-                const base64 = webpToBase64(allocator, result.?) catch |e| {
+                const base64 = if (ctx__.usePng) pngToBase64(allocator, result.?) catch |e| {
+                    ctx__.result.errors("Error while capturing screen: {}", .{e});
+                    return;
+                } else webpToBase64(allocator, result.?) catch |e| {
                     ctx__.result.errors("Error while capturing screen: {}", .{e});
                     return;
                 };
@@ -98,7 +114,9 @@ pub const Monitor = struct {
             .y = @intCast(y),
             .w = @intCast(w),
             .h = @intCast(h),
-            .quality = @floatCast(quality),
+            .encode = if (eql(u8, encode, "png")) .png else .webp,
+            .webpQuality = @floatCast(webpQuality),
+            .pngCompression = @intCast(pngCompression),
         });
     }
     fn webpToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]u8 {
@@ -106,6 +124,12 @@ pub const Monitor = struct {
         const base64 = try allocator.alloc(u8, encoder.calcSize(webp.len));
         defer allocator.free(base64);
         return try std.fmt.allocPrint(allocator, "data:image/webp;base64,{s}", .{encoder.encode(base64, webp)});
+    }
+    fn pngToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]u8 {
+        const encoder = std.base64.standard.Encoder;
+        const base64 = try allocator.alloc(u8, encoder.calcSize(webp.len));
+        defer allocator.free(base64);
+        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{encoder.encode(base64, webp)});
     }
     pub fn list(self: *Self, ctx: *Context) !void {
         const allocator = self.allocator;

@@ -20,6 +20,7 @@
   python3,
   gobject-introspection,
   glib,
+  libpng,
   systemd,
   gst_all_1,
   libinput,
@@ -61,6 +62,7 @@ in
       librsvg # 为 GTK 加载svg图标提供支持
       systemd # 提供 libudev
       libinput
+      libpng
 
       wayland-scanner
 

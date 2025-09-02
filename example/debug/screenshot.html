@@ -12,7 +12,7 @@
                 height: 500,
             });
             (async () => {
-                const image = await mikaShell.monitor.capture(0, 10);
+                const image = await mikaShell.monitor.capture(0, null, { encode: "png" });
                 document.getElementById("screenshot").src = image;
             })();
         </script>

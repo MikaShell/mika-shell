@@ -15,6 +15,10 @@ pub const Manager = struct {
     glibWatch: common.GLibWatch,
     // if err is null, result is valid
     pub const Callback = *const fn (err: ?anyerror, result: ?[]u8, data: ?*anyopaque) void;
+    pub const Encode = enum {
+        webp,
+        png,
+    };
     const Contxt = struct {
         allocator: Allocator,
         frame: *ScreencopyFrame,
@@ -30,7 +34,7 @@ pub const Manager = struct {
         err: ?anyerror,
         callback: Callback,
         userdata: ?*anyopaque,
-        quality: f32,
+        option: Option,
     };
     pub const Option = struct {
         output: u32,
@@ -38,8 +42,10 @@ pub const Manager = struct {
         y: i32,
         w: i32,
         h: i32,
-        quality: f32,
+        webpQuality: f32,
+        pngCompression: u32,
         overlayCursor: bool,
+        encode: Encode,
     };
     pub fn init(allocator: Allocator) !*Self {
         const self = try allocator.create(Self);
@@ -62,7 +68,7 @@ pub const Manager = struct {
         }
         self.allocator.destroy(self);
     }
-    fn initContext(self: *Self, frame: *ScreencopyFrame, quality: f32, callback: Callback, userdata: ?*anyopaque) !*Contxt {
+    fn initContext(self: *Self, frame: *ScreencopyFrame, opt: Option, callback: Callback, userdata: ?*anyopaque) !*Contxt {
         const ctx = try self.allocator.create(Contxt);
         ctx.allocator = self.allocator;
         ctx.frame = frame;
@@ -72,7 +78,7 @@ pub const Manager = struct {
         ctx.display = self.display;
         ctx.callback = callback;
         ctx.userdata = userdata;
-        ctx.quality = quality;
+        ctx.option = opt;
         return ctx;
     }
     pub fn capture(self: *Self, callback: Callback, data: ?*anyopaque, option: Option) !void {
@@ -93,7 +99,7 @@ pub const Manager = struct {
                 break :blk try self.screencopyManager.captureOutputRegion(overlayCursor, output, option.x, option.y, option.w, option.h);
             }
         };
-        const ctx = try self.initContext(frame, option.quality, callback, data);
+        const ctx = try self.initContext(frame, option, callback, data);
         frame.setListener(*Contxt, frameListener, ctx);
         _ = self.display.flush();
     }
@@ -109,8 +115,11 @@ pub const Manager = struct {
 };
 const c = @cImport({
     @cInclude("webp/encode.h");
+    @cInclude("png.h");
 });
-
+const glib = @import("glib");
+const gio = @import("gio");
+const gobject = @import("gobject");
 fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manager.Contxt) void {
     const log = std.log.scoped(.wayland);
     switch (event) {
@@ -163,30 +172,97 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
             _ = ctx.display.flush();
         },
         .ready => |_| {
-            var webp: ?[]u8 = null;
-            defer {
+            if (ctx.err != null) {
                 ctx.buffer.destroy();
                 ctx.frame.destroy();
                 ctx.allocator.destroy(ctx);
+                return;
             }
-            if (ctx.err != null) return;
-            var output_ptr: [*c]u8 = undefined;
-            // The buffer sent by the compositor is in little-endian order, but the actual memory order of argb/xrgb is bgra.
-            const bgra = ctx.pixels;
-            const size = c.WebPEncodeBGRA(
-                bgra.ptr,
-                @intCast(ctx.width),
-                @intCast(ctx.height),
-                @intCast(ctx.stride),
-                ctx.quality,
-                &output_ptr,
-            );
-            if (size == 0 or output_ptr == null) {
-                unreachable;
-            }
-            defer c.WebPFree(output_ptr);
-            webp = output_ptr[0..size];
-            ctx.callback(ctx.err, webp, ctx.userdata);
+
+            const task = gio.Task.new(null, null, null, null);
+            task.setTaskData(ctx, null);
+            task.runInThread(struct {
+                fn cb(task_: *gio.Task, _: *gobject.Object, data: ?*anyopaque, _: ?*gio.Cancellable) callconv(.c) void {
+                    defer task_.unref();
+                    const ctx_: *Manager.Contxt = @alignCast(@ptrCast(data));
+                    defer {
+                        ctx_.buffer.destroy();
+                        ctx_.frame.destroy();
+                        ctx_.allocator.destroy(ctx_);
+                    }
+                    const bgra = ctx_.pixels;
+                    switch (ctx_.option.encode) {
+                        .webp => {
+                            var output_ptr: [*c]u8 = undefined;
+                            // The buffer sent by the compositor is in little-endian order, but the actual memory order of argb/xrgb is bgra.
+                            const size = if (std.math.approxEqAbs(f32, ctx_.option.webpQuality, 100, 0.00001))
+                                c.WebPEncodeLosslessBGRA(
+                                    bgra.ptr,
+                                    @intCast(ctx_.width),
+                                    @intCast(ctx_.height),
+                                    @intCast(ctx_.stride),
+                                    &output_ptr,
+                                )
+                            else
+                                c.WebPEncodeBGRA(
+                                    bgra.ptr,
+                                    @intCast(ctx_.width),
+                                    @intCast(ctx_.height),
+                                    @intCast(ctx_.stride),
+                                    ctx_.option.webpQuality,
+                                    &output_ptr,
+                                );
+                            if (size == 0 or output_ptr == null) {
+                                unreachable;
+                            }
+                            defer c.WebPFree(output_ptr);
+                            ctx_.callback(ctx_.err, output_ptr[0..size], ctx_.userdata);
+                        },
+                        .png => {
+                            const png = c.png_create_write_struct(c.PNG_LIBPNG_VER_STRING, null, null, null) orelse {
+                                log.err("Screencopy: png_create_write_struct failed", .{});
+                                ctx_.err = error.PNGCreateWriteStructFailed;
+                                return;
+                            };
+                            const info = c.png_create_info_struct(png) orelse {
+                                log.err("Screencopy: png_create_info_struct failed", .{});
+                                ctx_.err = error.PNGCreateInfoStructFailed;
+                                return;
+                            };
+                            defer c.png_destroy_write_struct(@constCast(@ptrCast(&png)), @constCast(@ptrCast(&info)));
+                            var buffer = std.ArrayList(u8).init(ctx_.allocator);
+                            defer buffer.deinit();
+
+                            c.png_set_write_fn(png, @ptrCast(&buffer), struct {
+                                fn write(png_: ?*c.png_struct, data_: [*c]u8, len: usize) callconv(.C) void {
+                                    const buf: *std.ArrayList(u8) = @alignCast(@ptrCast(c.png_get_io_ptr(png_).?));
+                                    buf.writer().writeAll(data_[0..len]) catch unreachable;
+                                }
+                            }.write, null);
+                            c.png_set_IHDR(
+                                png,
+                                info,
+                                @intCast(ctx_.width),
+                                @intCast(ctx_.height),
+                                8,
+                                c.PNG_COLOR_TYPE_RGBA,
+                                c.PNG_INTERLACE_NONE,
+                                c.PNG_COMPRESSION_TYPE_DEFAULT,
+                                c.PNG_FILTER_TYPE_DEFAULT,
+                            );
+                            c.png_set_compression_level(png, @intCast(ctx_.option.pngCompression));
+                            c.png_write_info(png, info);
+                            c.png_set_bgr(png);
+                            for (0..ctx_.height) |y| {
+                                const row = bgra[y * ctx_.stride ..][0 .. ctx_.width * 4];
+                                c.png_write_row(png, row.ptr);
+                            }
+                            c.png_write_end(png, null);
+                            ctx_.callback(ctx_.err, buffer.items, ctx_.userdata);
+                        },
+                    }
+                }
+            }.cb);
         },
         .flags => |flags| {
             ctx.yInvert = flags.flags.y_invert;

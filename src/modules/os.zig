@@ -163,9 +163,9 @@ pub const OS = struct {
         try decoder.decode(data, base64);
         var file: std.fs.File = undefined;
         if (std.fs.path.isAbsolute(path)) {
-            file = try std.fs.openFileAbsolute(path, .{ .mode = .write_only });
+            file = try std.fs.createFileAbsolute(path, .{});
         } else {
-            file = try std.fs.cwd().openFile(path, .{ .mode = .write_only });
+            file = try std.fs.cwd().createFile(path, .{});
         }
         defer file.close();
         try file.writeAll(data);

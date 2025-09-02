@@ -10,7 +10,6 @@ pub fn build(b: *std.Build) void {
     };
 
     const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
-
     var layershell_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
     var wayland_mod: *std.Build.Module = undefined;
@@ -64,6 +63,9 @@ pub fn build(b: *std.Build) void {
         dbus_mod.addImport("glib", gobject.module("glib2"));
 
         wayland_mod.addImport("glib", gobject.module("glib2"));
+        wayland_mod.addImport("gobject", gobject.module("gobject2"));
+        wayland_mod.addImport("gio", gobject.module("gio2"));
+        wayland_mod.linkSystemLibrary("libpng", dynamic_link_opts);
     }
 
     // EXAMPLE

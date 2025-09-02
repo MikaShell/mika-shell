@@ -21,6 +21,7 @@
   wayland-scanner,
   systemd,
   libinput,
+  libpng,
   debug ? false,
   ...
 }: let
@@ -67,6 +68,7 @@ in
       wayland-scanner
       systemd # 提供 libudev
       libinput
+      libpng
     ];
     meta = {
       description = "Build your own desktop shell using HTML + CSS + JS";
