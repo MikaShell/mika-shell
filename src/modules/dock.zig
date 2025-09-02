@@ -1,8 +1,8 @@
 const std = @import("std");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
@@ -12,7 +12,7 @@ pub const Dock = struct {
     allocator: Allocator,
     app: *App,
     manager: ?*ForeignToplevelManager.Manager,
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         const allocator = ctx.allocator;
         self.allocator = allocator;
@@ -74,42 +74,42 @@ pub const Dock = struct {
     fn onLeave(self: *Self, id: u32) void {
         self.app.emitEvent(.dock_leave, id);
     }
-    pub fn list(self: *Self, _: Args, result: *Result) !void {
+    pub fn list(self: *Self, ctx: *Context) !void {
         try self.setup();
         const manager = self.manager.?;
         const items = try manager.list(self.allocator);
         defer self.allocator.free(items);
-        result.commit(items);
+        ctx.commit(items);
     }
-    pub fn activate(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+    pub fn activate(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
         try self.setup();
         const manager = self.manager.?;
         try manager.activate(@intCast(id));
     }
-    pub fn close(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
+    pub fn close(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
         try self.setup();
         const manager = self.manager.?;
         try manager.close(@intCast(id));
     }
-    pub fn setMaximized(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
-        const maximized = try args.bool(2);
+    pub fn setMaximized(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
+        const maximized = try ctx.args.bool(1);
         try self.setup();
         const manager = self.manager.?;
         try manager.setMaximized(@intCast(id), maximized);
     }
-    pub fn setMinimized(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
-        const minimized = try args.bool(2);
+    pub fn setMinimized(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
+        const minimized = try ctx.args.bool(1);
         try self.setup();
         const manager = self.manager.?;
         try manager.setMinimized(@intCast(id), minimized);
     }
-    pub fn setFullscreen(self: *Self, args: Args, _: *Result) !void {
-        const id = try args.uInteger(1);
-        const fullscreen = try args.bool(2);
+    pub fn setFullscreen(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
+        const fullscreen = try ctx.args.bool(1);
         try self.setup();
         const manager = self.manager.?;
         try manager.setFullscreen(@intCast(id), fullscreen);

@@ -34,17 +34,19 @@ export function getSystemInfo(): Promise<SystemInfo> {
 export function getUserInfo(): Promise<UserInfo> {
     return call("os.getUserInfo");
 }
-
-export function exec(argv: string[], options: Partial<ExecOptions> = {}): Promise<string | void> {
-    const opt: ExecOptions = {
-        needOutput: options.needOutput ?? false,
-        block: options.block ?? false,
-        base64Output: options.base64Output ?? false,
-    };
-    return call("os.exec", argv, opt);
+// 阻塞执行命令，进程退出时返回输出
+// 重载签名
+export function exec(argv: string[]): Promise<void>;
+export function exec(argv: string[], output: "string" | "base64"): Promise<string>;
+export function exec(argv: string[], output: "ignore"): Promise<void>;
+export function exec(
+    argv: string[],
+    output: "string" | "base64" | "ignore" = "ignore"
+): Promise<any> {
+    return call("os.exec", argv, output);
 }
-export function exec2(argv: string[]): Promise<number> {
-    return call("os.exec2", argv);
+export function execAsync(argv: string[]): Promise<number> {
+    return call("os.execAsync", argv);
 }
 export function write(path: string, base64: string): Promise<void> {
     return call("os.write", path, base64);

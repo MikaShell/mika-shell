@@ -68,6 +68,7 @@ pub const Service = struct {
     }
     fn getNodes(self: *Self, allocator: Allocator) [][]const u8 {
         var map = std.StringHashMap(void).init(allocator);
+        defer map.deinit();
         for (self.interfaces.items) |item| {
             map.put(item.path, {}) catch unreachable;
         }

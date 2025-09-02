@@ -54,64 +54,53 @@ pub const Webview = struct {
         manager.addScript(setPortScript);
         _ = g.signalConnectData(manager.as(g.Object), "script-message-with-reply-received::mikaShell", @ptrCast(&struct {
             fn f(_: *webkit.UserContentManager, v: *jsc.Value, reply: *webkit.ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int {
-                const alc = std.heap.page_allocator;
                 const wv: *Webview = @ptrCast(@alignCast(data));
-                const jsonValue = v.toJson(0);
-                defer glib.free(jsonValue);
-                const request = std.json.parseFromSlice(std.json.Value, alc, std.mem.span(jsonValue), .{}) catch unreachable;
-                defer request.deinit();
-                var result = Result.init(alc);
-                defer result.deinit();
+                const alc = wv.allocator;
 
                 // {
                 //     "method": "test",
                 //     "args": [...]
                 // }
 
-                const method = request.value.object.get("method");
-                const origin_args = request.value.object.get("args");
-                if (method == null or origin_args == null) {
+                if (v.isObject() != 1) {
                     reply.returnErrorMessage("Invalid request");
                     return 0;
                 }
-                switch (method.?) {
-                    .string => {},
-                    else => {
-                        reply.returnErrorMessage("Invalid request method");
-                        return 0;
-                    },
+                const method = v.objectGetProperty("method");
+                if (method.isUndefined() == 1 or method.isNull() == 1) {
+                    reply.returnErrorMessage("Invalid request method");
+                    return 0;
                 }
-                switch (origin_args.?) {
-                    .array => {},
-                    else => {
-                        reply.returnErrorMessage("Invalid request args");
-                        return 0;
-                    },
+                const methodStr = method.toString();
+                defer glib.free(methodStr);
+                const method_ = std.mem.span(methodStr);
+                const args = v.objectGetProperty("args");
+                defer args.unref();
+                if (args.isArray() != 1) {
+                    reply.returnErrorMessage("Invalid request args");
+                    return 0;
                 }
-                var args = std.ArrayList(std.json.Value).init(alc);
-                defer args.deinit();
-                args.append(std.json.Value{ .integer = @intCast(wv.id) }) catch unreachable;
-                args.appendSlice(origin_args.?.array.items) catch unreachable;
-                const value = Args{
-                    .items = args.items,
-                };
-                std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
-                wv._modules.call(method.?.string, value, &result) catch |err| blk: {
-                    if (result.err != null) break :blk;
-                    const msg = std.fmt.allocPrintZ(alc, "Failed to call method {s}: {s}", .{ method.?.string, @errorName(err) }) catch unreachable;
+                const ctx = CallContext.init(alc, wv.id, method_, args, reply) catch |e| {
+                    const msg = std.fmt.allocPrintZ(alc, "Failed to parse args: {s}", .{@errorName(e)}) catch unreachable;
                     defer alc.free(msg);
                     reply.returnErrorMessage(msg);
                     return 0;
                 };
-                if (result.err) |msg| {
-                    // TODO: 将 msg 的来源全部改成 [:0]const u8
-                    const msg_ = alc.dupeZ(u8, msg) catch unreachable;
-                    defer alc.free(msg_);
-                    reply.returnErrorMessage(msg_);
-                } else {
-                    const val = result.toJSCValue(v.getContext());
-                    defer val.unref();
-                    reply.returnValue(val);
+                defer ctx.deinit();
+                std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
+                wv._modules.call(method_, ctx) catch |err| {
+                    std.log.scoped(.webview).err("Failed to call method {s}: {s}", .{ method_, @errorName(err) });
+                    if (ctx.reply != null) {
+                        ctx.errors("Failed to call method {s}: {s}", .{ method_, @errorName(err) });
+                    }
+                    return 0;
+                };
+                // 不为 null 表示没有被回复或者被作为 async 调用
+                if (ctx.reply != null) {
+                    const result = jsc.Value.newUndefined(ctx.ctx);
+                    defer result.unref();
+                    reply.returnValue(result);
+                    return 0;
                 }
                 return 0;
             }
@@ -151,10 +140,9 @@ pub const Webview = struct {
 };
 const dbus = @import("dbus");
 const Allocator = std.mem.Allocator;
-const Modules = @import("modules.zig").Modules;
-const Emitter = @import("modules.zig").Emitter;
-const Result = @import("modules/modules.zig").Result;
-const Args = @import("modules/modules.zig").Args;
+const Modules = @import("modules/root.zig").Modules;
+const Emitter = @import("modules/root.zig").Emitter;
+const CallContext = @import("modules/root.zig").Context;
 pub const Error = error{
     WebviewNotExists,
 };

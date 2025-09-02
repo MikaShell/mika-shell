@@ -81,10 +81,9 @@
                             );
                             img.src = icon;
                         });
+                    showDock();
                 }
                 el.dataset.activated = item.state.includes("activated");
-
-                showDock();
             };
             const onClosed = (id) => {
                 const dock = document.getElementById("dock");
@@ -110,8 +109,13 @@
             });
         </script>
         <script>
+            let closeTimer = null;
             const tryHideDock = () => {
-                setTimeout(async () => {
+                if (closeTimer !== null) {
+                    clearTimeout(closeTimer);
+                    closeTimer = null;
+                }
+                closeTimer = setTimeout(async () => {
                     const dock = document.getElementById("dock");
                     dock.classList.toggle("hidden", !mouseInPage);
                 }, 3000);

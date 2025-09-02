@@ -419,16 +419,16 @@ test {
 const gtk = @import("gtk");
 const gdk = @import("gdk");
 const glib = @import("glib");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const App = @import("../app.zig").App;
 
 pub const Icon = struct {
     const Self = @This();
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         return self;
     }
@@ -444,17 +444,17 @@ pub const Icon = struct {
     }
 
     // TODO: 替换成 zig 实现的 icon 查找器
-    pub fn lookup(_: *Self, args: Args, result: *Result) !void {
+    pub fn lookup(_: *Self, ctx: *Context) !void {
         const allocator = std.heap.page_allocator;
-        const name = try args.string(1);
-        const size = try args.integer(2);
-        const scale = try args.integer(3);
+        const name = try ctx.args.string(0);
+        const size = try ctx.args.integer(1);
+        const scale = try ctx.args.integer(2);
         const img = lookupIcon(allocator, name, @intCast(size), @intCast(scale)) catch |err| blk: {
             if (!std.fs.path.isAbsolute(name)) return err;
             break :blk makeHtmlImg(allocator, name) catch return err;
         };
         defer allocator.free(img);
-        result.commit(img);
+        ctx.commit(img);
     }
 };
 fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]const u8 {

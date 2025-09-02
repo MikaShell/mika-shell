@@ -17,11 +17,11 @@ const std = @import("std");
 const webkit = @import("webkit");
 const Webview = @import("../app.zig").Webview;
 const App = @import("../app.zig").App;
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const gtk = @import("gtk");
 const Args = modules.Args;
-const Result = modules.Result;
-const Context = modules.Context;
+const Context = modules.InitContext;
+const CallContext = modules.Context;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 pub const Layer = struct {
@@ -55,29 +55,26 @@ pub const Layer = struct {
             },
         };
     }
-    fn getWebview(self: *Self, args: Args) !*Webview {
-        const id = args.uInteger(0) catch unreachable;
-        const w = self.app.getWebview(id) catch unreachable;
+    fn getWebview(self: *Self, ctx: *CallContext) !*Webview {
+        const w = self.app.getWebview(ctx.caller) catch unreachable;
         if (w.type != .Layer) {
             return error.WebviewIsNotALayer;
         }
         return w;
     }
-    fn getLayer(self: *Self, args: Args) !layershell.Layer {
-        const id = args.uInteger(0) catch unreachable;
-        const w = self.app.getWebview(id) catch unreachable;
+    fn getLayer(self: *Self, ctx: *CallContext) !layershell.Layer {
+        const w = self.app.getWebview(ctx.caller) catch unreachable;
         if (w.type != .Layer) {
             return error.WebviewIsNotALayer;
         }
         const layer = layershell.Layer.init(w.container);
         return layer;
     }
-    pub fn initLayer(self: *Self, args: Args, _: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        const w = self.app.getWebview(id) catch unreachable;
+    pub fn initLayer(self: *Self, ctx: *CallContext) !void {
+        const w = self.app.getWebview(ctx.caller) catch unreachable;
 
         const allocator = std.heap.page_allocator;
-        const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
+        const options = try std.json.parseFromValue(Options, allocator, try ctx.args.value(0), .{});
         defer options.deinit();
         const opt = options.value;
         if (w.type == .Window) {
@@ -115,77 +112,80 @@ pub const Layer = struct {
             self.app.showRequest(w);
         }
     }
-    pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWebview(args);
+    pub fn openDevTools(self: *Self, ctx: *CallContext) !void {
+        const w = try self.getWebview(ctx);
         w.impl.getInspector().show();
     }
-    pub fn resetAnchor(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
+    pub fn resetAnchor(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
         layer.resetAnchor();
     }
-    pub fn setAnchor(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const edge = try args.integer(1);
-        const anchor = try args.bool(2);
+    pub fn setAnchor(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const edge = try ctx.args.integer(0);
+        const anchor = try ctx.args.bool(1);
         layer.setAnchor(@enumFromInt(edge), anchor);
     }
-    pub fn setLayer(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const layer_type = try args.integer(1);
+    pub fn setLayer(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const layer_type = try ctx.args.integer(0);
         layer.setLayer(@enumFromInt(layer_type));
     }
-    pub fn setKeyboardMode(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const mode = try args.integer(1);
+    pub fn setKeyboardMode(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const mode = try ctx.args.integer(0);
         layer.setKeyboardMode(@enumFromInt(mode));
     }
-    pub fn setNamespace(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const namespace = try args.string(1);
+    pub fn setNamespace(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const namespace = try ctx.args.string(0);
         layer.setNamespace(namespace);
     }
-    pub fn setMargin(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const edge = try args.integer(1);
-        const margin = try args.integer(2);
+    pub fn setMargin(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const edge = try ctx.args.integer(0);
+        const margin = try ctx.args.integer(1);
         layer.setMargin(@enumFromInt(edge), @intCast(margin));
     }
-    pub fn setExclusiveZone(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
-        const exclusiveZone = try args.integer(1);
+    pub fn setExclusiveZone(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
+        const exclusiveZone = try ctx.args.integer(0);
         layer.setExclusiveZone(@intCast(exclusiveZone));
     }
-    pub fn autoExclusiveZoneEnable(self: *Self, args: Args, _: *Result) !void {
-        const layer = try self.getLayer(args);
+    pub fn autoExclusiveZoneEnable(self: *Self, ctx: *CallContext) !void {
+        const layer = try self.getLayer(ctx);
         layer.autoExclusiveZoneEnable();
     }
-    pub fn getSize(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWebview(args);
+    pub fn getSize(self: *Self, ctx: *CallContext) !void {
+        const w = try self.getWebview(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            ctx.errors("you should call this function after the window is realized", .{});
+            return;
         }
-        result.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
+        ctx.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
     }
-    pub fn setSize(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWebview(args);
-        const width = try args.integer(1);
-        const height = try args.integer(2);
+    pub fn setSize(self: *Self, ctx: *CallContext) !void {
+        const w = try self.getWebview(ctx);
+        const width = try ctx.args.integer(0);
+        const height = try ctx.args.integer(1);
         w.container.setDefaultSize(@intCast(width), @intCast(height));
     }
-    pub fn getScale(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWebview(args);
+    pub fn getScale(self: *Self, ctx: *CallContext) !void {
+        const w = try self.getWebview(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            ctx.errors("you should call this function after the window is realized", .{});
+            return;
         }
-        result.commit(surface.?.getScale());
+        ctx.commit(surface.?.getScale());
     }
-    pub fn setInputRegion(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWebview(args);
+    pub fn setInputRegion(self: *Self, ctx: *CallContext) !void {
+        const w = try self.getWebview(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            ctx.errors("you should call this function after the window is realized", .{});
+            return;
         }
         const cairo = @import("cairo");
         const region = cairo.Region.create();

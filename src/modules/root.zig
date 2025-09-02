@@ -1,10 +1,170 @@
 const std = @import("std");
-const common = @import("./modules/modules.zig");
-const Args = common.Args;
-const Result = common.Result;
-const Callable = common.Callable;
-const Context = common.Context;
-const Registry = common.Registry;
+const jsc = @import("jsc");
+const webkit = @import("webkit");
+/// 放心地在 Modules 回调中使用 try xxx(n), xxx是参数类型, n是参数的位置
+///
+/// 如果参数不符合预期,则会返回 error.InvalidArgs, 可以直接将此错误返回给前端
+pub const Args = struct {
+    items: []std.json.Value,
+    fn verifyIndex(self: Args, index: usize) !void {
+        if (index >= self.items.len) return error.InvalidArgs;
+    }
+    pub fn value(self: Args, index: usize) !std.json.Value {
+        try self.verifyIndex(index);
+        return self.items[index];
+    }
+    pub fn @"bool"(self: Args, index: usize) !bool {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .bool => |b| return b,
+            else => return error.InvalidArgs,
+        }
+    }
+    pub fn integer(self: Args, index: usize) !i64 {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .integer => |i| return i,
+            else => return error.InvalidArgs,
+        }
+    }
+    pub fn uInteger(self: Args, index: usize) !u64 {
+        const i = try self.integer(index);
+        if (i < 0) return error.InvalidArgs;
+        return @intCast(i);
+    }
+    pub fn float(self: Args, index: usize) !f64 {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .float => |f| return f,
+            else => return error.InvalidArgs,
+        }
+    }
+    pub fn string(self: Args, index: usize) ![]const u8 {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .string => |s| return s,
+            else => return error.InvalidArgs,
+        }
+    }
+    pub fn array(self: Args, index: usize) !std.json.Array {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .array => |a| return a,
+            else => return error.InvalidArgs,
+        }
+    }
+    pub fn object(self: Args, index: usize) !std.json.ObjectMap {
+        try self.verifyIndex(index);
+        switch (self.items[index]) {
+            .object => |o| return o,
+            else => return error.InvalidArgs,
+        }
+    }
+};
+const glib = @import("glib");
+fn replyCommit(reply: *webkit.ScriptMessageReply, ctx: *jsc.Context, value: anytype) void {
+    const allocator = std.heap.page_allocator;
+    var buffer = std.ArrayList(u8).init(allocator);
+    defer buffer.deinit();
+    std.json.stringify(value, .{}, buffer.writer()) catch @panic("OOM");
+    buffer.append(0) catch @panic("OOM");
+    const res = jsc.Value.newFromJson(ctx, @ptrCast(buffer.items.ptr));
+    defer res.unref();
+    reply.returnValue(res);
+}
+fn replyErrors(reply: *webkit.ScriptMessageReply, comptime fmt: []const u8, args: anytype) void {
+    const allocator = std.heap.page_allocator;
+    const err = std.fmt.allocPrint(allocator, fmt, args) catch @panic("OOM");
+    defer allocator.free(err);
+    const msg = std.fmt.allocPrintZ(allocator, "Failed to call method: {s}", .{err}) catch @panic("OOM");
+    defer allocator.free(msg);
+    reply.returnErrorMessage(msg.ptr);
+}
+pub const Async = struct {
+    const Self = @This();
+    reply: *webkit.ScriptMessageReply,
+    ctx: *jsc.Context,
+    pub fn commit(self: Self, value: anytype) void {
+        replyCommit(self.reply, self.ctx, value);
+        self.reply.unref();
+        self.ctx.unref();
+    }
+    pub fn errors(self: Self, comptime fmt: []const u8, args: anytype) void {
+        replyErrors(self.reply, fmt, args);
+        self.reply.unref();
+        self.ctx.unref();
+    }
+};
+pub const Context = struct {
+    const Self = @This();
+    caller: u64,
+    arena: std.mem.Allocator,
+    reply: ?*webkit.ScriptMessageReply,
+    args: Args,
+    ctx: *jsc.Context,
+    method: []const u8,
+    // 确保 method 为字符串
+    // 确保 args 为数组
+    pub fn init(allocator: std.mem.Allocator, caller: u64, method: []const u8, args: *jsc.Value, reply: *webkit.ScriptMessageReply) !*Self {
+        const arena = try allocator.create(std.heap.ArenaAllocator);
+        arena.* = std.heap.ArenaAllocator.init(allocator);
+        const alloc = arena.allocator();
+        const argsJson = args.toJson(0);
+        defer glib.free(argsJson);
+        const self = try alloc.create(Self);
+        self.* = .{
+            .caller = caller,
+            .arena = alloc,
+            .reply = reply,
+            .args = .{ .items = (try std.json.parseFromSlice(std.json.Value, alloc, std.mem.span(argsJson), .{})).value.array.items },
+            .ctx = args.getContext(),
+            .method = try alloc.dupe(u8, method),
+        };
+        return self;
+    }
+    pub fn deinit(self: *Self) void {
+        self.ctx.unref();
+        const arena: *std.heap.ArenaAllocator = @ptrCast(@alignCast(self.arena.ptr));
+        const allocator = arena.child_allocator;
+        arena.deinit();
+        allocator.destroy(arena);
+    }
+    pub fn commit(self: *Self, value: anytype) void {
+        replyCommit(self.reply.?, self.ctx, value);
+        self.reply = null;
+    }
+    pub fn errors(self: *Self, comptime fmt: []const u8, args: anytype) void {
+        replyErrors(self.reply.?, fmt, args);
+        self.reply = null;
+    }
+    pub fn @"async"(self: *Self) Async {
+        defer self.reply = null;
+        self.ctx.ref();
+        return .{ .reply = self.reply.?.ref(), .ctx = self.ctx };
+    }
+};
+
+const Allocator = std.mem.Allocator;
+
+pub fn Callable(comptime T: type) type {
+    return *const fn (self: T, ctx: *Context) anyerror!void;
+}
+const App = @import("../app.zig").App;
+pub const InitContext = struct {
+    allocator: std.mem.Allocator,
+    app: *App,
+    systemBus: *dbus.Bus,
+    sessionBus: *dbus.Bus,
+};
+pub fn Registry(T: type) type {
+    return struct {
+        exports: []const std.meta.Tuple(&.{ []const u8, Callable(*T) }) = &.{},
+        events: []const events.Events = &.{},
+    };
+}
+const dbus = @import("dbus");
+const events = @import("../events.zig");
+
 pub fn Entry(comptime T: type) type {
     return struct {
         self: T,
@@ -12,8 +172,6 @@ pub fn Entry(comptime T: type) type {
     };
 }
 const AnyEntry = Entry(*anyopaque);
-const App = @import("app.zig").App;
-const events = @import("events.zig");
 pub const Modules = struct {
     const Registered = struct {
         ptr: *anyopaque,
@@ -28,7 +186,7 @@ pub const Modules = struct {
     };
     allocator: std.mem.Allocator,
     table: std.StringHashMap(AnyEntry),
-    ctx: Context,
+    ctx: InitContext,
     registered: std.ArrayList(Registered),
     eventGroups: std.ArrayList(EventGroup),
 
@@ -54,13 +212,17 @@ pub const Modules = struct {
             module.deinit(module.ptr, self.allocator);
         }
         self.registered.deinit();
+        for (self.eventGroups.items) |group| {
+            self.allocator.free(group.events);
+        }
+        self.eventGroups.deinit();
         self.allocator.destroy(self);
     }
-    pub fn call(self: *Modules, name: []const u8, args: Args, result: *Result) !void {
+    pub fn call(self: *Modules, name: []const u8, ctx: *Context) !void {
         const entry = self.table.get(name) orelse {
             return error.FunctionNotFound;
         };
-        return entry.call(entry.self, args, result);
+        return entry.call(entry.self, ctx);
     }
     pub fn mount(self: *Modules, comptime Module_: type, comptime name: []const u8) !void {
         const m = try Module_.init(self.ctx);
@@ -113,17 +275,9 @@ pub const Modules = struct {
         comptime name: []const u8,
         comptime function: Callable(@TypeOf(module)),
     ) void {
-        const wrap: Callable(*anyopaque) = comptime blk: {
-            const wrapper = struct {
-                fn wrap(self_: *anyopaque, args: Args, result: *Result) !void {
-                    return function(@ptrCast(@alignCast(self_)), args, result);
-                }
-            };
-            break :blk &wrapper.wrap;
-        };
         const entry = AnyEntry{
             .self = module,
-            .call = wrap,
+            .call = @ptrCast(function),
         };
         if (self.table.contains(name)) {
             @panic("function already registered");
@@ -131,73 +285,6 @@ pub const Modules = struct {
         self.table.put(name, entry) catch unreachable;
     }
 };
-const dbus = @import("dbus");
-const Allocator = std.mem.Allocator;
-const TestModule = struct {
-    pub fn init(ctx: Context) !*@This() {
-        const m = try ctx.allocator.create(@This());
-        return m;
-    }
-    pub fn register() Registry(@This()) {
-        return .{
-            .exports = &.{
-                .{ "show", show },
-                .{ "throw", throw },
-                .{ "testArgs", testArgs },
-            },
-        };
-    }
-    pub fn deinit(self: *@This(), allocator: Allocator) void {
-        allocator.destroy(self);
-    }
-    pub fn show(_: *TestModule, _: Args, result: *Result) !void {
-        result.commit("Hello, world!");
-    }
-    pub fn throw(_: *TestModule, _: Args, _: *Result) !void {
-        return error.TestError;
-    }
-    pub fn testArgs(_: *TestModule, args: Args, _: *Result) !void {
-        _ = try args.integer(0);
-        _ = try args.bool(1);
-        _ = try args.string(2);
-        _ = try args.array(3);
-        _ = try args.object(4);
-    }
-};
-const jsc = @import("jsc");
-test "register and call" {
-    const allocator = std.testing.allocator;
-    var m = Modules.init(allocator, undefined, undefined, undefined);
-    defer m.deinit();
-    try m.mount(TestModule, "test");
-
-    const jsonStr =
-        \\{
-        \\    "args": [
-        \\        2,
-        \\        true,
-        \\        "hello",
-        \\        [3,4,5],
-        \\        {"foo":"bar"}
-        \\    ]
-        \\}
-    ;
-    const v = try std.json.parseFromSlice(std.json.Value, allocator, jsonStr, .{});
-    defer v.deinit();
-    const value = Args{ .items = v.value.object.get("args").?.array.items };
-    var result = Result.init(allocator);
-    defer result.deinit();
-    try m.call("test.show", value, &result);
-    try std.testing.expectEqualStrings("\"Hello, world!\"", result.buffer.?.items);
-    const ctx = jsc.Context.new();
-    defer ctx.unref();
-    const jsvalue = result.toJSCValue(ctx);
-    defer jsvalue.unref();
-    try std.testing.expectEqualStrings("\"Hello, world!\"", std.mem.span(jsvalue.toJson(0)));
-    try std.testing.expectError(error.TestError, m.call("test.throw", value, &result));
-
-    try m.call("test.testArgs", value, &result);
-}
 pub const Emitter = struct {
     const Self = @This();
     const Group = struct {
@@ -263,7 +350,7 @@ pub const Emitter = struct {
     }
     pub fn subscribe(
         self: *Self,
-        args: Args,
+        id: u64,
         event: events.Events,
     ) !void {
         blk: {
@@ -274,7 +361,6 @@ pub const Emitter = struct {
             }
             return error.UnkownEvent;
         }
-        const id = args.uInteger(0) catch unreachable;
         const list = try self.subscriber.getOrPut(event);
         if (!list.found_existing) {
             list.value_ptr.* = std.ArrayList(u64).init(self.allocator);
@@ -314,10 +400,9 @@ pub const Emitter = struct {
     }
     pub fn unsubscribe(
         self: *Self,
-        args: Args,
+        id: u64,
         event: events.Events,
     ) !void {
-        const id = args.uInteger(0) catch unreachable;
         const list = self.subscriber.getPtr(event) orelse return error.NotSubscribed;
         blk: {
             for (list.items, 0..) |item, i| {

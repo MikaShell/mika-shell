@@ -234,6 +234,7 @@ pub fn run() !void {
 }
 const events = @import("events.zig");
 const gtk = @import("gtk");
+const glib = @import("glib");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -290,12 +291,15 @@ pub fn daemon() !void {
     const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();
     try ipcServer.listen();
-    while (true) {
-        const glib = @import("glib");
-        _ = glib.MainContext.iteration(null, 1);
-    }
+    const loop = glib.MainLoop.new(null, 0);
+    _ = glib.unixSignalAdd(std.os.linux.SIG.INT, onSignal, loop);
+    loop.run();
 }
-
+fn onSignal(data: ?*anyopaque) callconv(.c) c_int {
+    const loop: *glib.MainLoop = @alignCast(@ptrCast(data));
+    loop.quit();
+    return 0;
+}
 fn open() !void {
     defer allocator.free(config.open.pageName);
     try ipc.request(.{

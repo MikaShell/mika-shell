@@ -155,22 +155,6 @@ pub fn build(b: *std.Build) void {
             const run_example_unit_tests = b.addRunArtifact(example_unit_tests);
             test_step.dependOn(&run_example_unit_tests.step);
         }
-        // MODULES
-        {
-            const modules_mod = b.createModule(.{
-                .root_source_file = b.path("src/modules/modules.zig"),
-                .target = target,
-                .optimize = optimize,
-            });
-
-            const modules_unit_tests = b.addTest(.{
-                .root_module = modules_mod,
-            });
-
-            const run_modules_unit_tests = b.addRunArtifact(modules_unit_tests);
-
-            test_step.dependOn(&run_modules_unit_tests.step);
-        }
         // PKGS/DBUS
         {
             const dbus_unit_tests = b.addTest(.{

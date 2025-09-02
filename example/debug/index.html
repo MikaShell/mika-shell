@@ -72,7 +72,23 @@
         </script>
         <script>
             const mikaShell = window.mikaShell;
-            mikaShell.os.exec(["date"], true).then((date) => console.log(date));
+            mikaShell.os.exec(["date"], "string").then((date) => console.log(date));
+            mikaShell.os.exec(["sh", "-c", "sleep 5; echo 'Hello MikaShell'"]).then(() => {
+                console.log("Exec with no output");
+            });
+            mikaShell.os
+                .exec(["sh", "-c", "sleep 5; echo 'Hello MikaShell'"], "string")
+                .then((res) => {
+                    console.log("Exec with string output:", res);
+                });
+            mikaShell.os
+                .exec(["sh", "-c", "sleep 5; echo 'Hello MikaShell'"], "base64")
+                .then((res) => {
+                    console.log("Exec with base64 output:", res);
+                });
+            mikaShell.os.execAsync(["sh", "-c", "echo 'Hello MikaShell'"]).then((pid) => {
+                console.log("ExecAsync with pid:", pid);
+            });
             mikaShell.os.getSystemInfo().then((info) => {
                 console.log("OS Info:", info);
                 mikaShell.os.getUserInfo().then((user) => {
@@ -109,6 +125,9 @@
             <button onclick="window.mikaShell.mika.open('/debug/foobar.html')">404</button>
             <button onclick="window.mikaShell.mika.open('/debug/notifd.html')">Notifd</button>
             <button onclick="window.mikaShell.mika.open('/debug/network.html')">Network</button>
+            <button onclick="window.mikaShell.mika.open('/debug/screenshot.html')">
+                Screenshot
+            </button>
         </div>
     </body>
 </html>

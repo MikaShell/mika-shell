@@ -1,8 +1,7 @@
 const std = @import("std");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
-const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
@@ -14,7 +13,7 @@ pub const Libinput = struct {
     app: *App,
     input: *libinput.Libinput,
     count: std.AutoHashMap(events.Events, usize),
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         errdefer ctx.allocator.destroy(self);
         const allocator = ctx.allocator;

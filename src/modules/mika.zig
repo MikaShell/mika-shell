@@ -1,10 +1,9 @@
 const std = @import("std");
 const webkit = @import("webkit");
-const modules = @import("modules.zig");
-const Args = modules.Args;
-const Result = modules.Result;
-const Context = modules.Context;
+const modules = @import("root.zig");
+const Context = modules.InitContext;
 const Registry = modules.Registry;
+const CallContext = modules.Context;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
 const events = @import("../events.zig");
@@ -47,59 +46,58 @@ pub const Mika = struct {
             },
         };
     }
-    pub fn getConfigDir(self: *Self, _: Args, result: *Result) !void {
-        result.commit(self.app.configDir);
+    pub fn getConfigDir(self: *Self, ctx: *CallContext) !void {
+        ctx.commit(self.app.configDir);
     }
-    pub fn subscribe(self: *Self, args: Args, _: *Result) !void {
-        const event = try args.uInteger(1);
-        try self.app.emitter.subscribe(args, @enumFromInt(event));
+    pub fn subscribe(self: *Self, ctx: *CallContext) !void {
+        const event = try ctx.args.uInteger(0);
+        try self.app.emitter.subscribe(ctx.caller, @enumFromInt(event));
     }
-    pub fn unsubcribe(self: *Self, args: Args, _: *Result) !void {
-        const event = try args.uInteger(1);
-        try self.app.emitter.unsubscribe(args, @enumFromInt(event));
+    pub fn unsubcribe(self: *Self, ctx: *CallContext) !void {
+        const event = try ctx.args.uInteger(0);
+        try self.app.emitter.unsubscribe(ctx.caller, @enumFromInt(event));
     }
-    pub fn getId(_: *Self, args: Args, result: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
-        result.commit(id);
+    pub fn getId(_: *Self, ctx: *CallContext) !void {
+        ctx.commit(ctx.caller);
     }
-    pub fn open(self: *Self, args: Args, result: *Result) !void {
-        const pageName = try args.string(1);
+    pub fn open(self: *Self, ctx: *CallContext) !void {
+        const pageName = try ctx.args.string(0);
         const webview = try self.app.open(pageName);
-        result.commit(webview.id);
+        ctx.commit(webview.id);
     }
-    pub fn close(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn close(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         self.app.closeRequest(w);
     }
-    pub fn forceClose(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn forceClose(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         w.forceClose();
     }
-    pub fn show(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn show(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         self.app.showRequest(w);
     }
-    pub fn forceShow(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn forceShow(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         w.forceShow();
     }
-    pub fn hide(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn hide(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         self.app.hideRequest(w);
     }
-    pub fn forceHide(self: *Self, args: Args, _: *Result) !void {
-        var id = try args.uInteger(1);
-        if (id == 0) id = args.uInteger(0) catch unreachable;
+    pub fn forceHide(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         w.forceHide();
     }

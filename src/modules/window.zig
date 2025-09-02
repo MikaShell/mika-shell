@@ -13,9 +13,9 @@ const webkit = @import("webkit");
 const App = @import("../app.zig").App;
 const Webview = @import("../app.zig").Webview;
 const events = @import("../events.zig");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
+const InitContext = modules.InitContext;
 const Context = modules.Context;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
@@ -24,7 +24,7 @@ const g = @import("gobject");
 pub const Window = struct {
     const Self = @This();
     app: *App,
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         self.* = Self{
             .app = ctx.app,
@@ -47,24 +47,24 @@ pub const Window = struct {
             },
         };
     }
-    fn getWindow(self: *Self, args: Args) !*Webview {
-        const id = args.uInteger(0) catch unreachable;
-        const w = self.app.getWebview(id) catch unreachable;
+    fn getWindow(self: *Self, ctx: *Context) !*Webview {
+        const w = self.app.getWebview(ctx.caller) catch unreachable;
         if (w.type != .Window) {
             return error.WebviewIsNotAWindow;
         }
         return w;
     }
     // TODO: window 和 layer 增加 background-color 选项
-    pub fn initWindow(self: *Self, args: Args, _: *Result) !void {
-        const id = args.uInteger(0) catch unreachable;
+    pub fn initWindow(self: *Self, ctx: *Context) !void {
+        defer ctx.commit(null);
+        const id = ctx.caller;
         const w = self.app.getWebview(id) catch unreachable;
         if (w.type == .Layer) {
             // 已经被初始化为 Layer, 无法再次初始化为 Window
             return error.WebviewIsAlreadyAWindow;
         }
         const allocator = std.heap.page_allocator;
-        const options = try std.json.parseFromValue(Options, allocator, try args.value(1), .{});
+        const options = try std.json.parseFromValue(Options, allocator, try ctx.args.value(0), .{});
         defer options.deinit();
         const opt = options.value;
         const onMapContext = struct {
@@ -74,20 +74,20 @@ pub const Window = struct {
         };
         const onMap = &struct {
             fn f(widget: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const ctx: *onMapContext = @alignCast(@ptrCast(data));
-                g.signalHandlerDisconnect(widget.as(g.Object), ctx.id);
+                const ctx_: *onMapContext = @alignCast(@ptrCast(data));
+                g.signalHandlerDisconnect(widget.as(g.Object), ctx_.id);
                 const window = g.ext.cast(gtk.Window, widget).?;
-                setClass(window, ctx.class) catch unreachable;
-                std.heap.page_allocator.free(ctx.class);
-                std.heap.page_allocator.destroy(ctx);
+                setClass(window, ctx_.class) catch unreachable;
+                std.heap.page_allocator.free(ctx_.class);
+                std.heap.page_allocator.destroy(ctx_);
             }
         }.f;
 
         if (w.type == .None) {
             // 这个回调只会执行一次
-            const ctx = try std.heap.page_allocator.create(onMapContext);
-            const id_ = g.signalConnectData(w.container.as(g.Object), "map", @ptrCast(onMap), ctx, null, .flags_default);
-            ctx.* = .{
+            const ctx_ = try std.heap.page_allocator.create(onMapContext);
+            const id_ = g.signalConnectData(w.container.as(g.Object), "map", @ptrCast(onMap), ctx_, null, .flags_default);
+            ctx_.* = .{
                 .id = id_,
                 .class = std.heap.page_allocator.dupe(u8, opt.class) catch unreachable,
                 .resizable = opt.resizable,
@@ -111,48 +111,48 @@ pub const Window = struct {
         w.container.setDefaultSize(opt.width, opt.height);
         w.container.setResizable(if (opt.resizable) 1 else 0);
     }
-    pub fn openDevTools(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWindow(args);
+    pub fn openDevTools(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
         w.impl.getInspector().show();
     }
-    pub fn setTitle(self: *Self, args: Args, _: *Result) !void {
-        const w = try self.getWindow(args);
-        const title = try args.string(1);
+    pub fn setTitle(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
+        const title = try ctx.args.string(1);
         const allocator = std.heap.page_allocator;
         const title_ = try allocator.dupeZ(u8, title);
         defer allocator.free(title_);
         w.container.setTitle(title_);
     }
-    pub fn setSize(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWindow(args);
+    pub fn setSize(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
         if (w.container.getResizable() == 1) {
-            return result.errors("setSize is not allowed for resizable window", .{});
+            return ctx.errors("setSize is not allowed for resizable window", .{});
         }
-        const width = try args.integer(1);
-        const height = try args.integer(2);
+        const width = try ctx.args.integer(1);
+        const height = try ctx.args.integer(2);
         w.container.setDefaultSize(@intCast(width), @intCast(height));
     }
-    pub fn getSize(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWindow(args);
+    pub fn getSize(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            return ctx.errors("you should call this function after the window is realized", .{});
         }
-        result.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
+        ctx.commit(.{ .width = surface.?.getWidth(), .height = surface.?.getHeight() });
     }
-    pub fn getScale(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWindow(args);
+    pub fn getScale(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            return ctx.errors("you should call this function after the window is realized", .{});
         }
-        result.commit(surface.?.getScale());
+        ctx.commit(surface.?.getScale());
     }
-    pub fn setInputRegion(self: *Self, args: Args, result: *Result) !void {
-        const w = try self.getWindow(args);
+    pub fn setInputRegion(self: *Self, ctx: *Context) !void {
+        const w = try self.getWindow(ctx);
         const surface = w.container.as(gtk.Native).getSurface();
         if (surface == null) {
-            return result.errors("you should call this function after the window is realized", .{});
+            return ctx.errors("you should call this function after the window is realized", .{});
         }
         const cairo = @import("cairo");
         const region = cairo.Region.create();

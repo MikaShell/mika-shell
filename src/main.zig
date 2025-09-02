@@ -28,8 +28,18 @@ pub fn logFn(
         else
             return,
     } ++ "): ";
+    const red = "\x1b[31m";
+    const green = "\x1b[32m";
+    const yellow = "\x1b[33m";
+    const blue = "\x1b[34m";
+    const reset = "\x1b[0m";
 
-    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
+    const prefix = switch (level) {
+        .debug => blue,
+        .info => green,
+        .err => red,
+        .warn => yellow,
+    } ++ "[" ++ comptime level.asText() ++ "]" ++ reset ++ " " ++ scope_prefix;
 
     // Print the message to stderr, silently ignoring any errors
     std.debug.lockStdErr();
@@ -39,12 +49,10 @@ pub fn logFn(
 }
 
 test {
-    _ = @import("modules.zig");
     _ = @import("events.zig");
     _ = @import("lib/tray.zig");
     _ = @import("lib/notifd.zig");
     _ = @import("lib/network.zig");
-    _ = @import("modules/modules.zig");
     _ = @import("modules/apps.zig");
     _ = @import("modules/icon.zig");
     _ = @import("modules/layer.zig");

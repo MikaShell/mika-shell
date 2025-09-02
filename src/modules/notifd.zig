@@ -1,8 +1,8 @@
 const std = @import("std");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const notification = @import("../lib/notifd.zig");
@@ -18,7 +18,7 @@ pub const Notifd = struct {
     notifd: ?*notification.Notifd,
     dontDisturb: bool = false,
 
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         self.* = Self{
             .app = ctx.app,
@@ -76,47 +76,49 @@ pub const Notifd = struct {
             return error.FailedToInitNotifd;
         };
     }
-    fn setup(self: *Self, result: *Result) !void {
+    fn setup(self: *Self, ctx: *Context) !void {
         self.initNotifd() catch |err| {
             if (err == error.NameExists) {
-                return result.errors("another notification service is running, cannot initialize Notifd module", .{});
+                ctx.errors("Another notification service is running, cannot initialize Notifd module", .{});
+                return error.HasAnotherNotifdServiceRunning;
             }
-            return result.errors("failed to initialize notifd: {s}", .{@errorName(err)});
+            ctx.errors("Failed to initialize notifd: {s}", .{@errorName(err)});
+            return error.FailedToInitNotifd;
         };
     }
-    pub fn setDontDisturb(self: *Self, args: Args, _: *Result) !void {
-        const enable = try args.bool(1);
+    pub fn setDontDisturb(self: *Self, ctx: *Context) !void {
+        const enable = try ctx.args.bool(0);
         self.dontDisturb = enable;
     }
-    pub fn get(self: *Self, args: Args, result: *Result) !void {
-        const id = try args.uInteger(1);
-        try self.setup(result);
+    pub fn get(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
+        try self.setup(ctx);
         const notifd = self.notifd.?;
         if (notifd.items.get(@intCast(id))) |n| {
-            result.commit(n);
+            ctx.commit(n);
         } else {
             return error.NotificationNotFound;
         }
     }
-    pub fn getAll(self: *Self, _: Args, result: *Result) !void {
-        try self.setup(result);
+    pub fn getAll(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
         const notifd = self.notifd.?;
         var items = std.ArrayList(notification.Notification).init(self.allocator);
         defer items.deinit();
         var iter = notifd.items.iterator();
         while (iter.next()) |kv| try items.append(kv.value_ptr.*);
-        result.commit(items.items);
+        ctx.commit(items.items);
     }
-    pub fn activate(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const id = try args.uInteger(1);
-        const action = try args.string(2);
+    pub fn activate(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const id = try ctx.args.uInteger(0);
+        const action = try ctx.args.string(1);
         const notifd = self.notifd.?;
         notifd.invokeAction(@intCast(id), action);
     }
-    pub fn dismiss(self: *Self, args: Args, result: *Result) !void {
-        const id = try args.uInteger(1);
-        try self.setup(result);
+    pub fn dismiss(self: *Self, ctx: *Context) !void {
+        const id = try ctx.args.uInteger(0);
+        try self.setup(ctx);
         const notifd = self.notifd.?;
         notifd.dismiss(@intCast(id));
     }

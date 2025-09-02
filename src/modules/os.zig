@@ -1,14 +1,14 @@
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const App = @import("../app.zig").App;
 const std = @import("std");
 pub const OS = struct {
     const Self = @This();
     allocator: Allocator,
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         self.allocator = ctx.allocator;
         return self;
@@ -23,92 +23,106 @@ pub const OS = struct {
                 .{ "getSystemInfo", getSystemInfo },
                 .{ "getUserInfo", getUserInfo },
                 .{ "exec", exec },
-                .{ "exec2", exec2 },
+                .{ "execAsync", execAsync },
                 .{ "write", write },
                 .{ "read", read },
             },
         };
     }
-    pub fn getEnv(self: *Self, args: Args, result: *Result) !void {
-        const key = try args.string(1);
+    pub fn getEnv(self: *Self, ctx: *Context) !void {
+        const key = try ctx.args.string(0);
         const allocator = self.allocator;
         const value = try std.process.getEnvVarOwned(allocator, key);
         defer allocator.free(value);
-        result.commit(value);
+        ctx.commit(value);
     }
-    pub fn getSystemInfo(self: *Self, _: Args, result: *Result) !void {
+    pub fn getSystemInfo(self: *Self, ctx: *Context) !void {
         const info = try SystemInfo.init(self.allocator);
         defer info.deinit(self.allocator);
-        result.commit(info);
+        ctx.commit(info);
     }
-    pub fn getUserInfo(self: *Self, _: Args, result: *Result) !void {
+    pub fn getUserInfo(self: *Self, ctx: *Context) !void {
         const info = try UserInfo.init(self.allocator);
         defer info.deinit(self.allocator);
-        result.commit(info);
+        ctx.commit(info);
     }
     const Options = struct {
         needOutput: bool,
         block: bool,
         base64Output: bool,
     };
-    pub fn exec_(allocator: Allocator, argv: []const []const u8, options: Options) !std.process.Child {
+    const glib = @import("glib");
+    pub fn exec(self: *Self, ctx: *Context) !void {
+        const allocator = self.allocator;
+        const argvJson = try ctx.args.value(0);
+        if (argvJson != .array) {
+            return error.InvalidArgs;
+        }
+        var argv = try allocator.alloc([]const u8, argvJson.array.items.len);
+        defer allocator.free(argv);
+        for (argvJson.array.items, 0..) |item, i| {
+            argv[i] = item.string;
+        }
+        const output_str: []const u8 = try ctx.args.string(1);
+        const eql = std.mem.eql;
+        if (!(eql(u8, output_str, "base64") or eql(u8, output_str, "string") or eql(u8, output_str, "ignore"))) {
+            ctx.errors("Invalid output option: {s}, expected 'base64','string' or 'ignore'", .{output_str});
+            return;
+        }
+
         var child = std.process.Child.init(argv, allocator);
         const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
         defer if (home) |h| allocator.free(h);
         child.cwd = home;
         child.stderr_behavior = .Ignore;
         child.stdin_behavior = .Ignore;
-        child.stdout_behavior = if (options.needOutput) .Pipe else .Ignore;
+        child.stdout_behavior = if (!eql(u8, output_str, "ignore")) .Pipe else .Ignore;
         try child.spawn();
         try child.waitForSpawn();
-        {
-            const glib = @import("glib");
-            const child_ = try child.allocator.create(std.process.Child);
-            child_.* = child;
-            _ = glib.childWatchAdd(child.id, struct {
-                fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
-                    const c: *std.process.Child = @alignCast(@ptrCast(data));
-                    const a = c.allocator;
-                    _ = c.kill() catch {};
-                    a.destroy(c);
+        const Ctx = struct {
+            child: std.process.Child,
+            base64Output: bool,
+            result: modules.Async,
+            allocator: Allocator,
+        };
+        const ctx_ = try allocator.create(Ctx);
+        ctx_.* = .{
+            .child = child,
+            .base64Output = eql(u8, output_str, "base64"),
+            .result = ctx.@"async"(),
+            .allocator = allocator,
+        };
+        _ = glib.childWatchAdd(child.id, struct {
+            fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
+                const c: *Ctx = @alignCast(@ptrCast(data));
+                const a = c.allocator;
+                if (c.child.stdout) |stdout| {
+                    defer stdout.close();
+                    const stdoutBuf = stdout.reader().readAllAlloc(a, 1024 * 1024 * 10) catch |err| {
+                        c.result.errors("Failed to read stdout: {s}", .{@errorName(err)});
+                        return;
+                    };
+                    defer a.free(stdoutBuf);
+                    if (c.base64Output) {
+                        const encoder = std.base64.standard.Encoder;
+                        const base64 = c.allocator.alloc(u8, encoder.calcSize(stdoutBuf.len)) catch |err| {
+                            c.result.errors("Failed to encode stdout: {s}", .{@errorName(err)});
+                            return;
+                        };
+                        defer c.allocator.free(base64);
+                        c.result.commit(encoder.encode(base64, stdoutBuf));
+                    } else {
+                        c.result.commit(stdoutBuf);
+                    }
                 }
-            }.f, child_);
-        }
-        if (options.block) _ = try child.wait();
-        return child;
-    }
-    pub fn exec(self: *Self, args: Args, result: *Result) !void {
-        const allocator = self.allocator;
-        const argvJson = try args.value(1);
-        if (argvJson != .array) {
-            return error.InvalidArgs;
-        }
-        var argv = try allocator.alloc([]const u8, argvJson.array.items.len);
-        defer allocator.free(argv);
-        for (argvJson.array.items, 0..) |item, i| {
-            argv[i] = item.string;
-        }
-
-        const options = try std.json.parseFromValue(Options, allocator, try args.value(2), .{});
-        defer options.deinit();
-        const child = try exec_(allocator, argv, options.value);
-        if (child.stdout) |stdout| {
-            defer stdout.close();
-            const stdoutBuf = try stdout.reader().readAllAlloc(allocator, 1024 * 1024 * 10);
-            defer allocator.free(stdoutBuf);
-            if (options.value.base64Output) {
-                const encoder = std.base64.standard.Encoder;
-                const base64 = try self.allocator.alloc(u8, encoder.calcSize(stdoutBuf.len));
-                defer self.allocator.free(base64);
-                result.commit(encoder.encode(base64, stdoutBuf));
-            } else {
-                result.commit(stdoutBuf);
+                _ = c.child.kill() catch {};
+                a.destroy(c);
             }
-        }
+        }.f, ctx_);
     }
-    pub fn exec2(self: *Self, args: Args, result: *Result) !void {
+    pub fn execAsync(self: *Self, ctx: *Context) !void {
         const allocator = self.allocator;
-        const argvJson = try args.value(1);
+        const argvJson = try ctx.args.value(0);
         if (argvJson != .array) {
             return error.InvalidArgs;
         }
@@ -117,17 +131,32 @@ pub const OS = struct {
         for (argvJson.array.items, 0..) |item, i| {
             argv[i] = item.string;
         }
-        const child = try exec_(allocator, argv, .{
-            .needOutput = false,
-            .block = false,
-            .base64Output = false,
-        });
-        result.commit(child.id);
+        var child = std.process.Child.init(argv, allocator);
+        const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
+        defer if (home) |h| allocator.free(h);
+        child.cwd = home;
+        child.stderr_behavior = .Ignore;
+        child.stdin_behavior = .Ignore;
+        child.stdout_behavior = .Ignore;
+        try child.spawn();
+        try child.waitForSpawn();
+        const child_ = try child.allocator.create(std.process.Child);
+        child_.* = child;
+        _ = glib.childWatchAdd(child.id, struct {
+            fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
+                const c: *std.process.Child = @alignCast(@ptrCast(data));
+                const a = c.allocator;
+                _ = c.kill() catch {};
+                a.destroy(c);
+            }
+        }.f, child_);
+
+        ctx.commit(child.id);
     }
 
-    pub fn write(self: *Self, args: Args, _: *Result) !void {
-        const path = try args.string(1);
-        const base64 = try args.string(2);
+    pub fn write(self: *Self, ctx: *Context) !void {
+        const path = try ctx.args.string(0);
+        const base64 = try ctx.args.string(1);
         const decoder = std.base64.standard.Decoder;
         const data = try self.allocator.alloc(u8, try decoder.calcSizeForSlice(base64));
         defer self.allocator.free(data);
@@ -141,8 +170,8 @@ pub const OS = struct {
         defer file.close();
         try file.writeAll(data);
     }
-    pub fn read(self: *Self, args: Args, result: *Result) !void {
-        const path = try args.string(1);
+    pub fn read(self: *Self, ctx: *Context) !void {
+        const path = try ctx.args.string(0);
         var file: std.fs.File = undefined;
         if (std.fs.path.isAbsolute(path)) {
             file = try std.fs.openFileAbsolute(path, .{});
@@ -155,7 +184,7 @@ pub const OS = struct {
         const encoder = std.base64.standard.Encoder;
         const base64 = try self.allocator.alloc(u8, encoder.calcSize(data.len));
         defer self.allocator.free(base64);
-        result.commit(encoder.encode(base64, data));
+        ctx.commit(encoder.encode(base64, data));
     }
 };
 const Allocator = std.mem.Allocator;

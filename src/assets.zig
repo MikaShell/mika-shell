@@ -57,45 +57,47 @@ pub const ProxyHandler = struct {
     pub const Context = struct {
         conn: *ws.Conn,
         unixSock: std.net.Stream,
+        watch: c_uint,
     };
     ctx: *Context,
-    watch: c_uint,
     pub fn init(conn: *ws.Conn, path: []const u8) !ProxyHandler {
         // TODO: 剔除路径防止注入
         const sock = try std.net.connectUnixSocket(path);
         errdefer sock.close();
         const ctx = try std.heap.page_allocator.create(Context);
         errdefer std.heap.page_allocator.destroy(ctx);
+        const ch = glib.IOChannel.unixNew(sock.handle);
+        defer ch.unref();
         ctx.* = .{
             .conn = conn,
             .unixSock = sock,
-        };
-        const ch = glib.IOChannel.unixNew(sock.handle);
-        defer ch.unref();
-        return .{
-            .ctx = ctx,
             .watch = glib.ioAddWatch(ch, .{ .in = true }, onUnixSockMessage, ctx),
         };
+
+        return .{ .ctx = ctx };
     }
     fn onUnixSockMessage(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
         const ctx: *Context = @alignCast(@ptrCast(data));
         var buf: [512]u8 = undefined;
         const n = ctx.unixSock.read(&buf) catch {
             _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
+            ctx.watch = 0;
             return 0;
         };
         if (n == 0) {
             _ = ctx.conn.close(.{ .code = 1000, .reason = "EOF" }) catch {};
+            ctx.watch = 0;
             return 0;
         }
         ctx.conn.write(buf[0..n]) catch {
             _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
+            ctx.watch = 0;
             return 0;
         };
         return 1;
     }
     pub fn close(h: *ProxyHandler) void {
-        _ = glib.Source.remove(h.watch);
+        if (h.ctx.watch != 0) _ = glib.Source.remove(h.ctx.watch);
         h.ctx.unixSock.close();
         std.heap.page_allocator.destroy(h.ctx);
     }
@@ -146,6 +148,7 @@ const EventManager = struct {
     }
     pub fn deinit(self: *Self) void {
         _ = glib.Source.remove(self.watch);
+        self.sockets.deinit();
         self.allocator.destroy(self);
     }
     fn onEvent(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Screenshot</title>
+        <link rel="stylesheet" href="style.css" />
+        <script>
+            window.mikaShell.window.init({
+                title: "MikaShell Test",
+                backgroundTransparent: true,
+                resizable: false,
+                width: 800,
+                height: 500,
+            });
+            (async () => {
+                const image = await mikaShell.monitor.capture(0, 10);
+                document.getElementById("screenshot").src = image;
+            })();
+        </script>
+    </head>
+    <body>
+        <h1>Screen Capture</h1>
+        <img id="screenshot" style="width: 80%; height: 80%; margin: 0 auto" />
+    </body>
+</html>

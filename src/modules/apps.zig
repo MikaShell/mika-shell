@@ -581,10 +581,10 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
     }
     return entry;
 }
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const icon = @import("icon.zig");
@@ -597,7 +597,7 @@ pub const Apps = struct {
     entrys: ?[]Entry = null,
     monitors: ?[]*gio.FileMonitor = null,
     needReload: bool = false,
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         self.* = Self{
             .allocator = ctx.allocator,
@@ -612,7 +612,7 @@ pub const Apps = struct {
             },
         };
     }
-    pub fn list(self: *Self, _: modules.Args, result: *modules.Result) !void {
+    pub fn list(self: *Self, ctx: *Context) !void {
         try self.setup();
         const allocator = self.allocator;
         if (self.needReload) {
@@ -622,7 +622,7 @@ pub const Apps = struct {
             self.needReload = false;
         }
         const entrys = self.entrys.?;
-        result.commit(entrys);
+        ctx.commit(entrys);
     }
     fn setup(self: *Self) !void {
         const allocator = self.allocator;
@@ -668,12 +668,12 @@ pub const Apps = struct {
         }
         allocator.destroy(self);
     }
-    pub fn activate(self: *Self, args: Args, _: *Result) !void {
+    pub fn activate(self: *Self, ctx: *Context) !void {
         try self.setup();
         const allocator = self.allocator;
-        const id = try args.string(1);
-        const action_ = try args.string(2);
-        const parsedUrls = try std.json.parseFromValue([]const []const u8, allocator, try args.value(3), .{});
+        const id = try ctx.args.string(0);
+        const action_ = try ctx.args.string(1);
+        const parsedUrls = try std.json.parseFromValue([]const []const u8, allocator, try ctx.args.value(2), .{});
         defer parsedUrls.deinit();
         const urls = parsedUrls.value;
         const entrys = self.entrys.?;

@@ -1,8 +1,8 @@
 const std = @import("std");
-const modules = @import("modules.zig");
+const modules = @import("root.zig");
 const Args = modules.Args;
-const Result = modules.Result;
 const Context = modules.Context;
+const InitContext = modules.InitContext;
 const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const tray = @import("../lib/tray.zig");
@@ -34,7 +34,7 @@ pub const Tray = struct {
     host: ?*tray.Host = null,
     bus: *dbus.Bus,
     isWatcherInitialized: bool = false,
-    pub fn init(ctx: Context) !*Self {
+    pub fn init(ctx: InitContext) !*Self {
         const allocator = ctx.allocator;
         const self = try allocator.create(Self);
         self.* = Self{
@@ -84,12 +84,12 @@ pub const Tray = struct {
             try self.host.?.addListener(onItemUpdated, self);
         }
     }
-    fn setup(self: *Self, result: *Result) !void {
+    fn setup(self: *Self, ctx: *Context) !void {
         const allocator = self.allocator;
         const bus = self.bus;
         if (self.host == null) {
             self.host = tray.Host.init(allocator, bus) catch |err| {
-                return result.errors("failed to init tray host {s}", .{@errorName(err)});
+                return ctx.errors("failed to init tray host {s}", .{@errorName(err)});
             };
             try self.host.?.addListener(onItemUpdated, self);
         }
@@ -103,32 +103,33 @@ pub const Tray = struct {
         };
         self.app.emitEvent(event, service);
     }
-    pub fn getItems(self: *Self, _: Args, result: *Result) !void {
-        try self.setup(result);
+    pub fn getItems(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
         const host = self.host.?;
 
         const items = try self.allocator.alloc(tray.Item.Data, host.items.items.len);
+        defer self.allocator.free(items);
         for (items, 0..) |*it, i| {
             it.* = host.items.items[i].data;
         }
-        result.commit(items);
+        ctx.commit(items);
     }
-    pub fn getItem(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
+    pub fn getItem(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
         const host = self.host.?;
-        const service = try args.string(1);
+        const service = try ctx.args.string(0);
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
-                result.commit(item.data);
+                ctx.commit(item.data);
                 return;
             }
         }
     }
-    pub fn activate(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
-        const x = try args.integer(2);
-        const y = try args.integer(3);
+    pub fn activate(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
+        const x = try ctx.args.integer(1);
+        const y = try ctx.args.integer(2);
 
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -138,11 +139,11 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn secondaryActivate(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
-        const x = try args.integer(2);
-        const y = try args.integer(3);
+    pub fn secondaryActivate(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
+        const x = try ctx.args.integer(1);
+        const y = try ctx.args.integer(2);
 
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -152,10 +153,10 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn provideXdgActivationToken(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
-        const token = try args.string(2);
+    pub fn provideXdgActivationToken(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
+        const token = try ctx.args.string(1);
 
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -165,18 +166,18 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn scroll(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
-        const delta = try args.integer(2);
-        const orientationStr = try args.string(3);
+    pub fn scroll(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
+        const delta = try ctx.args.integer(1);
+        const orientationStr = try ctx.args.string(2);
         var orientation: u8 = undefined;
         if (std.mem.eql(u8, orientationStr, "vertical")) {
             orientation = 0;
         } else if (std.mem.eql(u8, orientationStr, "horizontal")) {
             orientation = 1;
         } else {
-            return result.errors("invalid orientation {s}, only 'horizontal' or'vertical' is allowed", .{orientationStr});
+            return ctx.errors("invalid orientation {s}, only 'horizontal' or'vertical' is allowed", .{orientationStr});
         }
         const host = self.host.?;
         for (host.items.items) |item| {
@@ -186,25 +187,25 @@ pub const Tray = struct {
             }
         }
     }
-    pub fn getMenu(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
+    pub fn getMenu(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
 
         const host = self.host.?;
         for (host.items.items) |item| {
             if (std.mem.eql(u8, item.data.service, service)) {
                 const menu = try tray.Menu.new(self.allocator, self.bus, item.owner, item.data.menu);
                 defer menu.deinit(self.allocator);
-                result.commit(menu);
+                ctx.commit(menu);
                 return;
             }
         }
-        return result.errors("item service not found: {s}", .{service});
+        return ctx.errors("item service not found: {s}", .{service});
     }
-    pub fn activateMenu(self: *Self, args: Args, result: *Result) !void {
-        try self.setup(result);
-        const service = try args.string(1);
-        const id = try args.integer(2);
+    pub fn activateMenu(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const service = try ctx.args.string(0);
+        const id = try ctx.args.integer(1);
 
         const host = self.host.?;
         for (host.items.items) |item| {
