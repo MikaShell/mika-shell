@@ -15,7 +15,7 @@ pub fn withGLibMainLoop(display: *wl.Display) !GLibWatch {
     const source = glib.ioAddWatch(ch, .{ .in = true }, &struct {
         fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.C) c_int {
             const d: *wl.Display = @alignCast(@ptrCast(data));
-            if (d.roundtrip() == .SUCCESS) return 1;
+            if (d.dispatch() == .SUCCESS) return 1;
             return 0;
         }
     }.cb, display);

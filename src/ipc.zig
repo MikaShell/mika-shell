@@ -106,26 +106,17 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
     if (eql(r.type, "list")) {
         var isFirstLine = true;
         for (app.webviews.items) |w| {
-            const name = w.name;
-            const title = mem.span(w.impl.getTitle());
-            const id = w.id;
-            const uri = mem.span(w.impl.getUri());
-            const visible = w.container.as(gtk.Widget).getVisible();
-            const t = switch (w.type) {
-                .None => "none",
-                .Layer => "layer",
-                .Window => "window",
-            };
+            const info = w.getInfo();
             if (!isFirstLine) {
                 _ = try out.write("\n");
             }
             isFirstLine = false;
-            try out.print("id: {d}\n", .{id});
-            try out.print("    uri: {s}\n", .{uri});
-            try out.print("    name: {s}\n", .{name});
-            try out.print("    type: {s}\n", .{t});
-            try out.print("    title: {s}\n", .{title});
-            try out.print("    visible: {}\n", .{visible});
+            try out.print("id: {d}\n", .{info.id});
+            try out.print("    uri: {s}\n", .{info.uri});
+            try out.print("    name: {s}\n", .{info.name});
+            try out.print("    type: {s}\n", .{info.type});
+            try out.print("    title: {s}\n", .{info.title});
+            try out.print("    visible: {}\n", .{info.visible});
         }
     }
     if (eql(r.type, "show")) {

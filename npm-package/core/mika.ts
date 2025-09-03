@@ -29,6 +29,9 @@ export function getId(): Promise<number> {
 export function getConfigDir(): Promise<string> {
     return call("mika.getConfigDir");
 }
+export function list(): Promise<WebviewInfo[]> {
+    return call("mika.list");
+}
 function dispatch(event: number): boolean {
     var cando = true;
     if (listeners.has(event)) {
@@ -65,8 +68,11 @@ events.on(Mika["close-request"], (id: number) => {
 });
 export interface WebviewInfo {
     id: number;
-    type: "none";
+    type: "none" | "layer" | "window";
     uri: string;
+    title: string;
+    visible: boolean;
+    name: string;
 }
 
 type EventMap = {

@@ -16,7 +16,6 @@ pub const Notifd = struct {
     allocator: Allocator,
     bus: *dbus.Bus,
     notifd: ?*notification.Notifd,
-    dontDisturb: bool = false,
 
     pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
@@ -24,7 +23,6 @@ pub const Notifd = struct {
             .app = ctx.app,
             .allocator = ctx.allocator,
             .bus = ctx.sessionBus,
-            .dontDisturb = false,
             .notifd = null,
         };
         return self;
@@ -40,7 +38,6 @@ pub const Notifd = struct {
                 .{ "dismiss", dismiss },
                 .{ "activate", activate },
                 .{ "getAll", getAll },
-                .{ "setDontDisturb", setDontDisturb },
             },
             .events = &.{
                 .notifd_added,
@@ -85,10 +82,6 @@ pub const Notifd = struct {
             ctx.errors("Failed to initialize notifd: {s}", .{@errorName(err)});
             return error.FailedToInitNotifd;
         };
-    }
-    pub fn setDontDisturb(self: *Self, ctx: *Context) !void {
-        const enable = try ctx.args.bool(0);
-        self.dontDisturb = enable;
     }
     pub fn get(self: *Self, ctx: *Context) !void {
         const id = try ctx.args.uInteger(0);

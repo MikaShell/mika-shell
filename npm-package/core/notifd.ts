@@ -85,9 +85,6 @@ export function dismiss(id: number): Promise<void> {
 export function activate(id: number, action: string = "default"): Promise<void> {
     return call("notifd.activate", id, action);
 }
-export function setDontDisturb(value: boolean): Promise<void> {
-    return call("notifd.setDontDisturb", value);
-}
 import { Notifd } from "./events-define";
 import * as events from "./events";
 type Events = keyof typeof Notifd;

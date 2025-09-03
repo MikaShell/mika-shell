@@ -14,10 +14,13 @@ pub const WindowOptions = @import("./modules/window.zig").Options;
 pub const LayerOptions = @import("./modules/layer.zig").Options;
 var idCount: u32 = 99;
 pub const Webview = struct {
-    const Info = struct {
+    pub const Info = struct {
         type: []const u8,
         id: u64,
         uri: []const u8,
+        name: []const u8,
+        visible: bool,
+        title: []const u8,
     };
     id: u64,
     allocator: Allocator,
@@ -117,6 +120,9 @@ pub const Webview = struct {
             },
             .id = self.id,
             .uri = std.mem.span(self.impl.getUri()),
+            .name = self.name,
+            .visible = self.container.as(gtk.Widget).getVisible() == 1,
+            .title = if (@as([*c]const u8, @ptrCast(self.impl.getTitle()))) |title| std.mem.span(title) else "",
         };
     }
     pub fn forceClose(self: *Webview) void {

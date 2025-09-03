@@ -6,6 +6,7 @@ const Registry = modules.Registry;
 const CallContext = modules.Context;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
+const Webview = @import("../app.zig").Webview;
 const events = @import("../events.zig");
 pub const Mika = struct {
     app: *App,
@@ -34,6 +35,7 @@ pub const Mika = struct {
                 .{ "subscribe", subscribe },
                 .{ "unsubscribe", unsubcribe },
                 .{ "getConfigDir", getConfigDir },
+                .{ "list", list },
             },
             .events = &.{
                 .mika_close_request,
@@ -100,5 +102,13 @@ pub const Mika = struct {
         if (id == 0) id = ctx.caller;
         const w = try self.app.getWebview(id);
         w.forceHide();
+    }
+    pub fn list(self: *Self, ctx: *CallContext) !void {
+        const infos = try self.app.allocator.alloc(Webview.Info, self.app.webviews.items.len);
+        defer self.app.allocator.free(infos);
+        for (self.app.webviews.items, 0..) |w, i| {
+            infos[i] = w.getInfo();
+        }
+        ctx.commit(infos);
     }
 };
