@@ -66,11 +66,20 @@ fn replyCommit(reply: *webkit.ScriptMessageReply, ctx: *jsc.Context, value: anyt
     const allocator = std.heap.page_allocator;
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
-    std.json.stringify(value, .{}, buffer.writer()) catch @panic("OOM");
-    buffer.append(0) catch @panic("OOM");
-    const res = jsc.Value.newFromJson(ctx, @ptrCast(buffer.items.ptr));
-    defer res.unref();
-    reply.returnValue(res);
+    switch (@typeInfo(@TypeOf(value))) {
+        .void => {
+            const res = jsc.Value.newUndefined(ctx);
+            defer res.unref();
+            reply.returnValue(res);
+        },
+        else => {
+            std.json.stringify(value, .{}, buffer.writer()) catch @panic("OOM");
+            buffer.append(0) catch @panic("OOM");
+            const res = jsc.Value.newFromJson(ctx, @ptrCast(buffer.items.ptr));
+            defer res.unref();
+            reply.returnValue(res);
+        },
+    }
 }
 fn replyErrors(reply: *webkit.ScriptMessageReply, comptime fmt: []const u8, args: anytype) void {
     const allocator = std.heap.page_allocator;

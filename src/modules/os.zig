@@ -69,12 +69,13 @@ pub const OS = struct {
             ctx.errors("Invalid output option: {s}, expected 'base64','string' or 'ignore'", .{output_str});
             return;
         }
+        const inheritStderr = try ctx.args.bool(2);
 
         var child = std.process.Child.init(argv, allocator);
         const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
         defer if (home) |h| allocator.free(h);
         child.cwd = home;
-        child.stderr_behavior = .Ignore;
+        child.stderr_behavior = if (inheritStderr) .Inherit else .Ignore;
         child.stdin_behavior = .Ignore;
         child.stdout_behavior = if (!eql(u8, output_str, "ignore")) .Pipe else .Ignore;
         try child.spawn();
@@ -114,6 +115,8 @@ pub const OS = struct {
                     } else {
                         c.result.commit(stdoutBuf);
                     }
+                } else {
+                    c.result.commit({});
                 }
                 _ = c.child.kill() catch {};
                 a.destroy(c);
@@ -126,6 +129,7 @@ pub const OS = struct {
         if (argvJson != .array) {
             return error.InvalidArgs;
         }
+        const inheritStderr = try ctx.args.bool(1);
         var argv = try allocator.alloc([]const u8, argvJson.array.items.len);
         defer allocator.free(argv);
         for (argvJson.array.items, 0..) |item, i| {
@@ -135,7 +139,7 @@ pub const OS = struct {
         const home = std.process.getEnvVarOwned(allocator, "HOME") catch null;
         defer if (home) |h| allocator.free(h);
         child.cwd = home;
-        child.stderr_behavior = .Ignore;
+        child.stderr_behavior = if (inheritStderr) .Inherit else .Ignore;
         child.stdin_behavior = .Ignore;
         child.stdout_behavior = .Ignore;
         try child.spawn();

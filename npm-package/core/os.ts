@@ -41,12 +41,13 @@ export function exec(argv: string[], output: "string" | "base64"): Promise<strin
 export function exec(argv: string[], output: "ignore"): Promise<void>;
 export function exec(
     argv: string[],
-    output: "string" | "base64" | "ignore" = "ignore"
+    output: "string" | "base64" | "ignore" = "ignore",
+    inheritStderr = false
 ): Promise<any> {
-    return call("os.exec", argv, output);
+    return call("os.exec", argv, output, inheritStderr);
 }
-export function execAsync(argv: string[]): Promise<number> {
-    return call("os.execAsync", argv);
+export function execAsync(argv: string[], inheritStderr = false): Promise<number> {
+    return call("os.execAsync", argv, inheritStderr);
 }
 export function write(path: string, base64: string): Promise<void> {
     return call("os.write", path, base64);
