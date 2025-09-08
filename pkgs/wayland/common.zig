@@ -22,6 +22,89 @@ pub fn withGLibMainLoop(display: *wl.Display) !GLibWatch {
     _ = display.flush();
     return .{ .source = source, .display = display };
 }
+const xev = @import("xev");
+const std = @import("std");
+pub const XevWatch = struct {
+    const Self = @This();
+    allocator: std.mem.Allocator,
+    display: *wl.Display,
+    loop: *xev.IO_Uring.Loop,
+    completion: xev.Completion,
+    cancel: xev.Completion,
+    shouldStop: bool,
+    /// 异步地执行 display.disconnect() 和释放 XevWatch
+    ///
+    /// 需要 loop 处于运行状态
+    pub fn deinit(self: *Self) void {
+        self.shouldStop = true;
+        self.loop.add(&self.cancel);
+    }
+};
+
+pub fn withXevLoop(allocator: std.mem.Allocator, display: *wl.Display, loop: *xev.IO_Uring.Loop) !*XevWatch {
+    const watch = try allocator.create(XevWatch);
+    watch.* = .{
+        .allocator = allocator,
+        .display = display,
+        .loop = loop,
+        .completion = undefined,
+        .cancel = undefined,
+        .shouldStop = false,
+    };
+    watch.completion = .{
+        .op = .{ .poll = .{ .fd = display.getFd() } },
+        .callback = struct {
+            fn cb(
+                data: ?*anyopaque,
+                _: *xev.Loop,
+                _: *xev.Completion,
+                r: xev.Result,
+            ) xev.CallbackAction {
+                _ = r.poll catch |err| {
+                    std.log.scoped(.wayland).err("Failed to read events: {s}", .{@errorName(err)});
+                    return .disarm;
+                };
+                const watch_inner: *XevWatch = @ptrCast(@alignCast(data));
+                const d = watch_inner.display;
+                if (d.prepareRead()) {
+                    if (d.readEvents() != .SUCCESS) {
+                        std.log.scoped(.wayland).err("Failed to read events", .{});
+                        return .disarm;
+                    }
+                }
+                if (d.dispatchPending() != .SUCCESS) {
+                    std.log.scoped(.wayland).err("Failed to dispatch events", .{});
+                    return .disarm;
+                }
+                if (watch_inner.shouldStop) return .disarm;
+                return .rearm;
+            }
+        }.cb,
+        .userdata = watch,
+    };
+
+    watch.cancel = .{
+        .op = .{ .cancel = .{ .c = &watch.completion } },
+        .callback = struct {
+            fn cb(
+                data: ?*anyopaque,
+                _: *xev.IO_Uring.Loop,
+                _: *xev.Completion,
+                r: xev.Result,
+            ) xev.CallbackAction {
+                _ = r.cancel catch {};
+                const watch_: *XevWatch = @ptrCast(@alignCast(data));
+                watch_.display.disconnect();
+                watch_.allocator.destroy(watch_);
+                return .disarm;
+            }
+        }.cb,
+        .userdata = watch,
+    };
+    loop.add(&watch.completion);
+    _ = display.flush();
+    return watch;
+}
 // connect to the display and set the listener for the registry
 pub fn init(comptime T: type, listener: *const fn (registry: *wl.Registry, event: wl.Registry.Event, data: T) void, data: T) !*wl.Display {
     const display = try wl.Display.connect(null);

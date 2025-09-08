@@ -7,22 +7,25 @@ const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
 const ForeignToplevelManager = @import("wayland").ForeignToplevel;
+const xev = @import("xev");
 pub const Dock = struct {
     const Self = @This();
     allocator: Allocator,
     app: *App,
     manager: ?*ForeignToplevelManager.Manager,
+    loop: *xev.Loop,
     pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
         const allocator = ctx.allocator;
         self.allocator = allocator;
         self.app = ctx.app;
         self.manager = null;
+        self.loop = ctx.loop;
         return self;
     }
     fn setup(self: *Self) !void {
         if (self.manager == null) {
-            self.manager = try ForeignToplevelManager.Manager.init(self.allocator, .{
+            self.manager = try ForeignToplevelManager.Manager.init(self.allocator, self.loop, .{
                 .userdata = @ptrCast(self),
                 .changed = @ptrCast(&onChanged),
                 .closed = @ptrCast(&onClosed),

@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const gobject = b.dependency("gobject", .{ .target = target, .optimize = optimize });
+    const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
     var layershell_mod: *std.Build.Module = undefined;
     var dbus_mod: *std.Build.Module = undefined;
     var wayland_mod: *std.Build.Module = undefined;
@@ -51,6 +52,7 @@ pub fn build(b: *std.Build) void {
             scanner.generate("wl_shm", 2);
 
             wayland_mod.addImport("zig-wayland", zig_wayland);
+            wayland_mod.addImport("xev", xev.module("xev"));
             wayland_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
             wayland_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
         }
@@ -108,6 +110,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("layershell", layershell_mod); // layershell must be imported before gtk4
     exe_mod.addImport("dbus", dbus_mod);
     exe_mod.addImport("wayland", wayland_mod);
+    exe_mod.addImport("xev", xev.module("xev"));
 
     exe_mod.addImport("gtk", gobject.module("gtk4"));
     exe_mod.addImport("glib", gobject.module("glib2"));

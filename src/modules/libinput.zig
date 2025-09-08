@@ -11,7 +11,7 @@ pub const Libinput = struct {
     const Self = @This();
     allocator: Allocator,
     app: *App,
-    input: *libinput.Libinput,
+    input: ?*libinput.Libinput,
     count: std.AutoHashMap(events.Events, usize),
     pub fn init(ctx: InitContext) !*Self {
         const self = try ctx.allocator.create(Self);
@@ -19,13 +19,13 @@ pub const Libinput = struct {
         const allocator = ctx.allocator;
         self.allocator = allocator;
         self.app = ctx.app;
-        self.input = undefined;
+        self.input = null;
         self.count = std.AutoHashMap(events.Events, usize).init(allocator);
         return self;
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
         self.count.deinit();
-        self.input.deinit();
+        if (self.input) |input| input.deinit();
         allocator.destroy(self);
     }
     pub fn eventStart(self: *Self) !void {
@@ -35,7 +35,7 @@ pub const Libinput = struct {
         input.onEvent = @ptrCast(&onEvent);
     }
     pub fn eventStop(self: *Self) !void {
-        self.input.deinit();
+        self.input.?.deinit();
     }
     fn convertEvent(e: events.Events) libinput.EventType {
         return switch (e) {
@@ -49,14 +49,14 @@ pub const Libinput = struct {
         const result = self.count.getOrPut(event) catch unreachable;
         if (!result.found_existing) {
             result.value_ptr.* = 0;
-            self.input.addListener(convertEvent(event));
+            self.input.?.addListener(convertEvent(event));
         }
         switch (state) {
             .add => result.value_ptr.* += 1,
             .remove => result.value_ptr.* -= 1,
         }
         if (result.value_ptr.* == 0) {
-            self.input.removeListener(convertEvent(event));
+            self.input.?.removeListener(convertEvent(event));
             _ = self.count.remove(event);
         }
     }

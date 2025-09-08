@@ -110,6 +110,7 @@ const ToplevelContext = struct {
     }
 };
 const common = @import("common.zig");
+const xev = @import("xev");
 pub const Manager = struct {
     const Self = @This();
     listener: Listener,
@@ -117,8 +118,9 @@ pub const Manager = struct {
     foreignToplevelManager: ?*ForeignToplevelManager,
     seat: ?*wl.Seat,
     toplevels: ToplevelList,
-    glibWatch: common.GLibWatch,
-    pub fn init(allocator: Allocator, listener: Listener) !*Self {
+    xevWatch: *common.XevWatch,
+    display: *wl.Display,
+    pub fn init(allocator: Allocator, loop: *xev.Loop, listener: Listener) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
@@ -127,9 +129,10 @@ pub const Manager = struct {
         self.toplevels = .{};
         const display = try common.init(*Self, registryListener, self);
         errdefer display.disconnect();
+        self.display = display;
         try self.check();
         self.foreignToplevelManager.?.setListener(*Self, foreignToplevelManagerListener, self);
-        self.glibWatch = try common.withGLibMainLoop(display);
+        self.xevWatch = try common.withXevLoop(allocator, display, loop);
         return self;
     }
     fn check(self: *Self) !void {
@@ -149,11 +152,21 @@ pub const Manager = struct {
     pub fn deinit(self: *Self) void {
         if (self.foreignToplevelManager) |m| {
             m.stop();
-            _ = self.glibWatch.display.roundtrip();
+            _ = self.display.flush();
         } else {
             self.destroy();
         }
-        self.glibWatch.deinit();
+    }
+    // 由 wayland 回调的 finish 事件调用
+    fn destroy(self: *Self) void {
+        while (self.toplevels.pop()) |node| {
+            node.data.deinit();
+            self.allocator.destroy(node);
+        }
+        self.foreignToplevelManager.?.destroy();
+        self.foreignToplevelManager = null;
+
+        self.xevWatch.deinit();
         self.allocator.destroy(self);
     }
     fn append(self: *Self, t: *ForeignToplevelHandle) void {
@@ -171,13 +184,7 @@ pub const Manager = struct {
         node.data.deinit();
         self.allocator.destroy(node);
     }
-    // 由 wayland 回调的 finish 事件调用
-    fn destroy(self: *Self) void {
-        while (self.toplevels.pop()) |node| {
-            node.data.deinit();
-            self.allocator.destroy(node);
-        }
-    }
+
     pub fn list(self: *Self, allocator: Allocator) ![]Toplevel {
         var result = std.ArrayList(Toplevel).init(allocator);
         errdefer result.deinit();

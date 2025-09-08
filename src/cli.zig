@@ -235,6 +235,7 @@ pub fn run() !void {
 const events = @import("events.zig");
 const gtk = @import("gtk");
 const glib = @import("glib");
+const xev = @import("xev");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
@@ -285,20 +286,61 @@ pub fn daemon() !void {
         assetsserver.deinit();
     }
     _ = try assetsserver.start();
-    const app = try App.init(allocator, configDir, &eventChannel, config.daemon.dev_server, config.port);
-    defer app.deinit();
-
+    var loop = try xev.Loop.init(.{});
+    defer {
+        _ = loop.run(.until_done) catch @panic("Failed to stop xev loop");
+        loop.deinit();
+    }
+    const app = try App.init(allocator, .{
+        .configDir = configDir,
+        .eventChannel = &eventChannel,
+        .devServer = config.daemon.dev_server,
+        .port = config.port,
+        .loop = &loop,
+    });
     const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();
     try ipcServer.listen();
-    const loop = glib.MainLoop.new(null, 0);
-    _ = glib.unixSignalAdd(std.os.linux.SIG.INT, onSignal, loop);
-    loop.run();
-}
-fn onSignal(data: ?*anyopaque) callconv(.c) c_int {
-    const loop: *glib.MainLoop = @alignCast(@ptrCast(data));
-    loop.quit();
-    return 0;
+    const ctx = glib.MainContext.default();
+    if (glib.MainContext.acquire(ctx) == 0) return error.ContextAcquireFailed;
+
+    // The final cleanup that is always required at the end of running.
+    defer {
+        // Clear out the event loop, don't block.
+        while (glib.MainContext.iteration(ctx, 0) != 0) {}
+        // Release the context so something else can use it.
+        defer glib.MainContext.release(ctx);
+    }
+    var running = true;
+    const sigintHandler = glib.unixSignalAdd(std.posix.SIG.INT, struct {
+        fn cb(data: ?*anyopaque) callconv(.c) c_int {
+            const runnint_: *bool = @alignCast(@ptrCast(data));
+            runnint_.* = false;
+            return 1;
+        }
+    }.cb, &running);
+    defer _ = glib.Source.remove(sigintHandler);
+    var fds: [64]glib.PollFD = undefined; // TODO: 选择更合适的fds大小
+    while (running) {
+        var maxPriority: c_int = undefined;
+        var readyToDispatch = glib.MainContext.prepare(ctx, &maxPriority) == 1;
+        var timeout: c_int = -1;
+        const fdsSize = glib.MainContext.query(ctx, maxPriority, &timeout, @alignCast(@ptrCast(&fds)), fds.len);
+        const nready = glib.poll(@ptrCast(&fds), @intCast(fdsSize), timeout);
+        if (!readyToDispatch and nready == 0) {
+            if (timeout == -1) {
+                break;
+            } else {
+                std.time.sleep(@intCast(timeout * std.time.ns_per_us));
+            }
+        }
+        readyToDispatch = glib.MainContext.check(ctx, maxPriority, @ptrCast(&fds), fdsSize) == 1;
+        if (readyToDispatch) {
+            glib.MainContext.dispatch(ctx);
+        }
+        try loop.run(.no_wait);
+    }
+    app.deinit();
 }
 fn open() !void {
     defer allocator.free(config.open.pageName);

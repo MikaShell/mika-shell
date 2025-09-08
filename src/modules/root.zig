@@ -159,11 +159,13 @@ pub fn Callable(comptime T: type) type {
     return *const fn (self: T, ctx: *Context) anyerror!void;
 }
 const App = @import("../app.zig").App;
+const xev = @import("xev");
 pub const InitContext = struct {
     allocator: std.mem.Allocator,
     app: *App,
     systemBus: *dbus.Bus,
     sessionBus: *dbus.Bus,
+    loop: *xev.Loop,
 };
 pub fn Registry(T: type) type {
     return struct {
@@ -193,22 +195,32 @@ pub const Modules = struct {
         stop: ?*const fn (?*anyopaque) anyerror!void,
         onChanged: ?*const fn (?*anyopaque, events.ChangeState, events.Events) void,
     };
+    const Option = struct {
+        app: *App,
+        systemBus: *dbus.Bus,
+        sessionBus: *dbus.Bus,
+        loop: *xev.Loop,
+    };
     allocator: std.mem.Allocator,
     table: std.StringHashMap(AnyEntry),
     ctx: InitContext,
     registered: std.ArrayList(Registered),
     eventGroups: std.ArrayList(EventGroup),
 
-    pub fn init(allocator: std.mem.Allocator, app: *App, systemBus: *dbus.Bus, sessionBus: *dbus.Bus) *Modules {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        option: Option,
+    ) *Modules {
         const m = allocator.create(Modules) catch unreachable;
         m.* = .{
             .table = std.StringHashMap(AnyEntry).init(allocator),
             .allocator = allocator,
             .ctx = .{
                 .allocator = allocator,
-                .app = app,
-                .systemBus = systemBus,
-                .sessionBus = sessionBus,
+                .app = option.app,
+                .systemBus = option.systemBus,
+                .sessionBus = option.sessionBus,
+                .loop = option.loop,
             },
             .registered = std.ArrayList(Registered).init(allocator),
             .eventGroups = std.ArrayList(EventGroup).init(allocator),

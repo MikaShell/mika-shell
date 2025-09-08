@@ -229,6 +229,7 @@ pub const Config = struct {
         allocator.destroy(self);
     }
 };
+const xev = @import("xev");
 pub const App = struct {
     modules: *Modules,
     mutex: std.Thread.Mutex,
@@ -245,23 +246,29 @@ pub const App = struct {
     devServer: ?[]const u8,
     server: []const u8,
     port: u16,
-    pub fn init(allocator: Allocator, configDir: []const u8, eventChannel: *events.EventChannel, devServer: ?[]const u8, port: u16) !*App {
+    pub fn init(allocator: Allocator, option: struct {
+        configDir: []const u8,
+        eventChannel: *events.EventChannel,
+        devServer: ?[]const u8,
+        port: u16,
+        loop: *xev.Loop,
+    }) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
-        app.config = Config.load(allocator, configDir, devServer) catch |err| {
-            std.log.err("Failed to load config 'mika-shell.json' from {s}", .{if (devServer != null) devServer.? else configDir});
+        app.config = Config.load(allocator, option.configDir, option.devServer) catch |err| {
+            std.log.err("Failed to load config 'mika-shell.json' from {s}", .{if (option.devServer != null) option.devServer.? else option.configDir});
             return err;
         };
         errdefer app.config.deinit(allocator);
-        app.server = try std.fmt.allocPrint(allocator, "http://localhost:{d}/", .{port});
+        app.server = try std.fmt.allocPrint(allocator, "http://localhost:{d}/", .{option.port});
         errdefer allocator.free(app.server);
-        app.port = port;
-        app.configDir = try std.fs.path.resolve(allocator, &.{configDir});
+        app.port = option.port;
+        app.configDir = try std.fs.path.resolve(allocator, &.{option.configDir});
         app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
         app.isQuit = false;
-        app.devServer = if (devServer) |ds| try allocator.dupe(u8, ds) else null;
+        app.devServer = if (option.devServer) |ds| try allocator.dupe(u8, ds) else null;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
             @panic("can not connect to session dbus");
         };
@@ -277,7 +284,12 @@ pub const App = struct {
             @panic("can not watch system dbus loop");
         };
 
-        app.modules = Modules.init(allocator, app, systemBus, sessionBus);
+        app.modules = Modules.init(allocator, .{
+            .app = app,
+            .sessionBus = sessionBus,
+            .systemBus = systemBus,
+            .loop = option.loop,
+        });
 
         const modules = app.modules;
 
@@ -294,7 +306,7 @@ pub const App = struct {
         try modules.mount(@import("modules/dock.zig").Dock, "dock");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
 
-        app.emitter = try Emitter.init(app, allocator, eventChannel, modules.eventGroups.items);
+        app.emitter = try Emitter.init(app, allocator, option.eventChannel, modules.eventGroups.items);
 
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
@@ -312,7 +324,6 @@ pub const App = struct {
         self.modules.deinit();
         self.sessionBus.deinit();
         self.systemBus.deinit();
-
         self.config.deinit(self.allocator);
         self.allocator.free(self.configDir);
         if (self.devServer) |ds| self.allocator.free(ds);
