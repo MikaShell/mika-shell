@@ -321,6 +321,7 @@ pub fn daemon() !void {
     }.cb, &running);
     defer _ = glib.Source.remove(sigintHandler);
     var fds: [64]glib.PollFD = undefined; // TODO: 选择更合适的fds大小
+    // TODO: 评估使用 libxev 的必要性
     while (running) {
         var maxPriority: c_int = undefined;
         var readyToDispatch = glib.MainContext.prepare(ctx, &maxPriority) == 1;

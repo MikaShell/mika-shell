@@ -50,6 +50,7 @@ pub fn logFn(
 
 test {
     _ = @import("events.zig");
+    _ = @import("utils.zig");
     _ = @import("lib/tray.zig");
     _ = @import("lib/notifd.zig");
     _ = @import("lib/network.zig");
