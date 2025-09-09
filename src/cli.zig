@@ -8,7 +8,6 @@ var config = struct {
     port: u16 = 6797,
     daemon: struct {
         config_dir: []const u8 = undefined,
-        dev_server: ?[]const u8 = null,
     } = undefined,
     open: struct {
         pageName: []const u8 = undefined,
@@ -29,6 +28,17 @@ var config = struct {
         force: bool = false,
     } = undefined,
 }{};
+fn cmdAlias(_: *cli.AppRunner) !cli.Command {
+    return cli.Command{
+        .name = "alias",
+        .description = .{
+            .one_line = "list all aliases",
+        },
+        .target = .{
+            .action = .{ .exec = alias },
+        },
+    };
+}
 fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
     return cli.Command{
         .name = "daemon",
@@ -43,13 +53,6 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
                 // This was defined but never used. Consider using app.getConfigDir instead.
                 .value_ref = r.mkRef(&config.daemon.config_dir),
                 .envvar = "MIKASHELL_CONFIG_DIR",
-            },
-            .{
-                .long_name = "dev-server",
-                .short_alias = 'd',
-                .help = "url to use for development, defaults to null",
-                .value_ref = r.mkRef(&config.daemon.dev_server),
-                .envvar = "MIKASHELL_DEV_SERVER",
             },
         }),
         .target = .{
@@ -94,7 +97,7 @@ fn cmdOpen(r: *cli.AppRunner) !cli.Command {
                     .required = try r.allocPositionalArgs(&.{
                         .{
                             .name = "page",
-                            .help = "page name to open, defined in `mika-shell.json`, use `mika-shell pages` to list all pages",
+                            .help = "page to open, use `mika-shell alias` to list all pages; If page starts with '/', it will be treated as a `path` and will not be searched in alias",
                             .value_ref = r.mkRef(&config.open.pageName),
                         },
                     }),
@@ -224,6 +227,7 @@ pub fn run() !void {
                     try cmdShow(r),
                     try cmdHide(r),
                     try cmdClose(r),
+                    try cmdAlias(r),
                 }),
             },
         },
@@ -239,7 +243,6 @@ const xev = @import("xev");
 pub fn daemon() !void {
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
-    defer if (config.daemon.dev_server) |ds| allocator.free(ds);
     const configDir = blk: {
         if (config.daemon.config_dir.len > 0) {
             const absPath = abs: {
@@ -258,8 +261,7 @@ pub fn daemon() !void {
     };
     defer allocator.free(configDir);
     std.log.info("ConfigDir: {s}", .{configDir});
-    blk: {
-        if (config.daemon.dev_server != null) break :blk;
+    {
         var err: ?anyerror = null;
         if (std.fs.path.isAbsolute(configDir)) {
             std.fs.accessAbsolute(configDir, .{}) catch |e| {
@@ -294,7 +296,6 @@ pub fn daemon() !void {
     const app = try App.init(allocator, .{
         .configDir = configDir,
         .eventChannel = &eventChannel,
-        .devServer = config.daemon.dev_server,
         .port = config.port,
         .loop = &loop,
     });
@@ -381,5 +382,10 @@ fn close() !void {
         .type = "close",
         .id = config.close.id,
         .force = config.close.force,
+    }, config.port);
+}
+fn alias() !void {
+    try ipc.request(.{
+        .type = "alias",
     }, config.port);
 }

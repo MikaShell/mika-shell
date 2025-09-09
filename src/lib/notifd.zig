@@ -12,7 +12,7 @@ fn pixmapToBase64(
     rowstride: i32,
     hasAlpha: bool,
     rgb: []const u8,
-) ![]u8 {
+) ![]const u8 {
     var output_ptr: [*c]u8 = undefined;
     var size: usize = 0;
     if (!hasAlpha) {

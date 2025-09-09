@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const generate_js_binding_step = generate.js_binding(b, optimize, "src/bindings.js");
-    const generate_extra_js_binding_step = generate.extra_js_binding(b, "example/extra.js");
+    const generate_extra_js_binding_step = generate.extra_js_binding(b, "example/example/extra.js");
     const generate_events_step = generate.events(b, "npm-package/core/events-define.ts");
 
     exe.step.dependOn(generate_js_binding_step);

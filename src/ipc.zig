@@ -77,9 +77,30 @@ const App = app_.App;
 fn handle(app: *App, r: Request, s: std.net.Stream) !void {
     std.log.debug("IPC: Received request: {s}", .{r.type});
     const out = s.writer();
+    if (eql(r.type, "alias")) {
+        var result = std.ArrayList([]const u8).init(app.allocator);
+        defer {
+            for (result.items) |item| app.allocator.free(item);
+            result.deinit();
+        }
+        var it = app.config.alias.iterator();
+
+        while (it.next()) |entry| {
+            try result.append(try std.fmt.allocPrint(app.allocator, "{s} -> {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* }));
+        }
+        const lessThan = struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.lessThan(u8, a, b);
+            }
+        }.less;
+        std.mem.sort([]const u8, result.items, {}, lessThan);
+        for (result.items) |item| {
+            try out.writeAll(item);
+        }
+    }
     if (eql(r.type, "open")) {
         _ = app.open(r.pageName.?) catch |err| switch (err) {
-            error.PageNotFound => {
+            error.AliasNotFound => {
                 try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
             },
             else => return err,
@@ -97,7 +118,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
             i -= 1;
         }
         _ = app.open(r.pageName.?) catch |err| switch (err) {
-            error.PageNotFound => {
+            error.AliasNotFound => {
                 try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
             },
             else => return err,
@@ -113,7 +134,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
             isFirstLine = false;
             try out.print("id: {d}\n", .{info.id});
             try out.print("    uri: {s}\n", .{info.uri});
-            try out.print("    name: {s}\n", .{info.name});
+            try out.print("    alias: {s}\n", .{info.alias});
             try out.print("    type: {s}\n", .{info.type});
             try out.print("    title: {s}\n", .{info.title});
             try out.print("    visible: {}\n", .{info.visible});

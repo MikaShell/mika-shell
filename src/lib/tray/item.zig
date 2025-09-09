@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("webp/encode.h");
 });
-fn pixmapToBase64(allocator: std.mem.Allocator, height: i32, width: i32, argb: []const u8) ![]u8 {
+fn pixmapToBase64(allocator: std.mem.Allocator, height: i32, width: i32, argb: []const u8) ![]const u8 {
     var rgba = try allocator.alloc(u8, argb.len);
     defer allocator.free(rgba);
 

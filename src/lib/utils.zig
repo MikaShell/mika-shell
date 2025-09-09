@@ -1,5 +1,5 @@
 const std = @import("std");
-pub fn webpToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]u8 {
+pub fn webpToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]const u8 {
     const encoder = std.base64.standard.Encoder;
     const base64 = try allocator.alloc(u8, encoder.calcSize(webp.len));
     defer allocator.free(base64);

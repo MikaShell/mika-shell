@@ -10,5 +10,5 @@ zig-out
 zigfetch
 perf.data*
 src/bindings.js
-example/extra.js
-example/public/BongoCat
+example/example/extra.js
+example/example/public/BongoCat

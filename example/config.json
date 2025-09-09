@@ -1,0 +1,9 @@
+{
+    "dev": {
+        "mikami": "http://localhost:5173"
+    },
+    "alias": {
+        "bongocat": "/example/bongocat.html"
+    },
+    "startup": ["example.bar", "example.dock", "bongocat"]
+}

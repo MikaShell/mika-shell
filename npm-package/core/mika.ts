@@ -72,7 +72,7 @@ export interface WebviewInfo {
     uri: string;
     title: string;
     visible: boolean;
-    name: string;
+    alias: string;
 }
 
 type EventMap = {

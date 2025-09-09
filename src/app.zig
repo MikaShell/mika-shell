@@ -12,13 +12,12 @@ pub const WebviewType = enum {
 };
 pub const WindowOptions = @import("./modules/window.zig").Options;
 pub const LayerOptions = @import("./modules/layer.zig").Options;
-var idCount: u32 = 99;
 pub const Webview = struct {
     pub const Info = struct {
         type: []const u8,
         id: u64,
         uri: []const u8,
-        name: []const u8,
+        alias: []const u8,
         visible: bool,
         title: []const u8,
     };
@@ -32,9 +31,8 @@ pub const Webview = struct {
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
     pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backendPort: u16) !*Webview {
         const w = try allocator.create(Webview);
-        idCount += 1;
         w.* = .{
-            .id = @intCast(idCount),
+            .id = 0,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .impl = webkit.WebView.new(),
@@ -42,6 +40,7 @@ pub const Webview = struct {
             ._modules = m,
             .type = .None,
         };
+        w.id = w.impl.getPageId();
         const settings = w.impl.getSettings();
         settings.setEnableDeveloperExtras(1);
         const manager = w.impl.getUserContentManager();
@@ -120,7 +119,7 @@ pub const Webview = struct {
             },
             .id = self.id,
             .uri = std.mem.span(self.impl.getUri()),
-            .name = self.name,
+            .alias = self.name,
             .visible = self.container.as(gtk.Widget).getVisible() == 1,
             .title = if (@as([*c]const u8, @ptrCast(self.impl.getTitle()))) |title| std.mem.span(title) else "",
         };
@@ -153,32 +152,18 @@ pub const Error = error{
     WebviewNotExists,
 };
 pub const Config = struct {
+    // host: url e.g. "dev_server": "http://localhost:5000"
+    dev: std.StringHashMap([]const u8),
+    // name: path e.g. "bar": "/bar.html"
     alias: std.StringHashMap([]const u8),
     startup: [][]const u8 = &.{},
-    pub fn load(allocator: Allocator, configDir: []const u8, devServer: ?[]const u8) !*Config {
+    pub fn load(allocator: Allocator, configDir: []const u8) !*Config {
         const configJson = blk: {
-            if (devServer) |ds| {
-                const config_path = try std.fs.path.join(allocator, &.{ ds, "mika-shell.json" });
-                defer allocator.free(config_path);
-                var client = std.http.Client{ .allocator = allocator };
-                defer client.deinit();
-                var store = std.ArrayList(u8).init(allocator);
-                errdefer store.deinit();
-                const result = try client.fetch(.{
-                    .location = .{ .url = config_path },
-                    .response_storage = .{ .dynamic = &store },
-                });
-                if (result.status != .ok) {
-                    return error.FailedToFetchConfig;
-                }
-                break :blk try store.toOwnedSlice();
-            } else {
-                const config_path = try std.fs.path.join(allocator, &.{ configDir, "mika-shell.json" });
-                defer allocator.free(config_path);
-                const file = try std.fs.openFileAbsolute(config_path, .{});
-                defer file.close();
-                break :blk try file.readToEndAlloc(allocator, 1024 * 1024);
-            }
+            const config_path = try std.fs.path.join(allocator, &.{ configDir, "config.json" });
+            defer allocator.free(config_path);
+            const file = try std.fs.openFileAbsolute(config_path, .{});
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, 1024 * 1024);
         };
         defer allocator.free(configJson);
         const cfgJson = try std.json.parseFromSlice(std.json.Value, allocator, configJson, .{});
@@ -186,22 +171,144 @@ pub const Config = struct {
         const value = cfgJson.value.object;
         const cfg = try allocator.create(Config);
         errdefer allocator.destroy(cfg);
-        cfg.alias = std.StringHashMap([]const u8).init(allocator);
-        if (value.get("alias")) |alias_| {
-            const alias__ = alias_.object;
-            var it = alias__.iterator();
-            while (it.next()) |kv| {
-                const key = kv.key_ptr.*;
-                const val = switch (kv.value_ptr.*) {
-                    .string => |v| v,
-                    else => {
-                        @panic("invalid alias value type, expected string");
-                    },
-                };
-                try cfg.alias.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
+
+        // load dev object
+        {
+            cfg.dev = std.StringHashMap([]const u8).init(allocator);
+            errdefer {
+                var it = cfg.dev.iterator();
+                while (it.next()) |kv| {
+                    allocator.free(kv.key_ptr.*);
+                    allocator.free(kv.value_ptr.*);
+                }
+                cfg.dev.deinit();
+            }
+            if (value.get("dev")) |dev_| {
+                const dev__ = dev_.object;
+                var it = dev__.iterator();
+                while (it.next()) |kv| {
+                    const key = kv.key_ptr.*;
+                    const val = switch (kv.value_ptr.*) {
+                        .string => |v| v,
+                        else => {
+                            @panic("invalid dev value type, expected string");
+                        },
+                    };
+                    try cfg.dev.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
+                }
             }
         }
+        errdefer {
+            var it = cfg.dev.iterator();
+            while (it.next()) |kv| {
+                allocator.free(kv.key_ptr.*);
+                allocator.free(kv.value_ptr.*);
+            }
+            cfg.dev.deinit();
+        }
+        // load alias object
+        {
+            cfg.alias = std.StringHashMap([]const u8).init(allocator);
+            errdefer {
+                var it = cfg.alias.iterator();
+                while (it.next()) |kv| {
+                    allocator.free(kv.key_ptr.*);
+                    allocator.free(kv.value_ptr.*);
+                }
+                cfg.alias.deinit();
+            }
+            if (value.get("alias")) |alias_| {
+                const alias__ = alias_.object;
+                var it = alias__.iterator();
+                while (it.next()) |kv| {
+                    const key = kv.key_ptr.*;
+                    const val = switch (kv.value_ptr.*) {
+                        .string => |v| v,
+                        else => {
+                            @panic("invalid alias value type, expected string");
+                        },
+                    };
+                    if (key[0] == '/') {
+                        std.log.err("alias key should not start with '/', key: {s}", .{key});
+                        return error.InvalidAliasJson;
+                    }
+                    if (val[0] != '/') {
+                        std.log.err("alias value should start with '/', value: {s}", .{val});
+                        return error.InvalidAliasJson;
+                    }
+                    try cfg.alias.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
+                }
+            }
+            // list config dir
+            var dir = try std.fs.openDirAbsolute(configDir, .{ .iterate = true });
+            defer dir.close();
+            var iter = dir.iterate();
+            while (try iter.next()) |entry| {
+                if (entry.kind != .directory) continue;
+                const sub_path = try std.fs.path.join(allocator, &.{ configDir, entry.name, "alias.json" });
+                defer allocator.free(sub_path);
+                const sub_alias = dir.openFile(sub_path, .{}) catch |err| {
+                    if (err == error.FileNotFound) {
+                        std.log.info("No alias.json in {s}/{s}, skip", .{ configDir, entry.name });
+                        continue;
+                    }
+                    std.log.err("Failed to open alias.json in {s}: {s}", .{ configDir, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+
+                parseAliasJson(allocator, sub_alias.reader(), entry.name, &cfg.alias) catch return error.InvalidAliasJson;
+            }
+            // list dev serrver
+            var dev_it = cfg.dev.iterator();
+            while (dev_it.next()) |kv| {
+                const key = kv.key_ptr.*;
+                const val = kv.value_ptr.*;
+                const alias_path = try std.fs.path.join(allocator, &.{ val, "alias.json" });
+                defer allocator.free(alias_path);
+                var client = std.http.Client{ .allocator = allocator };
+                defer client.deinit();
+                const uri = std.Uri.parse(alias_path) catch |err| {
+                    std.log.err("Failed to parse uri {s}: {s}", .{ alias_path, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+                var server_header_buffer: [16 * 1024]u8 = undefined;
+                var req = client.open(.GET, uri, .{ .server_header_buffer = server_header_buffer[0..] }) catch |err| {
+                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+                defer req.deinit();
+
+                req.send() catch |err| {
+                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+                req.finish() catch |err| {
+                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+                req.wait() catch |err| {
+                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
+                    return error.FailedLoadConfig;
+                };
+                if (req.response.status != .ok) {
+                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @tagName(req.response.status) });
+                    return error.FailedLoadConfig;
+                }
+                parseAliasJson(allocator, req.reader(), key, &cfg.alias) catch {
+                    std.log.warn("Failed to parse alias.json in {s} ({s}), skip", .{ key, val });
+                };
+            }
+        }
+        errdefer {
+            var it = cfg.alias.iterator();
+            while (it.next()) |kv| {
+                allocator.free(kv.key_ptr.*);
+                allocator.free(kv.value_ptr.*);
+            }
+            cfg.alias.deinit();
+        }
         var startup = std.ArrayList([]const u8).init(allocator);
+        errdefer startup.deinit();
         if (value.get("startup")) |startup_| {
             const startup__ = startup_.array;
             for (startup__.items) |item| {
@@ -224,11 +331,53 @@ pub const Config = struct {
             allocator.free(kv.value_ptr.*);
         }
         self.alias.deinit();
+        var it2 = self.dev.iterator();
+        while (it2.next()) |kv| {
+            allocator.free(kv.key_ptr.*);
+            allocator.free(kv.value_ptr.*);
+        }
+        self.dev.deinit();
         for (self.startup) |p| allocator.free(p);
         allocator.free(self.startup);
         allocator.destroy(self);
     }
 };
+fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: *std.StringHashMap([]const u8)) !void {
+    var reader_ = std.json.reader(allocator, reader);
+    defer reader_.deinit();
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const sub_alias_json = std.json.Value.jsonParse(arena.allocator(), &reader_, .{ .max_value_len = 1024 * 1024 * 1024 }) catch |err| {
+        std.log.err("Failed to parse alias.json in {s}: {s}", .{ dir, @errorName(err) });
+        return err;
+    };
+    switch (sub_alias_json) {
+        .object => {},
+        else => {
+            std.log.err("Invalid alias.json in {s}: expected object", .{dir});
+            return error.InvalidAliasJson;
+        },
+    }
+    const obj = sub_alias_json.object;
+
+    var it = obj.iterator();
+    while (it.next()) |kv| {
+        const key = kv.key_ptr.*;
+        const val = switch (kv.value_ptr.*) {
+            .string => |v| v,
+            else => {
+                @panic("invalid alias value type, expected string");
+            },
+        };
+        if (key[0] == '/') {
+            std.log.err("Invalid alias.json in {s}: key should not start with /, got {s}", .{ dir, key });
+            return error.InvalidAliasJson;
+        }
+        const key_ = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ dir, key });
+        const val_ = try std.fmt.allocPrint(allocator, "/{s}/{s}", .{ dir, if (val[0] == '/') val[1..] else val });
+        try dist.put(key_, val_);
+    }
+}
 const xev = @import("xev");
 pub const App = struct {
     modules: *Modules,
@@ -243,20 +392,18 @@ pub const App = struct {
     sessionBusWatcher: dbus.GLibWatch,
     systemBusWatcher: dbus.GLibWatch,
     emitter: *Emitter,
-    devServer: ?[]const u8,
     server: []const u8,
     port: u16,
     pub fn init(allocator: Allocator, option: struct {
         configDir: []const u8,
         eventChannel: *events.EventChannel,
-        devServer: ?[]const u8,
         port: u16,
         loop: *xev.Loop,
     }) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
-        app.config = Config.load(allocator, option.configDir, option.devServer) catch |err| {
-            std.log.err("Failed to load config 'mika-shell.json' from {s}", .{if (option.devServer != null) option.devServer.? else option.configDir});
+        app.config = Config.load(allocator, option.configDir) catch |err| {
+            std.log.err("Failed to load config 'config.json' from {s}", .{option.configDir});
             return err;
         };
         errdefer app.config.deinit(allocator);
@@ -268,7 +415,6 @@ pub const App = struct {
         app.webviews = std.ArrayList(*Webview).init(allocator);
         app.allocator = allocator;
         app.isQuit = false;
-        app.devServer = if (option.devServer) |ds| try allocator.dupe(u8, ds) else null;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
             @panic("can not connect to session dbus");
         };
@@ -308,6 +454,126 @@ pub const App = struct {
 
         app.emitter = try Emitter.init(app, allocator, option.eventChannel, modules.eventGroups.items);
 
+        const context = webkit.WebContext.getDefault();
+
+        context.registerUriScheme("mika-shell", struct {
+            fn cb(request: *webkit.URISchemeRequest, data: ?*anyopaque) callconv(.c) void {
+                const app_inner: *App = @alignCast(@ptrCast(data));
+                const gio = @import("gio");
+                const returnError = struct {
+                    fn f(a: *App, r: *webkit.URISchemeRequest, comptime fmt: []const u8, args: anytype) void {
+                        const msg = std.fmt.allocPrintZ(a.allocator, fmt, args) catch unreachable;
+                        defer a.allocator.free(msg);
+                        const e = glib.Error.new(webkit.NetworkError.quark(), @intFromEnum(webkit.NetworkError.failed), msg);
+                        defer e.free();
+                        const w = a.getWebview(r.getWebView().getPageId()) catch unreachable;
+                        w.forceShow();
+                        r.finishError(e);
+                    }
+                }.f;
+                const uri = std.Uri.parse(std.mem.span(request.getUri())) catch {
+                    returnError(app_inner, request, "Invalid URI: {s}", .{std.mem.span(request.getUri())});
+                    return;
+                };
+                const alloc = app_inner.allocator;
+                const dir = app_inner.configDir;
+
+                const host = uri.host.?.percent_encoded;
+                const path = uri.path.percent_encoded;
+
+                var it = app_inner.config.dev.iterator();
+                while (it.next()) |kv| {
+                    const key = kv.key_ptr.*;
+                    const val = kv.value_ptr.*;
+                    if (!std.mem.eql(u8, key, host)) continue;
+                    const query = std.mem.span(request.getUri())[uri.scheme.len + 3 + host.len ..];
+                    const url = std.fs.path.joinZ(alloc, &.{ val, query }) catch unreachable;
+                    defer alloc.free(url);
+                    var client = std.http.Client{ .allocator = alloc };
+                    defer client.deinit();
+                    var store = std.ArrayList(u8).init(std.heap.c_allocator);
+                    defer store.deinit();
+                    const uri_ = std.Uri.parse(url) catch {
+                        returnError(app_inner, request, "Invalid URL: {s}", .{url});
+                        return;
+                    };
+                    var server_header_buffer: [16 * 1024]u8 = undefined;
+                    var req = client.open(.GET, uri_, .{ .server_header_buffer = server_header_buffer[0..] }) catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                        return;
+                    };
+                    defer req.deinit();
+
+                    req.send() catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                        return;
+                    };
+                    req.finish() catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                        return;
+                    };
+                    req.wait() catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                        return;
+                    };
+                    if (req.response.status != .ok) {
+                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @tagName(req.response.status) });
+                        return;
+                    }
+                    var buf: [256]u8 = undefined;
+                    while (true) {
+                        const n = req.read(&buf) catch |err| {
+                            if (err == error.EndOfStream) break;
+                            returnError(app_inner, request, "Failed to read {s}: {s}", .{ url, @errorName(err) });
+                            return;
+                        };
+                        if (n == 0) break;
+                        store.appendSlice(buf[0..n]) catch unreachable;
+                    }
+                    const content_type = alloc.dupeZ(u8, req.response.content_type orelse "application/octet-stream") catch unreachable;
+                    defer alloc.free(content_type);
+                    const size: isize = @intCast(store.items.len);
+                    const payload = glib.malloc(store.items.len);
+                    const payload_slice: [*]u8 = @ptrCast(payload);
+                    @memcpy(payload_slice[0..store.items.len], store.items);
+                    const stream = gio.MemoryInputStream.newFromData(@ptrCast(payload), size, struct {
+                        fn free(data_: ?*anyopaque) callconv(.c) void {
+                            glib.free(data_);
+                        }
+                    }.free);
+                    defer stream.unref();
+                    request.finish(stream.as(gio.InputStream), size, content_type.ptr);
+                    return;
+                }
+                var size: isize = 0;
+                const file_path = std.fs.path.joinZ(alloc, &.{ dir, host, path, if (std.mem.endsWith(u8, path, "/")) "index.html" else "" }) catch unreachable;
+                defer alloc.free(file_path);
+                const f = std.fs.openFileAbsolute(file_path, .{}) catch |err| {
+                    returnError(app_inner, request, "Failed to open file: {s}: {s}", .{ file_path, @errorName(err) });
+                    return;
+                };
+                defer f.close();
+                const pos = f.getPos() catch |err| {
+                    returnError(app_inner, request, "Failed to get file size: {s}: {s}", .{ file_path, @errorName(err) });
+                    return;
+                };
+                size = @intCast(pos);
+                const res = gio.File.newForPath(file_path.ptr);
+                defer res.unref();
+                var gError: ?*glib.Error = undefined;
+
+                const content_type = gio.contentTypeGuess(file_path.ptr, null, 0, null);
+                defer glib.free(content_type);
+
+                const stream = res.read(null, &gError) orelse {
+                    returnError(app_inner, request, "Failed to read file: {s}", .{file_path});
+                    return;
+                };
+                defer stream.unref();
+                request.finish(stream.as(gio.InputStream), size, content_type);
+            }
+        }.cb, app, null);
+
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
@@ -326,30 +592,26 @@ pub const App = struct {
         self.systemBus.deinit();
         self.config.deinit(self.allocator);
         self.allocator.free(self.configDir);
-        if (self.devServer) |ds| self.allocator.free(ds);
         self.emitter.deinit();
         self.allocator.free(self.server);
         self.allocator.destroy(self);
     }
     pub fn open(self: *App, pageName: []const u8) !*Webview {
-        const server = if (self.devServer) |ds| ds else self.server;
         const path = blk: {
             if (std.mem.startsWith(u8, pageName, "/")) {
                 break :blk pageName;
             } else {
                 if (self.config.alias.get(pageName)) |alias| break :blk alias;
-                break :blk pageName;
+                return error.AliasNotFound;
             }
         };
-        const url = std.fs.path.join(self.allocator, &.{ server, path }) catch unreachable;
-        defer self.allocator.free(url);
-        return self.openS(url, pageName);
+        const uri = std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
+        defer self.allocator.free(uri);
+        return self.openS(uri, pageName);
     }
-    fn openS(self: *App, uri: []const u8, name: []const u8) *Webview {
+    fn openS(self: *App, uri: [:0]const u8, name: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules, name, self.port) catch unreachable;
-        const uri_ = self.allocator.dupeZ(u8, uri) catch unreachable;
-        defer self.allocator.free(uri_);
-        webview.impl.loadUri(uri_);
+        webview.impl.loadUri(uri);
         self.mutex.lock();
         self.webviews.append(webview) catch unreachable;
         self.mutex.unlock();

@@ -99,7 +99,7 @@ pub const OS = struct {
                 const a = c.allocator;
                 if (c.child.stdout) |stdout| {
                     defer stdout.close();
-                    const stdoutBuf = stdout.reader().readAllAlloc(a, 1024 * 1024 * 10) catch |err| {
+                    const stdoutBuf: []const u8 = stdout.reader().readAllAlloc(a, 1024 * 1024 * 10) catch |err| {
                         c.result.errors("Failed to read stdout: {s}", .{@errorName(err)});
                         return;
                     };

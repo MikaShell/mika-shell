@@ -219,31 +219,7 @@ fn handler(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
         }
         return;
     }
-    return fileServer(h, req, res);
-}
-fn fileServer(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
-    const allocator = h.allocator;
-    const path = req.url.path;
-    // TODO: 剔除路径防止注入
-    var fileName = path;
-    if (std.mem.endsWith(u8, path, "/")) {
-        fileName = try std.fs.path.join(allocator, &[_][]const u8{ path, "index.html" });
-    }
-    const filePath = try std.fs.path.join(allocator, &[_][]const u8{ h.assetsDir, fileName });
-    defer allocator.free(filePath);
-    log.debug("Request assets: {s} {s}", .{ path, fileName });
-
-    const f = std.fs.openFileAbsolute(filePath, .{ .mode = .read_only }) catch |err| switch (err) {
-        fs.File.OpenError.IsDir, fs.File.OpenError.FileNotFound => {
-            res.status = 404;
-            res.body = @embedFile("404.html");
-            return;
-        },
-        else => return err,
-    };
-    res.content_type = httpz.ContentType.forFile(filePath);
-    defer f.close();
-    const buf = try f.readToEndAlloc(allocator, 10 * 1024 * 1024);
-    defer allocator.free(buf);
-    try res.writer().writeAll(buf);
+    res.status = 400;
+    res.body = "invalid request";
+    return;
 }

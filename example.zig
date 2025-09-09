@@ -1,17 +1,17 @@
 const prefix = "example/";
 const filenames = [_][]const u8{
-    "example/mika-shell.json",
-    "example/debug/style.css",
-    "example/debug/index.html",
-    "example/debug/apps.html",
-    "example/debug/hyprland.html",
-    "example/debug/notifd.html",
-    "example/debug/tray.html",
-    "example/extra.js",
-    "example/bar.html",
-    "example/dock.html",
-    "example/showkeys.html",
-    "example/bongocat.html",
+    "example/config.json",
+    "example/example/debug/style.css",
+    "example/example/debug/index.html",
+    "example/example/debug/apps.html",
+    "example/example/debug/hyprland.html",
+    "example/example/debug/notifd.html",
+    "example/example/debug/tray.html",
+    "example/example/extra.js",
+    "example/example/bar.html",
+    "example/example/dock.html",
+    "example/example/showkeys.html",
+    "example/example/bongocat.html",
 };
 
 const std = @import("std");
