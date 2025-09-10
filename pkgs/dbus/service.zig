@@ -42,7 +42,7 @@ pub const Service = struct {
         s.* = Self{
             .allocator = allocator,
             .bus = bus,
-            .interfaces = std.ArrayList(Interface_).init(allocator),
+            .interfaces = std.ArrayList(Interface_){},
             .machineId = undefined,
             .uniqueName = undefined,
             .err = undefined,
@@ -63,7 +63,7 @@ pub const Service = struct {
         for (self.interfaces.items) |interface| {
             unpublish(self, interface.path, interface.name);
         }
-        self.interfaces.deinit();
+        self.interfaces.deinit(self.allocator);
         self.allocator.destroy(self);
     }
     fn getNodes(self: *Self, allocator: Allocator) [][]const u8 {
@@ -72,13 +72,13 @@ pub const Service = struct {
         for (self.interfaces.items) |item| {
             map.put(item.path, {}) catch unreachable;
         }
-        var nodes = std.ArrayList([]const u8).init(allocator);
-        defer nodes.deinit();
+        var nodes = std.ArrayList([]const u8){};
+        defer nodes.deinit(allocator);
         var it = map.iterator();
         while (it.next()) |entry| {
-            nodes.append(entry.key_ptr.*) catch unreachable;
+            nodes.append(allocator, entry.key_ptr.*) catch unreachable;
         }
-        return nodes.toOwnedSlice() catch unreachable;
+        return nodes.toOwnedSlice(allocator) catch unreachable;
     }
 };
 
@@ -136,7 +136,7 @@ pub fn publish(
         .method = methods,
         .property = properties,
     };
-    try self.interfaces.append(interface_);
+    try self.interfaces.append(self.allocator, interface_);
     if (!(try self.bus.addFilter(.{ .type = .method_call }, serviceHandler, self))) {
         return error.CouldNotAddFilter;
     }
@@ -197,7 +197,7 @@ fn appendAllProperties(iter: *MessageIter, interface: Service.Interface_, alloca
                 allocator,
                 err,
             ) catch |e| {
-                const err_msg = std.fmt.allocPrint(allocator, "Failed to get property {s}: {s}", .{ prop.name, @errorName(e) }) catch unreachable;
+                const err_msg = std.fmt.allocPrint(allocator, "Failed to get property {s}: {t}", .{ prop.name, e }) catch unreachable;
                 err.set("org.freedesktop.DBus.Error.Failed", err_msg);
                 return;
             };
@@ -250,9 +250,9 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
         if (eql(u8, iface, "org.freedesktop.DBus.Introspectable") and eql(u8, member, "Introspect")) {
             iter.fromAppend(reply);
             const alloc = std.heap.page_allocator;
-            var xml = std.ArrayList(u8).initCapacity(alloc, 64) catch unreachable;
+            var xml = std.Io.Writer.Allocating.init(alloc);
             defer xml.deinit();
-            const writer = xml.writer();
+            var writer = xml.writer;
             writer.writeAll(
                 \\<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"><node>
             ) catch unreachable;
@@ -272,8 +272,6 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                     \\    </signal>
                     \\</interface>
                 ) catch unreachable;
-                var nodes = std.ArrayList([]const u8).init(alloc);
-                defer nodes.deinit();
                 for (service.interfaces.items) |interface| {
                     const node = std.fmt.allocPrint(alloc, "<node name=\"{s}\"/>\n", .{interface.path}) catch unreachable;
                     defer alloc.free(node);
@@ -286,7 +284,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                 }
             }
             writer.writeAll("</node>") catch unreachable;
-            iter.append(Type.String, xml.items) catch unreachable;
+            iter.append(Type.String, xml.written()) catch unreachable;
             break :handler;
         }
         // org.freedesktop.DBus.Peer/Ping
@@ -375,7 +373,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                             arena.allocator(),
                             &callError,
                         ) catch |err| {
-                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
+                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {t}", .{ name, err }) catch unreachable;
                             callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
                             break :handler;
                         };
@@ -389,7 +387,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                         }
                         const setter = interface.setter.?;
                         setter(interface.instance, name, value, &callError) catch |err| {
-                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to set property {s}: {s}", .{ name, @errorName(err) }) catch unreachable;
+                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to set property {s}: {t}", .{ name, err }) catch unreachable;
                             callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
                             break :handler;
                         };
@@ -630,14 +628,14 @@ fn makeIntrospect(comptime T: type, comptime introspect: Interface(T)) []const u
             result = result ++ std.fmt.comptimePrint("    <method name=\"{s}\">\n", .{method.name});
             for (method.args) |arg| {
                 if (arg.name) |name| {
-                    result = result ++ std.fmt.comptimePrint("        <arg name=\"{s}\" direction=\"{s}\" type=\"{s}\"/>\n", .{
+                    result = result ++ std.fmt.comptimePrint("        <arg name=\"{s}\" direction=\"{t}\" type=\"{s}\"/>\n", .{
                         name,
-                        @tagName(arg.direction),
+                        arg.direction,
                         Type.signature(arg.type),
                     });
                 } else {
-                    result = result ++ std.fmt.comptimePrint("        <arg direction=\"{s}\" type=\"{s}\"/>\n", .{
-                        @tagName(arg.direction),
+                    result = result ++ std.fmt.comptimePrint("        <arg direction=\"{t}\" type=\"{s}\"/>\n", .{
+                        arg.direction,
                         Type.signature(arg.type),
                     });
                 }
@@ -661,10 +659,10 @@ fn makeIntrospect(comptime T: type, comptime introspect: Interface(T)) []const u
             result = result ++ "    </signal>\n";
         }
         for (introspect.property) |property| {
-            result = result ++ std.fmt.comptimePrint("    <property name=\"{s}\" type=\"{s}\" access=\"{s}\"/>\n", .{
+            result = result ++ std.fmt.comptimePrint("    <property name=\"{s}\" type=\"{s}\" access=\"{t}\"/>\n", .{
                 property.name,
                 Type.signature(property.type),
-                @tagName(property.access),
+                property.access,
             });
         }
         for (introspect.annotations) |annotation| {

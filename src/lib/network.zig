@@ -27,18 +27,18 @@ pub const Network = struct {
     pub fn getDevices(self: Self, allocator: Allocator) ![]structs.Device {
         const result = try self.manager.get("Devices", dbus.Array(dbus.ObjectPath));
         defer result.deinit();
-        var ds = std.ArrayList(structs.Device).init(allocator);
-        defer ds.deinit();
+        var ds = std.ArrayList(structs.Device){};
+        defer ds.deinit(allocator);
         for (result.value) |devicePath| {
             const d = try structs.Device.init(allocator, self.bus, devicePath);
             errdefer d.deinit(allocator);
             if (d.type == .ethernet or d.type == .wifi) {
-                try ds.append(d);
+                try ds.append(allocator, d);
             } else {
                 d.deinit(allocator);
             }
         }
-        return try ds.toOwnedSlice();
+        return try ds.toOwnedSlice(allocator);
     }
     pub fn getState(self: Self) !defines.State {
         return @enumFromInt(try self.manager.getBasic("State", dbus.UInt32));
@@ -57,18 +57,18 @@ pub const Network = struct {
     pub fn getConnections(self: Self, allocator: Allocator) ![]structs.Connection {
         const result = try self.settings.call("ListConnections", .{}, .{});
         defer result.deinit();
-        var cs = std.ArrayList(structs.Connection).init(allocator);
-        defer cs.deinit();
+        var cs = std.ArrayList(structs.Connection){};
+        defer cs.deinit(allocator);
         for (result.next(dbus.Array(dbus.ObjectPath))) |path| {
             const c = try structs.Connection.init(allocator, self.bus, path);
             errdefer c.deinit(allocator);
             if (c.type == .@"802-11-wireless" or c.type == .@"802-3-ethernet") {
-                try cs.append(c);
+                try cs.append(allocator, c);
             } else {
                 c.deinit(allocator);
             }
         }
-        return try cs.toOwnedSlice();
+        return try cs.toOwnedSlice(allocator);
     }
     pub fn getPrimaryConnection(self: Self, allocator: Allocator) !?structs.ActiveConnection {
         const path = try self.manager.getAlloc(allocator, "PrimaryConnection", dbus.ObjectPath);
@@ -85,18 +85,18 @@ pub const Network = struct {
     pub fn getActiveConnections(self: Self, allocator: Allocator) ![]structs.ActiveConnection {
         const result = try self.manager.get("ActiveConnections", dbus.Array(dbus.ObjectPath));
         defer result.deinit();
-        var acs = std.ArrayList(structs.ActiveConnection).init(allocator);
-        defer acs.deinit();
+        var acs = std.ArrayList(structs.ActiveConnection){};
+        defer acs.deinit(allocator);
         for (result.value) |path| {
             const ac = try structs.ActiveConnection.init(allocator, self.bus, path);
             errdefer ac.deinit(allocator);
             if (ac.connection.type == .@"802-11-wireless" or ac.connection.type == .@"802-3-ethernet") {
-                try acs.append(ac);
+                try acs.append(allocator, ac);
             } else {
                 ac.deinit(allocator);
             }
         }
-        return try acs.toOwnedSlice();
+        return try acs.toOwnedSlice(allocator);
     }
     /// path is Connection.dbusPath
     pub fn getWirelessPsk(self: Self, allocator: Allocator, path: []const u8) !?[]const u8 {
@@ -175,14 +175,14 @@ pub const Network = struct {
         defer device_helper.deinit();
         const result = try device_helper.call("GetAccessPoints", .{}, .{});
         defer result.deinit();
-        var aps = std.ArrayList(structs.AccessPoint).init(allocator);
-        defer aps.deinit();
+        var aps = std.ArrayList(structs.AccessPoint){};
+        defer aps.deinit(allocator);
         for (result.next(dbus.Array(dbus.ObjectPath))) |ap| {
             const a = try structs.AccessPoint.init(allocator, self.bus, ap);
             errdefer a.deinit(allocator);
-            try aps.append(a);
+            try aps.append(allocator, a);
         }
-        return try aps.toOwnedSlice();
+        return try aps.toOwnedSlice(allocator);
     }
     pub fn wirelessRequestScan(self: Self, device: []const u8) !void {
         const device_helper = try helper.DBusHelper.init(self.bus, device, "org.freedesktop.NetworkManager.Device.Wireless");
@@ -205,7 +205,7 @@ test {
 
 fn printJson(data: anytype) void {
     const allocator = std.heap.page_allocator;
-    const json = std.json.stringifyAlloc(allocator, data, .{ .whitespace = .indent_4 }) catch unreachable;
+    const json = std.json.Stringify.valueAlloc(allocator, data, .{ .whitespace = .indent_4 }) catch unreachable;
     defer allocator.free(json);
     print("{s}\n", .{json});
 }

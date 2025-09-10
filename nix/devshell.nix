@@ -3,8 +3,6 @@
   pkgs,
   mkShell,
   pkg-config,
-  zig,
-  zls,
   lldb,
   gtk4,
   webkitgtk_6_0,
@@ -43,6 +41,8 @@
     webkitgtk_6_0
     glib
   ];
+  zig = pkgs.zig_0_15;
+  zls = pkgs.zls_0_15;
 in
   mkShell {
     buildInputs = [

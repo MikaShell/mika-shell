@@ -59,11 +59,11 @@ pub const Object = struct {
             .path = try allocator.dupe(u8, path),
             .iface = try allocator.dupe(u8, iface),
             .uniqueName = try allocator.dupe(u8, req.next(Type.String)),
-            .listeners = std.ArrayList(common.Listener).init(allocator),
+            .listeners = std.ArrayList(common.Listener){},
             .allocator = allocator,
             .err = err,
         };
-        try bus.objects.append(obj);
+        try bus.objects.append(allocator, obj);
         return obj;
     }
     pub fn deinit(self: *Self) void {
@@ -77,7 +77,7 @@ pub const Object = struct {
         }
         self.err.deinit();
         self.allocator.destroy(self.err);
-        self.listeners.deinit();
+        self.listeners.deinit(self.allocator);
         self.allocator.free(self.name);
         self.allocator.free(self.path);
         self.allocator.free(self.iface);
@@ -258,7 +258,7 @@ pub const Object = struct {
 
         try self.bus.addMatch(.{ .type = .signal, .sender = self.uniqueName, .interface = self.iface, .member = signal, .path = self.path });
 
-        self.listeners.append(.{
+        self.listeners.append(self.allocator, .{
             .signal = signal,
             .handler = @ptrCast(handler),
             .data = data,

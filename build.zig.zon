@@ -5,36 +5,36 @@
 
     .fingerprint = 0xe97bd437b48f450a,
 
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.0",
 
     .dependencies = .{
-        .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig#68e760cc9eed0722dfcae69bda0ed9406bb83be2",
-            .hash = "httpz-0.0.0-PNVzrOu4BgCBCARbwWC7MUn7_MqnGwUNfTXEUryOns06",
-        },
-        .cli = .{
-            .url = "git+https://github.com/sam701/zig-cli#bdaab80c0f24624cb4e8b80bb7b34957263f67b8",
-            .hash = "cli-0.9.0-2eKe_zUBAQAuGjFuolxsm2SkNyuMVqk4SaYrwzis5jTp",
-        },
-        .ini = .{
-            .url = "git+https://github.com/ziglibs/ini#30afc2fc875ff817af0ffe490481f6f8aa3b5cd4",
-            .hash = "ini-0.1.0-YCQ9YsQlAACRplKkaUUXQLWVh2P1VULCsaS4JHhmkJRe",
-        },
-        .wayland = .{
-            .url = "git+https://codeberg.org/ifreund/zig-wayland#65b01fb69148013eea882c8222a82a1d96a6241b",
-            .hash = "wayland-0.4.0-dev-lQa1krLJAQBGO2aKqDcfxUOsW_e4PJZO_K_rxA20RztB",
-        },
         .@"wlr-protocols" = .{
-            .url = "git+https://gitlab.freedesktop.org/wlroots/wlr-protocols#a5028afbe4a1cf0daf020c4104c1565a09d6e58a",
-            .hash = "N-V-__8AAKq3AQDAxXNMWRVkNSQxyXYDjTZGuXQFj3G0CwAe",
+            .url = "git+https://gitlab.freedesktop.org/wlroots/wlr-protocols#a741f0ac5d655338a5100fc34bc8cec87d237346",
+            .hash = "N-V-__8AAMm4AQANnGv8ZhQ9FX_ipu-oul8H7XP9WPD6r5KD",
         },
         .@"wayland-protocols" = .{
-            .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#b3f29d8a41320a9231587835ee5e485f4a5f6eba",
-            .hash = "N-V-__8AAIKCDgB-xcOecIu1Xj1wfMd91LarDfqz7lLranYp",
+            .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#fff667c829b067500a5a3bf84e7bae1bb293d3aa",
+            .hash = "N-V-__8AAIrmDgBCnmm4bZ_KJ9NauVmPd1n7htBPSUi_rQxP",
+        },
+        .httpz = .{
+            .url = "git+https://github.com/karlseguin/http.zig#94fc151741af0f8b6962966046743c0726b1ec35",
+            .hash = "httpz-0.0.0-PNVzrFe5BgDabt7p2mEiv4PXNOZxJvxR0cMOBtQmP3uR",
+        },
+        .cli = .{
+            .url = "git+https://github.com/sam701/zig-cli#f9a516ddc9771ddd2c8c46a280a9ab6cab8261f2",
+            .hash = "cli-0.10.0-2eKe_5kEAQBeHqKxUHNTGnETzu81rqKWwT1WPt1jXBt0",
+        },
+        .ini = .{
+            .url = "git+https://github.com/ziglibs/ini#bc7809e039148cf7591a1b4a9df28ea9ae879251",
+            .hash = "ini-0.1.0-YCQ9YkUnAAA7SjpLwvomwrngMn3TConSAlNgo7Q8ibMZ",
+        },
+        .wayland = .{
+            .url = "git+https://codeberg.org/ifreund/zig-wayland#1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea",
+            .hash = "wayland-0.5.0-dev-lQa1khrMAQDJDwYFKpdH3HizherB7sHo5dKMECfvxQHe",
         },
         .gobject = .{
-            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.3.0/bindings-gnome47.tar.zst",
-            .hash = "gobject-0.3.0-Skun7IrmdQHh-PhvmchG9AKnrR2RFS5EhBe5oedb0ITv",
+            .url = "https://github.com/HumXC/mika-shell-gobject/releases/download/latest/bindings.tar.gz",
+            .hash = "gobject-0.3.0-Skun7B3omQB3XhqaKwuLsBMckQrFaNLzBwL5e0j-HNpE",
         },
     },
 
@@ -43,5 +43,12 @@
         "build.zig.zon",
         "src",
         "example",
+        "example.zig",
+        "README.md",
+        "LICENSE",
+        "npm-package",
+        "pkgs",
+        "generate.zig",
+        "build-npm.sh",
     },
 }

@@ -4,72 +4,72 @@
 
 linkFarm "zig-packages" [
   {
-    name = "N-V-__8AAHOzAQBh8wB371GN1DXTl1mKs8Rdqj0sJea0U4P7";
-    path = fetchzip {
-      url = "https://github.com/karlseguin/metrics.zig/archive/cf2797bcb3aea7e5cdaf4de39c5550c70796e7b1.tar.gz";
-      hash = "sha256-9wb9pU3jTXfZYaQzPuW0IrsftJTyRCJfG9oks6RpKy4=";
-    };
-  }
-  {
-    name = "N-V-__8AAIKCDgB-xcOecIu1Xj1wfMd91LarDfqz7lLranYp";
+    name = "N-V-__8AAIrmDgBCnmm4bZ_KJ9NauVmPd1n7htBPSUi_rQxP";
     path = fetchgit {
       url = "https://gitlab.freedesktop.org/wayland/wayland-protocols";
-      rev = "b3f29d8a41320a9231587835ee5e485f4a5f6eba";
-      hash = "sha256-xkB9CYppLgp+cGlqb6teo+jS7qlp7akgIEv4mSdbvvg=";
+      rev = "fff667c829b067500a5a3bf84e7bae1bb293d3aa";
+      hash = "sha256-xzmMal4wQx52S4CGOECFutYewOKBZRNASDASSZYaZag=";
     };
   }
   {
-    name = "N-V-__8AAKq3AQDAxXNMWRVkNSQxyXYDjTZGuXQFj3G0CwAe";
+    name = "N-V-__8AAMm4AQANnGv8ZhQ9FX_ipu-oul8H7XP9WPD6r5KD";
     path = fetchgit {
       url = "https://gitlab.freedesktop.org/wlroots/wlr-protocols";
-      rev = "a5028afbe4a1cf0daf020c4104c1565a09d6e58a";
-      hash = "sha256-m6f7/ES4bK2ZFv8hoxZgUcFNltuRkIctpJuFWAUynkg=";
+      rev = "a741f0ac5d655338a5100fc34bc8cec87d237346";
+      hash = "sha256-qdimOBtxgrEQDhOWHTWDRVC6p7gl8DjTgtiC+YNLEgs=";
     };
   }
   {
-    name = "cli-0.9.0-2eKe_zUBAQAuGjFuolxsm2SkNyuMVqk4SaYrwzis5jTp";
+    name = "cli-0.10.0-2eKe_5kEAQBeHqKxUHNTGnETzu81rqKWwT1WPt1jXBt0";
     path = fetchgit {
       url = "https://github.com/sam701/zig-cli";
-      rev = "bdaab80c0f24624cb4e8b80bb7b34957263f67b8";
-      hash = "sha256-o8p6fEaSJ585MU3v6vwBY0hOvpT2C7Mlo45VWwQwbOE=";
+      rev = "f9a516ddc9771ddd2c8c46a280a9ab6cab8261f2";
+      hash = "sha256-gjo2O7jtFcnqbGehwczDOeaRDg7JdUBfu2BcHa+nsH4=";
     };
   }
   {
-    name = "gobject-0.3.0-Skun7IrmdQHh-PhvmchG9AKnrR2RFS5EhBe5oedb0ITv";
+    name = "gobject-0.3.0-Skun7B3omQB3XhqaKwuLsBMckQrFaNLzBwL5e0j-HNpE";
     path = fetchzip {
-      url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.3.0/bindings-gnome47.tar.zst";
-      hash = "sha256-yinprQtufl7ojCM2fjz5pcE0A76VqwuAECsSCRyRi3g=";
+      url = "https://github.com/HumXC/mika-shell-gobject/releases/download/latest/bindings.tar.gz";
+      hash = "sha256-KnyHbHSsuPCsfq4GlqJw2XoQ936OZN1qtvBO1yFLV10=";
     };
   }
   {
-    name = "httpz-0.0.0-PNVzrOu4BgCBCARbwWC7MUn7_MqnGwUNfTXEUryOns06";
+    name = "httpz-0.0.0-PNVzrFe5BgDabt7p2mEiv4PXNOZxJvxR0cMOBtQmP3uR";
     path = fetchgit {
       url = "https://github.com/karlseguin/http.zig";
-      rev = "68e760cc9eed0722dfcae69bda0ed9406bb83be2";
-      hash = "sha256-vgCsPlVQQ8Ds379bnPWckz7uCP9azkEjzNiR1sGFNqM=";
+      rev = "94fc151741af0f8b6962966046743c0726b1ec35";
+      hash = "sha256-nhfMScgS0CYDDAbJTKSFIRInyE4wyce4Tn3txPkU4SM=";
     };
   }
   {
-    name = "ini-0.1.0-YCQ9YsQlAACRplKkaUUXQLWVh2P1VULCsaS4JHhmkJRe";
+    name = "ini-0.1.0-YCQ9YkUnAAA7SjpLwvomwrngMn3TConSAlNgo7Q8ibMZ";
     path = fetchgit {
       url = "https://github.com/ziglibs/ini";
-      rev = "30afc2fc875ff817af0ffe490481f6f8aa3b5cd4";
-      hash = "sha256-ynzakoLlCH1mKAkMnBa1PG2VMP70dReESVEtZAN6md0=";
+      rev = "bc7809e039148cf7591a1b4a9df28ea9ae879251";
+      hash = "sha256-ihTDJUarAFTxrWnyEDmugDNeQdGqEHGcwq5foPsYDO8=";
     };
   }
   {
-    name = "wayland-0.4.0-dev-lQa1krLJAQBGO2aKqDcfxUOsW_e4PJZO_K_rxA20RztB";
+    name = "metrics-0.0.0-W7G4eP2_AQBKsaql3dhLJ-pkf-RdP-zV3vflJy4N34jC";
+    path = fetchzip {
+      url = "https://github.com/karlseguin/metrics.zig/archive/13d8706e1ae921a8cc0d2f88283c1b5412c73e2f.tar.gz";
+      hash = "sha256-iu19RwA2pIhT+tSwaaLT+9XPNR8Ucaq88XfH9lkeyMk=";
+    };
+  }
+  {
+    name = "wayland-0.5.0-dev-lQa1khrMAQDJDwYFKpdH3HizherB7sHo5dKMECfvxQHe";
     path = fetchgit {
       url = "https://codeberg.org/ifreund/zig-wayland";
-      rev = "65b01fb69148013eea882c8222a82a1d96a6241b";
-      hash = "sha256-G97kemlWXbjIdLYmRUzjg7wmBpR+VbKMOqY3w9w78V8=";
+      rev = "1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea";
+      hash = "sha256-1wRkixysjdFMyrATxlXdukAc34MwfNj0B6ydYVn+UKw=";
     };
   }
   {
-    name = "websocket-0.1.0-ZPISdXNIAwCXG7oHBj4zc1CfmZcDeyR6hfTEOo8_YI4r";
+    name = "websocket-0.1.0-ZPISdYluAwBl2ckLPQ_q5_1IPEmNmaJ9vU1V0ap1-_dD";
     path = fetchzip {
-      url = "https://github.com/karlseguin/websocket.zig/archive/7c3f1149bffcde1dec98dea88a442e2b580d750a.tar.gz";
-      hash = "sha256-qyfeyR3Yp5i1YROqaOp4QP8U0rYCXgdeeUKbbXQJMU4=";
+      url = "https://github.com/karlseguin/websocket.zig/archive/59aaa71e64a669aa90016f8a342ceeee6381b4a6.tar.gz";
+      hash = "sha256-MDkxGJSoLQ2dQ43Zu4fsqZ7rMOM+10z6PZYsfO/48wk=";
     };
   }
 ]

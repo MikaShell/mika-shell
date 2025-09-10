@@ -63,7 +63,7 @@ pub const Webview = struct {
         const bindingsScript = webkit.UserScript.new(@embedFile("bindings.js"), .all_frames, .start, null, null);
         defer bindingsScript.unref();
         manager.addScript(bindingsScript);
-        const setPortJs = std.fmt.allocPrintZ(allocator, "window.mikaShell.backendPort = {d};", .{backendPort}) catch unreachable;
+        const setPortJs = std.fmt.allocPrintSentinel(allocator, "window.mikaShell.backendPort = {d};", .{backendPort}, 0) catch unreachable;
         defer allocator.free(setPortJs);
         const setPortScript = webkit.UserScript.new(setPortJs, .all_frames, .start, null, null);
         defer setPortScript.unref();
@@ -96,7 +96,7 @@ pub const Webview = struct {
                     return 0;
                 }
                 const ctx = CallContext.init(alc, wv.id, method_, args, reply) catch |e| {
-                    const msg = std.fmt.allocPrintZ(alc, "Failed to parse args: {s}", .{@errorName(e)}) catch unreachable;
+                    const msg = std.fmt.allocPrintSentinel(alc, "Failed to parse args: {t}", .{e}, 0) catch unreachable;
                     defer alc.free(msg);
                     reply.returnErrorMessage(msg);
                     return 0;
@@ -104,9 +104,9 @@ pub const Webview = struct {
                 defer ctx.deinit();
                 std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
                 wv._modules.call(method_, ctx) catch |err| {
-                    std.log.scoped(.webview).err("Failed to call method {s}: {s}", .{ method_, @errorName(err) });
+                    std.log.scoped(.webview).err("Failed to call method {s}: {t}", .{ method_, err });
                     if (ctx.reply != null) {
-                        ctx.errors("Failed to call method {s}: {s}", .{ method_, @errorName(err) });
+                        ctx.errors("Failed to call method {s}: {t}", .{ method_, err });
                     }
                     return 0;
                 };
@@ -258,6 +258,8 @@ pub const Config = struct {
             var iter = dir.iterate();
             while (try iter.next()) |entry| {
                 if (entry.kind != .directory) continue;
+                if (std.mem.eql(u8, "webview_data", entry.name)) continue;
+                if (std.mem.eql(u8, "webview_cache", entry.name)) continue;
                 const sub_path = try std.fs.path.join(allocator, &.{ configDir, entry.name, "alias.json" });
                 defer allocator.free(sub_path);
                 const sub_alias = dir.openFile(sub_path, .{}) catch |err| {
@@ -265,11 +267,14 @@ pub const Config = struct {
                         std.log.info("No alias.json in {s}/{s}, skip", .{ configDir, entry.name });
                         continue;
                     }
-                    std.log.err("Failed to open alias.json in {s}: {s}", .{ configDir, @errorName(err) });
+                    std.log.err("Failed to open alias.json in {s}: {t}", .{ configDir, err });
                     return error.FailedLoadConfig;
                 };
+                defer sub_alias.close();
 
-                parseAliasJson(allocator, sub_alias.reader(), entry.name, &cfg.alias) catch return error.InvalidAliasJson;
+                var buf: [1024]u8 = undefined;
+                var reader = sub_alias.reader(&buf);
+                parseAliasJson(allocator, &reader.interface, entry.name, &cfg.alias) catch return error.InvalidAliasJson;
             }
             // list dev serrver
             var dev_it = cfg.dev.iterator();
@@ -280,34 +285,21 @@ pub const Config = struct {
                 defer allocator.free(alias_path);
                 var client = std.http.Client{ .allocator = allocator };
                 defer client.deinit();
-                const uri = std.Uri.parse(alias_path) catch |err| {
-                    std.log.err("Failed to parse uri {s}: {s}", .{ alias_path, @errorName(err) });
+                var result = std.Io.Writer.Allocating.init(allocator);
+                defer result.deinit();
+                const res = client.fetch(.{
+                    .location = .{ .url = alias_path },
+                    .response_writer = &result.writer,
+                }) catch |err| {
+                    std.log.err("Failed to fetch alias.json: {s}: {t}", .{ alias_path, err });
                     return error.FailedLoadConfig;
                 };
-                var server_header_buffer: [16 * 1024]u8 = undefined;
-                var req = client.open(.GET, uri, .{ .server_header_buffer = server_header_buffer[0..] }) catch |err| {
-                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
-                    return error.FailedLoadConfig;
-                };
-                defer req.deinit();
-
-                req.send() catch |err| {
-                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
-                    return error.FailedLoadConfig;
-                };
-                req.finish() catch |err| {
-                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
-                    return error.FailedLoadConfig;
-                };
-                req.wait() catch |err| {
-                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @errorName(err) });
-                    return error.FailedLoadConfig;
-                };
-                if (req.response.status != .ok) {
-                    std.log.err("Failed to fetch alias.json: {s}: {s}", .{ alias_path, @tagName(req.response.status) });
+                if (res.status != .ok) {
+                    std.log.err("Failed to fetch alias.json: {s}: {t}", .{ alias_path, res.status });
                     return error.FailedLoadConfig;
                 }
-                parseAliasJson(allocator, req.reader(), key, &cfg.alias) catch {
+                var reader = std.Io.Reader.fixed(result.written());
+                parseAliasJson(allocator, &reader, key, &cfg.alias) catch {
                     std.log.warn("Failed to parse alias.json in {s} ({s}), skip", .{ key, val });
                 };
             }
@@ -320,20 +312,20 @@ pub const Config = struct {
             }
             cfg.alias.deinit();
         }
-        var startup = std.ArrayList([]const u8).init(allocator);
-        errdefer startup.deinit();
+        var startup = std.ArrayList([]const u8){};
+        errdefer startup.deinit(allocator);
         if (value.get("startup")) |startup_| {
             const startup__ = startup_.array;
             for (startup__.items) |item| {
                 switch (item) {
-                    .string => |v| try startup.append(try allocator.dupe(u8, v)),
+                    .string => |v| try startup.append(allocator, try allocator.dupe(u8, v)),
                     else => {
                         @panic("invalid startup value type, expected string");
                     },
                 }
             }
         }
-        cfg.startup = try startup.toOwnedSlice();
+        cfg.startup = try startup.toOwnedSlice(allocator);
 
         return cfg;
     }
@@ -356,12 +348,12 @@ pub const Config = struct {
     }
 };
 fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: *std.StringHashMap([]const u8)) !void {
-    var reader_ = std.json.reader(allocator, reader);
+    var reader_ = std.json.Reader.init(allocator, reader);
     defer reader_.deinit();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const sub_alias_json = std.json.Value.jsonParse(arena.allocator(), &reader_, .{ .max_value_len = 1024 * 1024 * 1024 }) catch |err| {
-        std.log.err("Failed to parse alias.json in {s}: {s}", .{ dir, @errorName(err) });
+        std.log.err("Failed to parse alias.json in {s}: {t}", .{ dir, err });
         return err;
     };
     switch (sub_alias_json) {
@@ -379,11 +371,12 @@ fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: 
         const val = switch (kv.value_ptr.*) {
             .string => |v| v,
             else => {
-                @panic("invalid alias value type, expected string");
+                std.log.err("invalid alias value type '{t}', expected string", .{kv.value_ptr.*});
+                return error.InvalidAliasJson;
             },
         };
         if (key[0] == '/') {
-            std.log.err("Invalid alias.json in {s}: key should not start with /, got {s}", .{ dir, key });
+            std.log.err("Invalid alias.json in '{s}': key should not start with /, got '{s}'", .{ dir, key });
             return error.InvalidAliasJson;
         }
         const key_ = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ dir, key });
@@ -423,7 +416,7 @@ pub const App = struct {
         app.port = option.port;
         app.configDir = try std.fs.path.resolve(allocator, &.{option.configDir});
         app.mutex = std.Thread.Mutex{};
-        app.webviews = std.ArrayList(*Webview).init(allocator);
+        app.webviews = std.ArrayList(*Webview){};
         app.allocator = allocator;
         app.isQuit = false;
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
@@ -468,11 +461,11 @@ pub const App = struct {
 
         context.registerUriScheme("mika-shell", struct {
             fn cb(request: *webkit.URISchemeRequest, data: ?*anyopaque) callconv(.c) void {
-                const app_inner: *App = @alignCast(@ptrCast(data));
+                const app_inner: *App = @ptrCast(@alignCast(data));
                 const gio = @import("gio");
                 const returnError = struct {
                     fn f(a: *App, r: *webkit.URISchemeRequest, comptime fmt: []const u8, args: anytype) void {
-                        const msg = std.fmt.allocPrintZ(a.allocator, fmt, args) catch unreachable;
+                        const msg = std.fmt.allocPrintSentinel(a.allocator, fmt, args, 0) catch unreachable;
                         defer a.allocator.free(msg);
                         const e = glib.Error.new(webkit.NetworkError.quark(), @intFromEnum(webkit.NetworkError.failed), msg);
                         defer e.free();
@@ -501,62 +494,60 @@ pub const App = struct {
                     defer alloc.free(url);
                     var client = std.http.Client{ .allocator = alloc };
                     defer client.deinit();
+                    var result = std.Io.Writer.Allocating.init(alloc);
+                    defer result.deinit();
                     const uri_ = std.Uri.parse(url) catch {
                         returnError(app_inner, request, "Invalid URL: {s}", .{url});
                         return;
                     };
-                    var server_header_buffer: [16 * 1024]u8 = undefined;
-                    var req = client.open(.GET, uri_, .{ .server_header_buffer = server_header_buffer[0..] }) catch |err| {
-                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                    var req = client.request(.GET, uri_, .{}) catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {t}", .{ url, err });
                         return;
                     };
                     defer req.deinit();
-
-                    req.send() catch |err| {
-                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                    req.sendBodiless() catch |err| {
+                        returnError(app_inner, request, "Failed to request {s}: {t}", .{ url, err });
                         return;
                     };
-                    req.finish() catch |err| {
-                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
+                    var redirect_buffer: [8 * 1024]u8 = undefined;
+                    var response = req.receiveHead(&redirect_buffer) catch |err| {
+                        returnError(app_inner, request, "Failed to receive head of {s}: {t}", .{ url, err });
                         return;
                     };
-                    req.wait() catch |err| {
-                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @errorName(err) });
-                        return;
-                    };
-                    if (req.response.status != .ok) {
-                        returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @tagName(req.response.status) });
+                    if (response.head.status != .ok) {
+                        returnError(app_inner, request, "Failed to request {s}: {t}", .{ url, response.head.status });
                         return;
                     }
-                    const buf = req.reader().readAllAlloc(alloc, 1024 * 1024 * 100) catch |err| {
-                        returnError(app_inner, request, "Failed to read {s}: {s}", .{ url, @errorName(err) });
-                        return;
-                    };
-                    defer alloc.free(buf);
-                    const content_type = alloc.dupeZ(u8, req.response.content_type orelse "application/octet-stream") catch unreachable;
+                    const content_type = alloc.dupeZ(u8, response.head.content_type orelse "application/octet-stream") catch unreachable;
                     defer alloc.free(content_type);
-                    const size: isize = @intCast(buf.len);
-                    const payload = glib.malloc(buf.len);
+
+                    var writer = std.Io.Writer.Allocating.init(alloc);
+                    defer writer.deinit();
+
+                    _ = response.reader(&redirect_buffer).streamRemaining(&writer.writer) catch unreachable;
+
+                    const size = writer.written().len;
+                    const payload = glib.malloc(@intCast(size));
                     const payload_ptr: [*]u8 = @ptrCast(payload);
-                    @memcpy(payload_ptr[0..buf.len], buf);
-                    const stream = gio.MemoryInputStream.newFromData(@ptrCast(payload), size, struct {
+                    @memcpy(payload_ptr[0..size], writer.written());
+                    const stream = gio.MemoryInputStream.newFromData(payload_ptr, @intCast(size), struct {
                         fn free(data_: ?*anyopaque) callconv(.c) void {
                             glib.free(data_);
                         }
                     }.free);
                     defer stream.unref();
-                    request.finish(stream.as(gio.InputStream), size, content_type.ptr);
+                    request.finish(stream.as(gio.InputStream), @intCast(size), content_type.ptr);
                     return;
                 }
                 const file_path = std.fs.path.joinZ(alloc, &.{ dir, host, path, if (std.mem.endsWith(u8, path, "/")) "index.html" else "" }) catch unreachable;
                 defer alloc.free(file_path);
                 const f = std.fs.openFileAbsolute(file_path, .{}) catch |err| {
-                    returnError(app_inner, request, "Failed to open file: {s}: {s}", .{ file_path, @errorName(err) });
+                    returnError(app_inner, request, "Failed to open file: {s}: {t}", .{ file_path, err });
                     return;
                 };
                 defer f.close();
                 var pos = f.getEndPos() catch |err| {
-                    returnError(app_inner, request, "Failed to get file size: {s}: {s}", .{ file_path, @errorName(err) });
+                    returnError(app_inner, request, "Failed to get file size: {s}: {t}", .{ file_path, err });
                     return;
                 };
                 const size: isize = @intCast(pos);
@@ -566,7 +557,7 @@ pub const App = struct {
                 var buf: [512 * 1024]u8 = undefined;
                 while (true) {
                     const n = f.read(&buf) catch |err| {
-                        returnError(app_inner, request, "Failed to read file: {s}: {s}", .{ file_path, @errorName(err) });
+                        returnError(app_inner, request, "Failed to read file: {s}: {t}", .{ file_path, err });
                         return;
                     };
                     if (n == 0) break;
@@ -599,7 +590,7 @@ pub const App = struct {
         for (self.webviews.items) |webview| {
             webview.forceClose();
         }
-        self.webviews.deinit();
+        self.webviews.deinit(self.allocator);
         self.modules.deinit();
         self.sessionBus.deinit();
         self.systemBus.deinit();
@@ -626,7 +617,7 @@ pub const App = struct {
         const webview = Webview.init(self.allocator, self.modules, name, self.port, self.configDir) catch unreachable;
         webview.impl.loadUri(uri);
         self.mutex.lock();
-        self.webviews.append(webview) catch unreachable;
+        self.webviews.append(self.allocator, webview) catch unreachable;
         self.mutex.unlock();
 
         const cssProvider = gtk.CssProvider.new();
@@ -700,9 +691,9 @@ pub const App = struct {
     }
     pub fn emitEvent2(self: *App, dist: ?*Webview, event: events.Events, data: anytype) void {
         const alc = std.heap.page_allocator;
-        const dataJson = std.json.stringifyAlloc(alc, data, .{}) catch unreachable;
+        const dataJson = std.json.Stringify.valueAlloc(alc, data, .{}) catch unreachable;
         defer alc.free(dataJson);
-        const js = std.fmt.allocPrintZ(alc, "window.dispatchEvent(new CustomEvent('mika-shell-event', {{ detail: {{ event: {d}, data: {s} }} }}));", .{ @intFromEnum(event), dataJson }) catch unreachable;
+        const js = std.fmt.allocPrintSentinel(alc, "window.dispatchEvent(new CustomEvent('mika-shell-event', {{ detail: {{ event: {d}, data: {s} }} }}));", .{ @intFromEnum(event), dataJson }, 0) catch unreachable;
         defer alc.free(js);
         if (dist) |w| {
             w.impl.evaluateJavascript(js, @intCast(js.len), null, null, null, null, null);

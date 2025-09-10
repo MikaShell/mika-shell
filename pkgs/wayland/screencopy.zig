@@ -5,12 +5,16 @@ const wl = wayland.client.wl;
 const ScreencopyManager = wayland.client.zwlr.ScreencopyManagerV1;
 const ScreencopyFrame = wayland.client.zwlr.ScreencopyFrameV1;
 const common = @import("common.zig");
+const OutputNode = struct {
+    data: *wl.Output,
+    node: std.DoublyLinkedList.Node,
+};
 pub const Manager = struct {
     const Self = @This();
     allocator: Allocator,
     screencopyManager: *ScreencopyManager,
     shm: *wl.Shm,
-    outputs: std.DoublyLinkedList(*wl.Output),
+    outputs: std.DoublyLinkedList,
     display: *wl.Display,
     glibWatch: common.GLibWatch,
     // if err is null, result is valid
@@ -64,7 +68,8 @@ pub const Manager = struct {
     pub fn deinit(self: *Self) void {
         self.glibWatch.deinit();
         while (self.outputs.pop()) |node| {
-            self.allocator.destroy(node);
+            const output: *OutputNode = @fieldParentPtr("node", node);
+            self.allocator.destroy(output);
         }
         self.display.disconnect();
         self.allocator.destroy(self);
@@ -84,20 +89,20 @@ pub const Manager = struct {
     }
     pub fn capture(self: *Self, callback: Callback, data: ?*anyopaque, option: Option) !void {
         const overlayCursor: i32 = if (option.overlayCursor) 1 else 0;
-        const output = blk: {
+        const outputNode: *OutputNode = blk: {
             var node = self.outputs.first;
             var num: usize = 0;
             while (node) |n| : (node = n.next) {
-                if (num == option.output) break :blk n.data;
+                if (num == option.output) break :blk @fieldParentPtr("node", n);
                 num += 1;
             }
             return error.InvalidOutput;
         };
         const frame = blk: {
             if (option.x == 0 and option.y == 0 and option.w == 0 and option.h == 0) {
-                break :blk try self.screencopyManager.captureOutput(overlayCursor, output);
+                break :blk try self.screencopyManager.captureOutput(overlayCursor, outputNode.data);
             } else {
-                break :blk try self.screencopyManager.captureOutputRegion(overlayCursor, output, option.x, option.y, option.w, option.h);
+                break :blk try self.screencopyManager.captureOutputRegion(overlayCursor, outputNode.data, option.x, option.y, option.w, option.h);
             }
         };
         const ctx = try self.initContext(frame, option, callback, data);
@@ -105,13 +110,12 @@ pub const Manager = struct {
         _ = self.display.flush();
     }
     fn addOutput(self: *Self, output: *wl.Output) void {
-        const node = self.allocator.create(std.DoublyLinkedList(*wl.Output).Node) catch unreachable;
+        const node = self.allocator.create(OutputNode) catch unreachable;
         node.* = .{
             .data = output,
-            .prev = null,
-            .next = null,
+            .node = .{},
         };
-        self.outputs.append(node);
+        self.outputs.append(&node.node);
     }
 };
 const c = @cImport({
@@ -132,7 +136,7 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
         },
         .buffer_done => {
             if (!(ctx.format == .xrgb8888 or ctx.format == .argb8888)) {
-                log.err("Screencopy: unsupported format: {s}", .{@tagName(ctx.format)});
+                log.err("Screencopy: unsupported format: {t}", .{ctx.format});
                 ctx.err = error.UnsupportedFormat;
                 return;
             }
@@ -140,19 +144,19 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
             const shm = ctx.manager.shm;
             const size = ctx.width * ctx.height * 4;
             const memfd = posix.memfd_create("mika-shell-screencopy", 0) catch |e| {
-                log.err("Screencopy: memfd_create failed: {s}", .{@errorName(e)});
+                log.err("Screencopy: memfd_create failed: {t}", .{e});
                 ctx.err = e;
                 return;
             };
             defer posix.close(memfd);
             posix.ftruncate(memfd, size) catch |e| {
-                log.err("Screencopy: ftruncate failed: {s}", .{@errorName(e)});
+                log.err("Screencopy: ftruncate failed: {t}", .{e});
                 ctx.err = e;
                 return;
             };
             ctx.pixels = posix.mmap(null, size, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, memfd, 0) catch unreachable;
             const shmPool = shm.createPool(memfd, @intCast(size)) catch |e| {
-                log.err("Screencopy: createPool failed: {s}", .{@errorName(e)});
+                log.err("Screencopy: createPool failed: {t}", .{e});
                 ctx.err = e;
                 return;
             };
@@ -164,7 +168,7 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
                 @intCast(ctx.stride),
                 ctx.format,
             ) catch |e| {
-                log.err("Screencopy: createBuffer failed: {s}", .{@errorName(e)});
+                log.err("Screencopy: createBuffer failed: {t}", .{e});
                 ctx.err = e;
                 return;
             };
@@ -185,7 +189,7 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
             task.runInThread(struct {
                 fn cb(task_: *gio.Task, _: *gobject.Object, data: ?*anyopaque, _: ?*gio.Cancellable) callconv(.c) void {
                     defer task_.unref();
-                    const ctx_: *Manager.Contxt = @alignCast(@ptrCast(data));
+                    const ctx_: *Manager.Contxt = @ptrCast(@alignCast(data));
                     defer {
                         ctx_.buffer.destroy();
                         ctx_.frame.destroy();
@@ -230,14 +234,14 @@ fn frameListener(f: *ScreencopyFrame, event: ScreencopyFrame.Event, ctx: *Manage
                                 ctx_.err = error.PNGCreateInfoStructFailed;
                                 return;
                             };
-                            defer c.png_destroy_write_struct(@constCast(@ptrCast(&png)), @constCast(@ptrCast(&info)));
-                            var buffer = std.ArrayList(u8).init(ctx_.allocator);
-                            defer buffer.deinit();
-
-                            c.png_set_write_fn(png, @ptrCast(&buffer), struct {
-                                fn write(png_: ?*c.png_struct, data_: [*c]u8, len: usize) callconv(.C) void {
-                                    const buf: *std.ArrayList(u8) = @alignCast(@ptrCast(c.png_get_io_ptr(png_).?));
-                                    buf.writer().writeAll(data_[0..len]) catch unreachable;
+                            defer c.png_destroy_write_struct(@ptrCast(@constCast(&png)), @ptrCast(@constCast(&info)));
+                            var buffer = std.ArrayList(u8){};
+                            defer buffer.deinit(ctx_.allocator);
+                            var writer = buffer.writer(ctx_.allocator);
+                            c.png_set_write_fn(png, @ptrCast(&writer), struct {
+                                fn write(png_: ?*c.png_struct, data_: [*c]u8, len: usize) callconv(.c) void {
+                                    const w: *@TypeOf(writer) = @ptrCast(@alignCast(c.png_get_io_ptr(png_).?));
+                                    w.writeAll(data_[0..len]) catch unreachable;
                                 }
                             }.write, null);
                             c.png_set_IHDR(

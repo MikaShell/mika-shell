@@ -33,11 +33,14 @@ pub const Server = struct {
         const stream = conn.stream;
         defer stream.close();
         const alc = std.heap.page_allocator;
-        const len = try stream.reader().readInt(usize, .little);
-        var limitedReader = std.io.limitedReader(stream.reader(), len);
-        var reader = std.json.reader(alc, limitedReader.reader());
-        defer reader.deinit();
-        const req = try std.json.parseFromTokenSource(Request, alc, &reader, .{});
+
+        var buf: [512]u8 = undefined;
+        var reader = stream.reader(&buf);
+        var r = &reader.file_reader.interface;
+        const len = try r.takeInt(usize, .little);
+        const payload = try r.readAlloc(alc, len);
+        defer alc.free(payload);
+        const req = try std.json.parseFromSlice(Request, alc, payload, .{});
         defer req.deinit();
         try handle(self.app, req.value, stream);
     }
@@ -51,9 +54,9 @@ pub const Server = struct {
         defer ch.unref();
         self.watcher = glib.ioAddWatch(ch, .{ .in = true }, &struct {
             fn f(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
-                const s: *Server = @alignCast(@ptrCast(data));
+                const s: *Server = @ptrCast(@alignCast(data));
                 s.handleConnection() catch |err| {
-                    std.debug.print("Can not handle message, error: {s}", .{@errorName(err)});
+                    std.log.scoped(.ipc).err("Can not handle message, error: {t}", .{err});
                 };
                 return 1;
             }
@@ -75,18 +78,20 @@ const app_ = @import("app.zig");
 const gtk = @import("gtk");
 const App = app_.App;
 fn handle(app: *App, r: Request, s: std.net.Stream) !void {
-    std.log.debug("IPC: Received request: {s}", .{r.type});
-    const out = s.writer();
+    std.log.scoped(.ipc).debug("Received request: {s}", .{r.type});
+    var buf: [512]u8 = undefined;
+    var writer = s.writer(&buf);
+    var out = &writer.file_writer.interface;
     if (eql(r.type, "alias")) {
-        var result = std.ArrayList([]const u8).init(app.allocator);
+        var result = std.ArrayList([]const u8){};
         defer {
             for (result.items) |item| app.allocator.free(item);
-            result.deinit();
+            result.deinit(app.allocator);
         }
         var it = app.config.alias.iterator();
 
         while (it.next()) |entry| {
-            try result.append(try std.fmt.allocPrint(app.allocator, "{s} -> {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* }));
+            try result.append(app.allocator, try std.fmt.allocPrint(app.allocator, "{s} -> {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* }));
         }
         const lessThan = struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
@@ -188,16 +193,22 @@ pub fn request(req: Request, port: u16) !void {
     defer allocator.free(path);
     const c = try std.net.connectUnixSocket(path);
     const alc = std.heap.page_allocator;
-    const reqJSON = try std.json.stringifyAlloc(alc, req, .{ .emit_null_optional_fields = false });
+    const reqJSON = try std.json.Stringify.valueAlloc(alc, req, .{ .emit_null_optional_fields = false });
     defer alc.free(reqJSON);
-    _ = try c.writer().writeInt(usize, reqJSON.len, .little);
-    _ = try c.writer().writeAll(reqJSON);
-    defer c.close();
     var buf: [512]u8 = undefined;
-    var fifo = std.fifo.LinearFifo(u8, .Slice).init(buf[0..]);
-    defer fifo.deinit();
-    const stdout = std.io.getStdOut();
-    try fifo.pump(c.reader(), stdout.writer());
+    var writer = c.writer(&buf);
+    var w = &writer.interface;
+    _ = try w.writeInt(usize, reqJSON.len, .little);
+    try w.flush();
+    _ = try w.writeAll(reqJSON);
+    try w.flush();
+    defer c.close();
+    var stdout = std.fs.File.stdout();
+    while (true) {
+        const n = try c.read(&buf);
+        if (n == 0) break;
+        try stdout.writeAll(buf[0..n]);
+    }
 }
 
 test "stringify and Request" {
@@ -205,7 +216,7 @@ test "stringify and Request" {
         .type = "open",
     };
     const alc = std.heap.page_allocator;
-    const reqJSON = try std.json.stringifyAlloc(alc, req, .{ .emit_null_optional_fields = false });
+    const reqJSON = try std.json.Stringify.valueAlloc(alc, req, .{ .emit_null_optional_fields = false });
     defer alc.free(reqJSON);
     std.debug.print("Request JSON: {s}\n", .{reqJSON});
 }

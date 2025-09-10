@@ -451,13 +451,13 @@ pub const Icon = struct {
         const scale = try ctx.args.integer(2);
         const img = lookupIcon(allocator, name, @intCast(size), @intCast(scale)) catch |err| blk: {
             if (!std.fs.path.isAbsolute(name)) {
-                ctx.errors("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
-                std.log.scoped(.webview).err("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                ctx.errors("Failed to lookup icon '{s}': {t}", .{ name, err });
+                std.log.scoped(.webview).err("Failed to lookup icon '{s}': {t}", .{ name, err });
                 return;
             }
             break :blk makeHtmlImg(allocator, name) catch {
-                ctx.errors("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
-                std.log.scoped(.webview).err("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                ctx.errors("Failed to lookup icon '{s}': {t}", .{ name, err });
+                std.log.scoped(.webview).err("Failed to lookup icon '{s}': {t}", .{ name, err });
                 return;
             };
         };
@@ -486,19 +486,18 @@ fn lookupIcon(allocator: Allocator, name: []const u8, size: i32, scale: i32) ![]
 fn makeHtmlImg(allocator: Allocator, filePath: []const u8) ![]const u8 {
     const f = try std.fs.openFileAbsolute(filePath, .{});
     defer f.close();
+    var buf: [512]u8 = undefined;
+    var reader = f.reader(&buf);
+    const payload = try reader.interface.allocRemaining(allocator, .limited(1024 * 1024 * 10));
+    defer allocator.free(payload);
     if (std.mem.endsWith(u8, filePath, ".svg")) {
-        const svg = try f.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-        defer allocator.free(svg);
-        var uri = std.ArrayList(u8).init(allocator);
+        var uri = std.Io.Writer.Allocating.init(allocator);
         defer uri.deinit();
-        try std.Uri.Component.percentEncode(uri.writer(), svg, isValidcharhar);
-        return try std.fmt.allocPrint(allocator, "data:image/svg+xml,{s}", .{uri.items});
+        try std.Uri.Component.percentEncode(&uri.writer, payload, isValidcharhar);
+        return try std.fmt.allocPrint(allocator, "data:image/svg+xml,{s}", .{uri.written()});
     }
     if (std.mem.endsWith(u8, filePath, ".png")) {
-        var base64 = std.ArrayList(u8).init(allocator);
-        defer base64.deinit();
-        try std.base64.standard.Encoder.encodeFromReaderToWriter(base64.writer(), f.reader());
-        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{base64.items});
+        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{b64}", .{payload});
     }
     return error.IconNotSupported;
 }

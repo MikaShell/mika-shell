@@ -191,29 +191,29 @@ pub const @"80211ApSecurityFlags" = enum(u32) {
     _,
     const Self = @This();
     pub fn parse(allocator: std.mem.Allocator, flags: u32) ![]Self {
-        var list = std.ArrayList(Self).init(allocator);
+        var list = std.ArrayList(Self){};
 
         if (flags == 0) {
-            return list.toOwnedSlice();
+            return list.toOwnedSlice(allocator);
         }
 
-        if ((flags & @intFromEnum(Self.Pair_WEP40)) != 0) try list.append(.Pair_WEP40);
-        if ((flags & @intFromEnum(Self.Pair_WEP104)) != 0) try list.append(.Pair_WEP104);
-        if ((flags & @intFromEnum(Self.Pair_TKIP)) != 0) try list.append(.Pair_TKIP);
-        if ((flags & @intFromEnum(Self.Pair_CCMP)) != 0) try list.append(.Pair_CCMP);
+        if ((flags & @intFromEnum(Self.Pair_WEP40)) != 0) try list.append(allocator, .Pair_WEP40);
+        if ((flags & @intFromEnum(Self.Pair_WEP104)) != 0) try list.append(allocator, .Pair_WEP104);
+        if ((flags & @intFromEnum(Self.Pair_TKIP)) != 0) try list.append(allocator, .Pair_TKIP);
+        if ((flags & @intFromEnum(Self.Pair_CCMP)) != 0) try list.append(allocator, .Pair_CCMP);
 
-        if ((flags & @intFromEnum(Self.Group_WEP40)) != 0) try list.append(.Group_WEP40);
-        if ((flags & @intFromEnum(Self.Group_WEP104)) != 0) try list.append(.Group_WEP104);
-        if ((flags & @intFromEnum(Self.Group_TKIP)) != 0) try list.append(.Group_TKIP);
-        if ((flags & @intFromEnum(Self.Group_CCMP)) != 0) try list.append(.Group_CCMP);
+        if ((flags & @intFromEnum(Self.Group_WEP40)) != 0) try list.append(allocator, .Group_WEP40);
+        if ((flags & @intFromEnum(Self.Group_WEP104)) != 0) try list.append(allocator, .Group_WEP104);
+        if ((flags & @intFromEnum(Self.Group_TKIP)) != 0) try list.append(allocator, .Group_TKIP);
+        if ((flags & @intFromEnum(Self.Group_CCMP)) != 0) try list.append(allocator, .Group_CCMP);
 
-        if ((flags & @intFromEnum(Self.Key_Mgmt_PSK)) != 0) try list.append(.Key_Mgmt_PSK);
-        if ((flags & @intFromEnum(Self.Key_Mgmt_8021X)) != 0) try list.append(.Key_Mgmt_8021X);
-        if ((flags & @intFromEnum(Self.Key_Mgmt_SAE)) != 0) try list.append(.Key_Mgmt_SAE);
-        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE)) != 0) try list.append(.Key_Mgmt_OWE);
-        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE_Transition)) != 0) try list.append(.Key_Mgmt_OWE_Transition);
-        if ((flags & @intFromEnum(Self.Key_Mgmt_EAP_Suite_B_192)) != 0) try list.append(.Key_Mgmt_EAP_Suite_B_192);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_PSK)) != 0) try list.append(allocator, .Key_Mgmt_PSK);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_8021X)) != 0) try list.append(allocator, .Key_Mgmt_8021X);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_SAE)) != 0) try list.append(allocator, .Key_Mgmt_SAE);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE)) != 0) try list.append(allocator, .Key_Mgmt_OWE);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_OWE_Transition)) != 0) try list.append(allocator, .Key_Mgmt_OWE_Transition);
+        if ((flags & @intFromEnum(Self.Key_Mgmt_EAP_Suite_B_192)) != 0) try list.append(allocator, .Key_Mgmt_EAP_Suite_B_192);
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(allocator);
     }
 };

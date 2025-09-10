@@ -2,7 +2,6 @@
   lib,
   pkgs,
   pkg-config,
-  zig,
   gtk4,
   webkitgtk_6_0,
   gtk4-layer-shell,
@@ -17,7 +16,6 @@
   esbuild,
   stdenv,
   wrapGAppsHook4,
-  zig_0_14,
   wayland-scanner,
   systemd,
   libinput,
@@ -34,7 +32,8 @@
     if debug
     then "off"
     else "fast";
-  zig_hook = zig_0_14.hook.overrideAttrs {
+  zig = pkgs.zig_0_15;
+  zig_hook = zig.hook.overrideAttrs {
     zig_default_flags = "--release=${release} --color off";
   };
 in

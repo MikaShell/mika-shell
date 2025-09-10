@@ -90,28 +90,29 @@ pub const OS = struct {
         ctx_.* = .{
             .child = child,
             .base64Output = eql(u8, output_str, "base64"),
-            .result = ctx.@"async"(),
+            .result = ctx.async(),
             .allocator = allocator,
         };
         _ = glib.childWatchAdd(child.id, struct {
             fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
-                const c: *Ctx = @alignCast(@ptrCast(data));
-                const a = c.allocator;
+                const c: *Ctx = @ptrCast(@alignCast(data));
+                const alloc = c.allocator;
                 if (c.child.stdout) |stdout| {
                     defer stdout.close();
-                    const stdoutBuf: []const u8 = stdout.reader().readAllAlloc(a, 1024 * 1024 * 10) catch |err| {
-                        c.result.errors("Failed to read stdout: {s}", .{@errorName(err)});
+                    var buf: [512]u8 = undefined;
+                    var reader = stdout.reader(&buf);
+                    const stdoutBuf: []const u8 = reader.interface.allocRemaining(alloc, .limited(1024 * 1024 * 10)) catch |err| {
+                        c.result.errors("Failed to read stdout: {t}", .{err});
                         return;
                     };
-                    defer a.free(stdoutBuf);
+                    defer alloc.free(stdoutBuf);
                     if (c.base64Output) {
-                        const encoder = std.base64.standard.Encoder;
-                        const base64 = c.allocator.alloc(u8, encoder.calcSize(stdoutBuf.len)) catch |err| {
-                            c.result.errors("Failed to encode stdout: {s}", .{@errorName(err)});
+                        const base64 = std.fmt.allocPrint(alloc, "{b64}", .{stdoutBuf}) catch |err| {
+                            c.result.errors("Failed to encode stdout: {t}", .{err});
                             return;
                         };
-                        defer c.allocator.free(base64);
-                        c.result.commit(encoder.encode(base64, stdoutBuf));
+                        defer alloc.free(base64);
+                        c.result.commit(base64);
                     } else {
                         c.result.commit(stdoutBuf);
                     }
@@ -119,7 +120,7 @@ pub const OS = struct {
                     c.result.commit({});
                 }
                 _ = c.child.kill() catch {};
-                a.destroy(c);
+                alloc.destroy(c);
             }
         }.f, ctx_);
     }
@@ -148,7 +149,7 @@ pub const OS = struct {
         child_.* = child;
         _ = glib.childWatchAdd(child.id, struct {
             fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
-                const c: *std.process.Child = @alignCast(@ptrCast(data));
+                const c: *std.process.Child = @ptrCast(@alignCast(data));
                 const a = c.allocator;
                 _ = c.kill() catch {};
                 a.destroy(c);
@@ -183,12 +184,14 @@ pub const OS = struct {
             file = try std.fs.cwd().openFile(path, .{});
         }
         defer file.close();
-        const data = try file.reader().readAllAlloc(self.allocator, 1024 * 1024 * 10);
+        var buf: [512]u8 = undefined;
+        var reader = file.reader(&buf);
+        var r = &reader.interface;
+        const data = try r.allocRemaining(self.allocator, .limited(1024 * 1024 * 10));
         defer self.allocator.free(data);
-        const encoder = std.base64.standard.Encoder;
-        const base64 = try self.allocator.alloc(u8, encoder.calcSize(data.len));
+        const base64 = try std.fmt.allocPrint(self.allocator, "{b64}", .{data});
         defer self.allocator.free(base64);
-        ctx.commit(encoder.encode(base64, data));
+        ctx.commit(base64);
     }
 };
 const Allocator = std.mem.Allocator;
@@ -238,14 +241,14 @@ const SystemInfo = struct {
         {
             const cpuInfo = try std.fs.openFileAbsolute("/proc/cpuinfo", .{});
             defer cpuInfo.close();
-            var buffered = std.io.bufferedReader(cpuInfo.reader());
-            var reader = buffered.reader();
+            var buf: [512]u8 = undefined;
+            var reader = cpuInfo.reader(&buf);
+            var r = &reader.interface;
             while (true) {
-                const line = reader.readUntilDelimiterAlloc(allocator, '\n', 1024 * 1024) catch |err| {
+                const line = r.takeDelimiterExclusive('\n') catch |err| {
                     if (err == error.EndOfStream) break;
                     return err;
                 };
-                defer allocator.free(line);
                 if (std.mem.startsWith(u8, line, "model name")) {
                     const i = std.mem.indexOf(u8, line, ":").?;
                     info.cpu = try allocator.dupe(u8, line[i + 2 ..]);
@@ -260,9 +263,12 @@ const SystemInfo = struct {
         {
             const uptime = try std.fs.openFileAbsolute("/proc/uptime", .{});
             defer uptime.close();
-            const buf = try uptime.reader().readAllAlloc(allocator, 1024);
-            defer allocator.free(buf);
-            var fields = std.mem.splitScalar(u8, buf, ' ');
+            var buf: [64]u8 = undefined;
+            var reader = uptime.reader(&buf);
+            var r = &reader.interface;
+            const payload = try r.allocRemaining(allocator, .limited(1024 * 1024 * 10));
+            defer allocator.free(payload);
+            var fields = std.mem.splitScalar(u8, payload, ' ');
             const uptime_seconds = std.fmt.parseFloat(f64, fields.next().?) catch 0;
             info.uptime = @intFromFloat(uptime_seconds);
         }
@@ -321,10 +327,12 @@ const UserInfo = struct {
         for (paths) |path| {
             const file = std.fs.openFileAbsolute(path, .{}) catch continue;
             defer file.close();
-            var base64 = std.ArrayList(u8).init(allocator);
-            defer base64.deinit();
-            try std.base64.standard.Encoder.encodeFromReaderToWriter(base64.writer(), file.reader());
-            info.avatar = try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{base64.items});
+            var buf: [512]u8 = undefined;
+            var reader = file.reader(&buf);
+            var r = &reader.interface;
+            const payload = try r.allocRemaining(allocator, .limited(1024 * 1024 * 10));
+            defer allocator.free(payload);
+            info.avatar = try std.fmt.allocPrint(allocator, "data:image/png;base64,{b64}", .{payload});
             break;
         }
 

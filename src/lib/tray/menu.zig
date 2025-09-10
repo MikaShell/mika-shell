@@ -182,7 +182,7 @@ const Properties = struct {
 //     defer bus.deinit();
 //     const menu = try new(allocator, bus, ":1.1198", "/MenuBar");
 //     defer menu.deinit(allocator);
-//     const json = try std.json.stringifyAlloc(allocator, menu, .{ .whitespace = .indent_4 });
+//     const json = try std.json.Stringify.valueAlloc(allocator, menu, .{ .whitespace = .indent_4 });
 //     defer allocator.free(json);
 //     print("Menu:{s}\n", .{json});
 //     try activate(allocator, bus, ":1.1198", "/MenuBar", 201);

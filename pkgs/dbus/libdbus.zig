@@ -742,7 +742,7 @@ test "method-call-result" {
     err.init();
     defer err.deinit();
     const conn = Connection.get(.Session, &err) catch {
-        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
+        std.log.scoped(.dbus).err("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
         return;
     };
     defer conn.close();
@@ -930,7 +930,7 @@ test "method-call-with-args" {
     err.init();
     defer err.deinit();
     const conn = Connection.get(.Session, &err) catch {
-        std.debug.print("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
+        std.log.scoped(.dbus).err("Can not get session bus connection, did you run dbus service script? error: {s}\n", .{err.message()});
         return;
     };
     var req: *Message = undefined;

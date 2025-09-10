@@ -27,8 +27,8 @@ pub fn withGLibLoop(bus: *Bus) !GLibWatch {
     const ch = glib.IOChannel.unixNew(try bus.conn.getUnixFd());
     defer ch.unref();
     const source = glib.ioAddWatch(ch, .{ .in = true }, &struct {
-        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.C) c_int {
-            const b: *Bus = @alignCast(@ptrCast(data));
+        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+            const b: *Bus = @ptrCast(@alignCast(data));
             if (!b.conn.readWrite(-1)) return 0;
             while (b.conn.dispatch() != .Complete) {}
             return 1;
@@ -52,42 +52,41 @@ pub const MatchRule = struct {
     arg: []?[]const u8 = &.{},
     arg_path: []?[]const u8 = &.{},
     fn toString(self: MatchRule, allocator: Allocator) Allocator.Error![]const u8 {
-        var str = std.ArrayList(u8).init(allocator);
-        defer str.deinit();
-        const writer = str.writer();
-        const format = std.fmt.format;
+        var str = std.ArrayList(u8){};
+        defer str.deinit(allocator);
+        var writer = str.writer(allocator);
         if (self.type) |t| {
-            try format(writer, "type='{s}',", .{@tagName(t)});
+            try writer.print("type='{t}',", .{t});
         }
         if (self.sender) |s| {
-            try format(writer, "sender='{s}',", .{s});
+            try writer.print("sender='{s}',", .{s});
         }
         if (self.interface) |i| {
-            try format(writer, "interface='{s}',", .{i});
+            try writer.print("interface='{s}',", .{i});
         }
         if (self.destination) |d| {
-            try format(writer, "destination='{s}',", .{d});
+            try writer.print("destination='{s}',", .{d});
         }
         if (self.member) |m| {
-            try format(writer, "member='{s}',", .{m});
+            try writer.print("member='{s}',", .{m});
         }
         if (self.path) |p| {
-            try format(writer, "path='{s}',", .{p});
+            try writer.print("path='{s}',", .{p});
         }
         if (self.path_namespace) |n| {
-            try format(writer, "path_namespace='{s}',", .{n});
+            try writer.print("path_namespace='{s}',", .{n});
         }
         for (self.arg, 0..) |a, i| {
             if (a == null) continue;
-            try format(writer, "arg{d}='{s}',", .{ i, a.? });
+            try writer.print("arg{d}='{s}',", .{ i, a.? });
         }
         for (self.arg_path, 0..) |ap, i| {
             if (ap == null) continue;
-            try format(writer, "arg{d}_path='{s}',", .{ i, ap.? });
+            try writer.print("arg{d}_path='{s}',", .{ i, ap.? });
         }
         _ = str.pop();
-        try str.append('\x00');
-        return (try str.toOwnedSlice());
+        try str.append(allocator, '\x00');
+        return (try str.toOwnedSlice(allocator));
     }
     fn eql(a: MatchRule, b: MatchRule) bool {
         if (a.type != b.type) return false;
@@ -245,10 +244,10 @@ pub const Bus = struct {
             .err = err,
             .allocator = allocator,
             .dbus = undefined,
-            .objects = std.ArrayList(*object.Object).init(allocator),
+            .objects = std.ArrayList(*object.Object){},
             .service = null,
-            .filters = std.ArrayList(*FilterWrapper).init(allocator),
-            .ownerNames = std.ArrayList([]const u8).init(allocator),
+            .filters = std.ArrayList(*FilterWrapper){},
+            .ownerNames = std.ArrayList([]const u8){},
         };
         bus.dbus = try common.freedesktopDBus(bus);
         return bus;
@@ -264,10 +263,10 @@ pub const Bus = struct {
         for (self.ownerNames.items) |item| {
             self.allocator.free(item);
         }
-        self.ownerNames.deinit();
-        self.filters.deinit();
+        self.ownerNames.deinit(self.allocator);
+        self.filters.deinit(self.allocator);
         for (self.objects.items) |obj| obj.deinit();
-        self.objects.deinit();
+        self.objects.deinit(self.allocator);
         if (self.service) |s| s.deinit();
         self.conn.close();
         self.err.deinit();
@@ -374,7 +373,7 @@ pub const Bus = struct {
         const r = try self.conn.requestName(name, flag, self.err);
         switch (r) {
             .PrimaryOwner => {
-                try self.ownerNames.append(try self.allocator.dupe(u8, name));
+                try self.ownerNames.append(self.allocator, try self.allocator.dupe(u8, name));
             },
             .InQueue => return error.NameInQueue,
             .Exists => return error.NameExists,
@@ -405,7 +404,7 @@ pub const Bus = struct {
             .data = data,
         };
         if (self.conn.addFilter(@ptrCast(&FilterWrapper.call), wrapper, null)) {
-            try self.filters.append(wrapper);
+            try self.filters.append(self.allocator, wrapper);
             return true;
         } else {
             self.allocator.destroy(wrapper);

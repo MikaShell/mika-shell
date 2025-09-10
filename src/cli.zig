@@ -61,7 +61,6 @@ fn cmdDaemon(r: *cli.AppRunner) !cli.Command {
     };
 }
 fn cmdToggle(r: *cli.AppRunner) !cli.Command {
-    defer allocator.free(config.toggle.pageName);
     return cli.Command{
         .name = "toggle",
         .description = .{
@@ -84,7 +83,6 @@ fn cmdToggle(r: *cli.AppRunner) !cli.Command {
     };
 }
 fn cmdOpen(r: *cli.AppRunner) !cli.Command {
-    defer allocator.free(config.open.pageName);
     return cli.Command{
         .name = "open",
         .description = .{
@@ -310,7 +308,7 @@ pub fn daemon() !void {
     defer loop.unref();
     const sigintHandler = glib.unixSignalAdd(std.posix.SIG.INT, struct {
         fn cb(data: ?*anyopaque) callconv(.c) c_int {
-            const loop_: *glib.MainLoop = @alignCast(@ptrCast(data));
+            const loop_: *glib.MainLoop = @ptrCast(@alignCast(data));
             loop_.quit();
             return 1;
         }

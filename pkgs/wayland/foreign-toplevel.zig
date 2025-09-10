@@ -13,17 +13,18 @@ pub const Listener = struct {
 };
 
 fn handleToplevel(h: *ForeignToplevelHandle, event: ForeignToplevelHandle.Event, ctx: *Manager) void {
-    const node = blk: {
+    const toplevelNode = blk: {
         var it = ctx.toplevels.first;
         while (it) |node| {
-            if (node.data.handler == h) {
-                break :blk node;
+            const toplevelNode: *ToplevelNode = @fieldParentPtr("node", node);
+            if (toplevelNode.data.handler == h) {
+                break :blk toplevelNode;
             }
             it = node.next;
         }
         return;
     };
-    const t = &node.data;
+    const t = &toplevelNode.data;
     const allocator = ctx.allocator;
     const span = std.mem.span;
     switch (event) {
@@ -50,7 +51,7 @@ fn handleToplevel(h: *ForeignToplevelHandle, event: ForeignToplevelHandle.Event,
         },
         .closed => {
             if (ctx.listener.closed) |callback| callback(ctx.listener.userdata, h.getId());
-            ctx.remove(node);
+            ctx.remove(toplevelNode);
         },
         .output_enter => {
             if (ctx.listener.enter) |callback| callback(ctx.listener.userdata, h.getId());
@@ -71,7 +72,10 @@ fn foreignToplevelManagerListener(_: *ForeignToplevelManager, event: ForeignTopl
         },
     }
 }
-const ToplevelList = std.DoublyLinkedList(ToplevelContext);
+const ToplevelNode = struct {
+    data: ToplevelContext,
+    node: std.DoublyLinkedList.Node,
+};
 
 pub const Toplevel = struct {
     id: u32,
@@ -116,7 +120,7 @@ pub const Manager = struct {
     allocator: Allocator,
     foreignToplevelManager: ?*ForeignToplevelManager,
     seat: ?*wl.Seat,
-    toplevels: ToplevelList,
+    toplevels: std.DoublyLinkedList,
     glibWatch: common.GLibWatch,
     display: *wl.Display,
     pub fn init(allocator: Allocator, listener: Listener) !*Self {
@@ -141,8 +145,9 @@ pub const Manager = struct {
     fn getHandler(self: *Self, id: u32) ?*ForeignToplevelHandle {
         var it = self.toplevels.first;
         while (it) |node| {
-            if (node.data.handler.getId() == id) {
-                return node.data.handler;
+            const toplevel: *ToplevelNode = @fieldParentPtr("node", node);
+            if (toplevel.data.handler.getId() == id) {
+                return toplevel.data.handler;
             }
             it = node.next;
         }
@@ -162,37 +167,38 @@ pub const Manager = struct {
     // 由 wayland 回调的 finish 事件调用
     fn destroy(self: *Self) void {
         while (self.toplevels.pop()) |node| {
-            node.data.deinit();
-            self.allocator.destroy(node);
+            const toplevel: *ToplevelNode = @fieldParentPtr("node", node);
+            toplevel.data.deinit();
+            self.allocator.destroy(toplevel);
         }
         self.foreignToplevelManager.?.destroy();
         self.foreignToplevelManager = null;
     }
     fn append(self: *Self, t: *ForeignToplevelHandle) void {
-        const node = self.allocator.create(ToplevelList.Node) catch unreachable;
-        node.* = .{
+        const toplevelNode = self.allocator.create(ToplevelNode) catch unreachable;
+        toplevelNode.* = .{
             .data = ToplevelContext.init(self.allocator, t),
-            .prev = null,
-            .next = null,
+            .node = .{},
         };
-        self.toplevels.append(node);
+        self.toplevels.append(&toplevelNode.node);
         t.setListener(*Self, handleToplevel, self);
     }
-    fn remove(self: *Self, node: *ToplevelList.Node) void {
-        self.toplevels.remove(node);
+    fn remove(self: *Self, node: *ToplevelNode) void {
+        self.toplevels.remove(&node.node);
         node.data.deinit();
         self.allocator.destroy(node);
     }
 
     pub fn list(self: *Self, allocator: Allocator) ![]Toplevel {
-        var result = std.ArrayList(Toplevel).init(allocator);
-        errdefer result.deinit();
+        var result = std.ArrayList(Toplevel){};
+        errdefer result.deinit(allocator);
         var it = self.toplevels.first;
         while (it) |node| {
-            try result.append(node.data.make());
+            const toplevel: *ToplevelNode = @fieldParentPtr("node", node);
+            try result.append(allocator, toplevel.data.make());
             it = node.next;
         }
-        return try result.toOwnedSlice();
+        return try result.toOwnedSlice(allocator);
     }
     pub fn activate(self: *Self, id: u32) !void {
         try self.check();
@@ -261,7 +267,7 @@ test "foreign-toplevel" {
     const glib = @import("glib");
     _ = glib.idleAdd(@ptrCast(&struct {
         fn f(data: ?*anyopaque) callconv(.C) c_int {
-            const m: *Manager = @alignCast(@ptrCast(data));
+            const m: *Manager = @ptrCast(@alignCast(data));
             const toplevels = m.list(allocator) catch unreachable;
             allocator.free(toplevels);
             if (toplevels.len == 0) return 1;

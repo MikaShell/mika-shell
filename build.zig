@@ -72,7 +72,6 @@ pub fn build(b: *std.Build) void {
     const example_mod = b.createModule(.{
         .root_source_file = b.path("example.zig"),
         .target = target,
-        .optimize = optimize,
     });
     // EXE
     const exe_mod = b.createModule(.{
@@ -84,7 +83,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "mika-shell",
         .root_module = exe_mod,
-        .optimize = optimize,
+        .use_llvm = true,
     });
     const generate_js_binding_step = generate.js_binding(b, optimize, "src/bindings.js");
     const generate_extra_js_binding_step = generate.extra_js_binding(b, "example/example/extra.js");

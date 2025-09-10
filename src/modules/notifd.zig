@@ -79,7 +79,7 @@ pub const Notifd = struct {
                 ctx.errors("Another notification service is running, cannot initialize Notifd module", .{});
                 return error.HasAnotherNotifdServiceRunning;
             }
-            ctx.errors("Failed to initialize notifd: {s}", .{@errorName(err)});
+            ctx.errors("Failed to initialize notifd: {t}", .{err});
             return error.FailedToInitNotifd;
         };
     }
@@ -96,10 +96,10 @@ pub const Notifd = struct {
     pub fn getAll(self: *Self, ctx: *Context) !void {
         try self.setup(ctx);
         const notifd = self.notifd.?;
-        var items = std.ArrayList(notification.Notification).init(self.allocator);
-        defer items.deinit();
+        var items = std.ArrayList(notification.Notification){};
+        defer items.deinit(self.allocator);
         var iter = notifd.items.iterator();
-        while (iter.next()) |kv| try items.append(kv.value_ptr.*);
+        while (iter.next()) |kv| try items.append(self.allocator, kv.value_ptr.*);
         ctx.commit(items.items);
     }
     pub fn activate(self: *Self, ctx: *Context) !void {

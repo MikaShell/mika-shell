@@ -101,8 +101,8 @@ pub const Item = struct {
         arena.* = std.heap.ArenaAllocator.init(allocator);
         errdefer arena.deinit();
         const arenaAllocator = arena.allocator();
-        self._listeners = std.ArrayList(Listener).init(allocator);
-        errdefer self._listeners.deinit();
+        self._listeners = std.ArrayList(Listener){};
+        errdefer self._listeners.deinit(allocator);
         const split = std.mem.indexOf(u8, service, "/");
         if (split == null) return error.InvalidTarget;
         const name = try allocator.dupe(u8, service[0..split.?]);
@@ -234,7 +234,7 @@ pub const Item = struct {
         }
     }
     pub fn addListener(self: *Self, func: *const fn (item: *Item, data: ?*anyopaque) void, data: ?*anyopaque) !void {
-        try self._listeners.append(Listener{
+        try self._listeners.append(self._allocator, Listener{
             .func = func,
             .data = data,
         });
@@ -437,7 +437,7 @@ pub const Item = struct {
         allocator.free(self.data.title);
         allocator.free(self.data.status);
         allocator.free(self.owner);
-        self._listeners.deinit();
+        self._listeners.deinit(allocator);
         // attention
         allocator.free(self.data.attention.iconName);
         allocator.free(self.data.attention.movieName);

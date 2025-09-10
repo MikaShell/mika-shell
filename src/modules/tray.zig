@@ -89,7 +89,7 @@ pub const Tray = struct {
         const bus = self.bus;
         if (self.host == null) {
             self.host = tray.Host.init(allocator, bus) catch |err| {
-                return ctx.errors("failed to init tray host {s}", .{@errorName(err)});
+                return ctx.errors("failed to init tray host {t}", .{err});
             };
             try self.host.?.addListener(onItemUpdated, self);
         }

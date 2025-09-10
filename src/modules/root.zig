@@ -80,7 +80,7 @@ fn replyErrors(reply: *webkit.ScriptMessageReply, comptime fmt: []const u8, args
     const allocator = std.heap.page_allocator;
     const err = std.fmt.allocPrint(allocator, fmt, args) catch @panic("OOM");
     defer allocator.free(err);
-    const msg = std.fmt.allocPrintZ(allocator, "Failed to call method: {s}", .{err}) catch @panic("OOM");
+    const msg = std.fmt.allocPrintSentinel(allocator, "Failed to call method: {s}", .{err}, 0) catch @panic("OOM");
     defer allocator.free(msg);
     reply.returnErrorMessage(msg.ptr);
 }
@@ -141,7 +141,7 @@ pub const Context = struct {
         replyErrors(self.reply.?, fmt, args);
         self.reply = null;
     }
-    pub fn @"async"(self: *Self) Async {
+    pub fn async(self: *Self) Async {
         defer self.reply = null;
         self.ctx.ref();
         return .{ .reply = self.reply.?.ref(), .ctx = self.ctx };
@@ -213,8 +213,8 @@ pub const Modules = struct {
                 .systemBus = option.systemBus,
                 .sessionBus = option.sessionBus,
             },
-            .registered = std.ArrayList(Registered).init(allocator),
-            .eventGroups = std.ArrayList(EventGroup).init(allocator),
+            .registered = std.ArrayList(Registered){},
+            .eventGroups = std.ArrayList(EventGroup){},
         };
         return m;
     }
@@ -223,11 +223,11 @@ pub const Modules = struct {
         for (self.registered.items) |module| {
             module.deinit(module.ptr, self.allocator);
         }
-        self.registered.deinit();
+        self.registered.deinit(self.allocator);
         for (self.eventGroups.items) |group| {
             self.allocator.free(group.events);
         }
-        self.eventGroups.deinit();
+        self.eventGroups.deinit(self.allocator);
         self.allocator.destroy(self);
     }
     pub fn call(self: *Modules, name: []const u8, ctx: *Context) !void {
@@ -238,7 +238,7 @@ pub const Modules = struct {
     }
     pub fn mount(self: *Modules, comptime Module_: type, comptime name: []const u8) !void {
         const m = try Module_.init(self.ctx);
-        try self.registered.append(.{
+        try self.registered.append(self.allocator, .{
             .ptr = m,
             .deinit = @ptrCast(&Module_.deinit),
         });
@@ -272,7 +272,7 @@ pub const Modules = struct {
             if (@hasDecl(Module_, "eventOnChange")) {
                 onChanged = &Module_.eventOnChange;
             }
-            try self.eventGroups.append(.{
+            try self.eventGroups.append(self.allocator, .{
                 .events = try self.allocator.dupe(events.Events, events_),
                 .start = @ptrCast(start),
                 .stop = @ptrCast(stop),
@@ -355,7 +355,7 @@ pub const Emitter = struct {
     }
     pub fn deinit(self: *Self) void {
         var it = self.subscriber.valueIterator();
-        while (it.next()) |v| v.deinit();
+        while (it.next()) |v| v.deinit(self.allocator);
         self.subscriber.deinit();
         self.allocator.free(self.groups);
         self.allocator.destroy(self);
@@ -375,23 +375,23 @@ pub const Emitter = struct {
         }
         const list = try self.subscriber.getOrPut(event);
         if (!list.found_existing) {
-            list.value_ptr.* = std.ArrayList(u64).init(self.allocator);
+            list.value_ptr.* = std.ArrayList(u64){};
         }
         for (list.value_ptr.items) |id_| {
             if (id_ == id) return;
         }
-        try list.value_ptr.append(id);
+        try list.value_ptr.append(self.allocator, id);
     }
     pub fn unsubscribeAll(self: *Self, id: u64) void {
         var it = self.subscriber.iterator();
-        var removed = std.ArrayList(events.Events).init(self.allocator);
-        defer removed.deinit();
+        var removed = std.ArrayList(events.Events){};
+        defer removed.deinit(self.allocator);
         while (it.next()) |kv| {
             const list = kv.value_ptr;
             for (list.items, 0..) |item, i| {
                 if (item == id) {
                     _ = list.swapRemove(i);
-                    try removed.append(kv.key_ptr.*);
+                    try removed.append(self.allocator, kv.key_ptr.*);
                     break;
                 }
             }
@@ -421,7 +421,7 @@ pub const Emitter = struct {
                 if (item != id) continue;
                 _ = list.swapRemove(i);
                 if (list.items.len == 0) {
-                    list.deinit();
+                    list.deinit(self.allocator);
                     const key = self.subscriber.getKey(event).?;
                     _ = self.subscriber.remove(key);
                 }
@@ -438,7 +438,7 @@ pub const Emitter = struct {
     }
     pub fn emit(self: *Self, event: events.Events, data: anytype) void {
         const list = self.subscriber.get(event) orelse return;
-        const json = std.json.stringifyAlloc(self.allocator, .{ .event = @intFromEnum(event), .data = data }, .{}) catch unreachable;
+        const json = std.json.Stringify.valueAlloc(self.allocator, .{ .event = @intFromEnum(event), .data = data }, .{}) catch unreachable;
         defer self.allocator.free(json);
         for (list.items) |id| {
             const json_ = self.allocator.dupe(u8, json) catch unreachable;

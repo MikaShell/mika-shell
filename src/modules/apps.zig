@@ -84,8 +84,8 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
     defer dir.close();
     var iter = try dir.walk(allocator);
     defer iter.deinit();
-    var result = std.ArrayList(Entry).init(allocator);
-    defer result.deinit();
+    var result = std.ArrayList(Entry){};
+    defer result.deinit(allocator);
     find: while (try iter.next()) |entry| {
         if (entry.kind == .directory) continue;
         if (!std.mem.endsWith(u8, entry.path, ".desktop")) continue;
@@ -125,9 +125,9 @@ fn findApps(allocator: Allocator, dirPath: []const u8, locals: []const []const u
         } else {
             e.dbusName = null;
         }
-        try result.append(e);
+        try result.append(allocator, e);
     }
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 const ini = @import("ini");
 fn parseLangCode(code: []const u8) []const u8 {
@@ -141,24 +141,24 @@ fn getPreferredLocales(allocator: Allocator) ![]const []const u8 {
     var env = std.process.getEnvMap(allocator) catch return &.{};
     defer env.deinit();
     if (env.get("LANGUAGE")) |lang_env| {
-        var list = std.ArrayList([]const u8).init(allocator);
-        defer list.deinit();
+        var list = std.ArrayList([]const u8){};
+        defer list.deinit(allocator);
         var iter = std.mem.splitAny(u8, lang_env, ":");
         while (iter.next()) |code| {
-            try list.append(try allocator.dupe(u8, code));
+            try list.append(allocator, try allocator.dupe(u8, code));
         }
-        return list.toOwnedSlice();
+        return try list.toOwnedSlice(allocator);
     }
 
-    var buf = std.ArrayList([]const u8).init(allocator);
-    defer buf.deinit();
+    var buf = std.ArrayList([]const u8){};
+    defer buf.deinit(allocator);
     if (env.get("LC_MESSAGES")) |lc| {
-        try buf.append(try allocator.dupe(u8, parseLangCode(lc)));
+        try buf.append(allocator, try allocator.dupe(u8, parseLangCode(lc)));
     } else if (env.get("LANG")) |l| {
-        try buf.append(try allocator.dupe(u8, parseLangCode(l)));
+        try buf.append(allocator, try allocator.dupe(u8, parseLangCode(l)));
     }
 
-    return try buf.toOwnedSlice();
+    return try buf.toOwnedSlice(allocator);
 }
 
 const Locale = struct {
@@ -271,35 +271,36 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
     };
     const f = try std.fs.openFileAbsolute(path, .{});
     defer f.close();
-    var iter = ini.parse(allocator, f.reader(), ";#");
+    const reader = f.deprecatedReader();
+    var iter = ini.parse(allocator, reader, ";#");
     defer iter.deinit();
     var section: ?[]const u8 = null;
     defer if (section) |s| allocator.free(s);
     var actionCount: u32 = 0;
-    var names = std.ArrayList(StrAndScore).init(allocator);
+    var names = std.ArrayList(StrAndScore){};
     defer {
         for (names.items) |n| allocator.free(n.str);
-        names.deinit();
+        names.deinit(allocator);
     }
-    var comments = std.ArrayList(StrAndScore).init(allocator);
+    var comments = std.ArrayList(StrAndScore){};
     defer {
         for (comments.items) |c| allocator.free(c.str);
-        comments.deinit();
+        comments.deinit(allocator);
     }
-    var keywords = std.ArrayList(StrAndScore).init(allocator);
+    var keywords = std.ArrayList(StrAndScore){};
     defer {
         for (keywords.items) |k| allocator.free(k.str);
-        keywords.deinit();
+        keywords.deinit(allocator);
     }
-    var genericNames = std.ArrayList(StrAndScore).init(allocator);
+    var genericNames = std.ArrayList(StrAndScore){};
     defer {
         for (genericNames.items) |gn| allocator.free(gn.str);
-        genericNames.deinit();
+        genericNames.deinit(allocator);
     }
     var actionNames: ?std.ArrayList(StrAndScore) = null;
     defer if (actionNames != null) {
         for (actionNames.?.items) |an| allocator.free(an.str);
-        actionNames.?.deinit();
+        actionNames.?.deinit(allocator);
     };
     const lessThan = struct {
         fn lessThan(_: void, a: StrAndScore, b: StrAndScore) bool {
@@ -320,7 +321,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                     for (actionNames.?.items) |a| {
                         allocator.free(a.str);
                     }
-                    actionNames.?.deinit();
+                    actionNames.?.deinit(allocator);
                     actionNames = null;
                 }
                 actionCount += 1;
@@ -334,7 +335,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                     .icon = null,
                     .exec = null,
                 };
-                actionNames = std.ArrayList(StrAndScore).init(allocator);
+                actionNames = std.ArrayList(StrAndScore){};
             }
             continue;
         }
@@ -367,7 +368,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                 if (std.mem.startsWith(u8, prop.key, "Name[")) {
                     const lcMessage = prop.key[5 .. prop.key.len - 1];
                     const score = scoreLocaleMatch(lcMessage, locals);
-                    try names.append(.{
+                    try names.append(allocator, .{
                         .str = try allocator.dupe(u8, prop.value),
                         .score = score,
                     });
@@ -382,7 +383,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                 if (std.mem.startsWith(u8, prop.key, "GenericName[")) {
                     const lcMessage = prop.key[12 .. prop.key.len - 1];
                     const score = scoreLocaleMatch(lcMessage, locals);
-                    try genericNames.append(.{
+                    try genericNames.append(allocator, .{
                         .str = try allocator.dupe(u8, prop.value),
                         .score = score,
                     });
@@ -399,7 +400,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                 if (std.mem.startsWith(u8, prop.key, "Comment[")) {
                     const lcMessage = prop.key[8 .. prop.key.len - 1];
                     const score = scoreLocaleMatch(lcMessage, locals);
-                    try comments.append(.{
+                    try comments.append(allocator, .{
                         .str = try allocator.dupe(u8, prop.value),
                         .score = score,
                     });
@@ -414,23 +415,23 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                     continue;
                 }
                 if (eql(u8, prop.key, "OnlyShowIn")) {
-                    var onlyShowIn = std.ArrayList([]const u8).init(allocator);
-                    defer onlyShowIn.deinit();
+                    var onlyShowIn = std.ArrayList([]const u8){};
+                    defer onlyShowIn.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try onlyShowIn.append(try allocator.dupe(u8, value));
+                        try onlyShowIn.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.onlyShowIn = try onlyShowIn.toOwnedSlice();
+                    entry.onlyShowIn = try onlyShowIn.toOwnedSlice(allocator);
                     continue;
                 }
                 if (eql(u8, prop.key, "NotShowIn")) {
-                    var notShowIn = std.ArrayList([]const u8).init(allocator);
-                    defer notShowIn.deinit();
+                    var notShowIn = std.ArrayList([]const u8){};
+                    defer notShowIn.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try notShowIn.append(try allocator.dupe(u8, value));
+                        try notShowIn.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.notShowIn = try notShowIn.toOwnedSlice();
+                    entry.notShowIn = try notShowIn.toOwnedSlice(allocator);
                     continue;
                 }
                 if (eql(u8, prop.key, "DBusActivatable")) {
@@ -454,49 +455,49 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                     continue;
                 }
                 if (eql(u8, prop.key, "MimeType")) {
-                    var mimeTypes = std.ArrayList([]const u8).init(allocator);
-                    defer mimeTypes.deinit();
+                    var mimeTypes = std.ArrayList([]const u8){};
+                    defer mimeTypes.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try mimeTypes.append(try allocator.dupe(u8, value));
+                        try mimeTypes.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.mimeType = try mimeTypes.toOwnedSlice();
+                    entry.mimeType = try mimeTypes.toOwnedSlice(allocator);
                     continue;
                 }
                 if (eql(u8, prop.key, "Categories")) {
-                    var categories = std.ArrayList([]const u8).init(allocator);
-                    defer categories.deinit();
+                    var categories = std.ArrayList([]const u8){};
+                    defer categories.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try categories.append(try allocator.dupe(u8, value));
+                        try categories.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.categories = try categories.toOwnedSlice();
+                    entry.categories = try categories.toOwnedSlice(allocator);
                     continue;
                 }
                 if (eql(u8, prop.key, "Implements")) {
-                    var implements = std.ArrayList([]const u8).init(allocator);
-                    defer implements.deinit();
+                    var implements = std.ArrayList([]const u8){};
+                    defer implements.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try implements.append(try allocator.dupe(u8, value));
+                        try implements.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.implements = try implements.toOwnedSlice();
+                    entry.implements = try implements.toOwnedSlice(allocator);
                     continue;
                 }
                 if (eql(u8, prop.key, "Keywords")) {
-                    var kws = std.ArrayList([]const u8).init(allocator);
-                    defer kws.deinit();
+                    var kws = std.ArrayList([]const u8){};
+                    defer kws.deinit(allocator);
                     var values = std.mem.splitAny(u8, prop.value, ";");
                     while (values.next()) |value| {
-                        try kws.append(try allocator.dupe(u8, value));
+                        try kws.append(allocator, try allocator.dupe(u8, value));
                     }
-                    entry.keywords = try kws.toOwnedSlice();
+                    entry.keywords = try kws.toOwnedSlice(allocator);
                     continue;
                 }
                 if (std.mem.startsWith(u8, prop.key, "Keywords[")) {
                     const lcMessage = prop.key[9 .. prop.key.len - 1];
                     const score = scoreLocaleMatch(lcMessage, locals);
-                    try keywords.append(.{
+                    try keywords.append(allocator, .{
                         .str = try allocator.dupe(u8, prop.value),
                         .score = score,
                     });
@@ -532,7 +533,7 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
                 if (std.mem.startsWith(u8, prop.key, "Name[")) {
                     const lcMessage = prop.key[5 .. prop.key.len - 1];
                     const score = scoreLocaleMatch(lcMessage, locals);
-                    try actionNames.?.append(.{
+                    try actionNames.?.append(allocator, .{
                         .str = try allocator.dupe(u8, prop.value),
                         .score = score,
                     });
@@ -571,13 +572,13 @@ fn parseEntry(allocator: Allocator, path: []const u8, locals: []const []const u8
             for (entry.keywords) |kw| allocator.free(kw);
             allocator.free(entry.keywords);
         }
-        var kws = std.ArrayList([]const u8).init(allocator);
-        defer kws.deinit();
+        var kws = std.ArrayList([]const u8){};
+        defer kws.deinit(allocator);
         var it = std.mem.splitAny(u8, keywords.items[0].str, ";");
         while (it.next()) |kw| {
-            try kws.append(try allocator.dupe(u8, kw));
+            try kws.append(allocator, try allocator.dupe(u8, kw));
         }
-        entry.keywords = try kws.toOwnedSlice();
+        entry.keywords = try kws.toOwnedSlice(allocator);
     }
     return entry;
 }
@@ -631,8 +632,8 @@ pub const Apps = struct {
             const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
             defer allocator.free(xdgDataDirs);
             var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
-            var monitors = std.ArrayList(*gio.FileMonitor).init(allocator);
-            defer monitors.deinit();
+            var monitors = std.ArrayList(*gio.FileMonitor){};
+            defer monitors.deinit(allocator);
             errdefer for (monitors.items) |m| m.unref();
             while (paths.next()) |path| {
                 const path_ = try allocator.dupeZ(u8, path);
@@ -652,9 +653,9 @@ pub const Apps = struct {
                         flg.* = true;
                     }
                 }.f), &self.needReload, null, .flags_default);
-                try monitors.append(monitor.?);
+                try monitors.append(allocator, monitor.?);
             }
-            self.monitors = try monitors.toOwnedSlice();
+            self.monitors = try monitors.toOwnedSlice(allocator);
         }
     }
     pub fn deinit(self: *Self, allocator: Allocator) void {
@@ -712,16 +713,16 @@ fn activateAppWithDBus(allocator: Allocator, entry: Entry, action: ?Action, urls
     defer conn.close();
     const dbusName = try allocator.dupeZ(u8, entry.dbusName.?);
     defer allocator.free(dbusName);
-    var path = std.ArrayList(u8).init(allocator);
-    defer path.deinit();
+    var path = std.ArrayList(u8){};
+    defer path.deinit(allocator);
     var it = std.mem.splitAny(u8, entry.id, ".");
     while (it.next()) |part| {
         const p = try std.mem.replaceOwned(u8, allocator, part, "-", "_");
         defer allocator.free(p);
-        try path.append('/');
-        try path.appendSlice(p);
+        try path.append(allocator, '/');
+        try path.appendSlice(allocator, p);
     }
-    try path.append('\x00');
+    try path.append(allocator, '\x00');
     if (action == null) {
         if (urls.len > 0) {
             const result = try dbus.call(
@@ -797,19 +798,19 @@ test "removeExecDeprecatedOptions" {
 }
 
 fn makeExecCommands(allocator: Allocator, exec: []const u8, urls: []const []const u8) ![][]const u8 {
-    var result = std.ArrayList([]const u8).init(allocator);
-    defer result.deinit();
+    var result = std.ArrayList([]const u8){};
+    defer result.deinit(allocator);
     var i: usize = 0;
     replace: while (i < exec.len) : (i += 1) {
         if (exec[i] == '%' and i + 1 < exec.len) {
             switch (exec[i + 1]) {
                 'u' => {
                     if (urls.len == 0) {
-                        try result.append(try std.fmt.allocPrint(allocator, "{s}{s}", .{ exec[0..i], exec[i + 2 ..] }));
+                        try result.append(allocator, try std.fmt.allocPrint(allocator, "{s}{s}", .{ exec[0..i], exec[i + 2 ..] }));
                     } else {
                         for (urls) |url| {
                             const cmd = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ exec[0..i], url, exec[i + 2 ..] });
-                            try result.append(cmd);
+                            try result.append(allocator, cmd);
                         }
                     }
                     break :replace;
@@ -818,41 +819,41 @@ fn makeExecCommands(allocator: Allocator, exec: []const u8, urls: []const []cons
                     const urls_str = try std.mem.join(allocator, " ", urls);
                     defer allocator.free(urls_str);
                     const cmd = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ exec[0..i], urls_str, exec[i + 2 ..] });
-                    try result.append(cmd);
+                    try result.append(allocator, cmd);
                     break :replace;
                 },
                 'f' => {
-                    var files = std.ArrayList([]const u8).init(allocator);
-                    defer files.deinit();
+                    var files = std.ArrayList([]const u8){};
+                    defer files.deinit(allocator);
                     for (urls) |url| {
                         if (std.mem.startsWith(u8, url, "file://")) {
                             const file = url[7..];
-                            try files.append(file);
+                            try files.append(allocator, file);
                         }
                     }
                     if (files.items.len == 0) {
-                        try result.append(try std.fmt.allocPrint(allocator, "{s}{s}", .{ exec[0..i], exec[i + 2 ..] }));
+                        try result.append(allocator, try std.fmt.allocPrint(allocator, "{s}{s}", .{ exec[0..i], exec[i + 2 ..] }));
                     } else {
                         for (files.items) |file| {
                             const cmd = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ exec[0..i], file, exec[i + 2 ..] });
-                            try result.append(cmd);
+                            try result.append(allocator, cmd);
                         }
                     }
                     break :replace;
                 },
                 'F' => {
-                    var files = std.ArrayList([]const u8).init(allocator);
-                    defer files.deinit();
+                    var files = std.ArrayList([]const u8){};
+                    defer files.deinit(allocator);
                     for (urls) |url| {
                         if (std.mem.startsWith(u8, url, "file://")) {
                             const file = url[7..];
-                            try files.append(file);
+                            try files.append(allocator, file);
                         }
                     }
                     const files_str = try std.mem.join(allocator, " ", files.items);
                     defer allocator.free(files_str);
                     const cmd = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ exec[0..i], files_str, exec[i + 2 ..] });
-                    try result.append(cmd);
+                    try result.append(allocator, cmd);
                     break :replace;
                 },
                 '%' => {
@@ -863,9 +864,9 @@ fn makeExecCommands(allocator: Allocator, exec: []const u8, urls: []const []cons
         }
     }
     if (result.items.len == 0) {
-        try result.append(try allocator.dupe(u8, exec));
+        try result.append(allocator, try allocator.dupe(u8, exec));
     }
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 test "makeExecCommands" {
@@ -951,37 +952,37 @@ test "makeExecCommands" {
     }
 }
 fn replaceExecIconAndName(allocator: Allocator, exec: []const u8, icon_: ?[]const u8, name: []const u8) ![]u8 {
-    var newExec = std.ArrayList(u8).init(allocator);
-    defer newExec.deinit();
+    var newExec = std.ArrayList(u8){};
+    defer newExec.deinit(allocator);
     var i: usize = 0;
     while (i < exec.len) : (i += 1) {
         if (exec[i] == '%' and i + 1 < exec.len) {
             switch (exec[i + 1]) {
                 'i' => {
                     if (icon_) |ico| {
-                        try newExec.appendSlice("--icon ");
-                        try newExec.appendSlice(ico);
+                        try newExec.appendSlice(allocator, "--icon ");
+                        try newExec.appendSlice(allocator, ico);
                         i += 1;
                     } else {}
                 },
                 'c' => {
-                    try newExec.appendSlice(name);
+                    try newExec.appendSlice(allocator, name);
                     i += 1;
                 },
                 '%' => {
-                    try newExec.append(exec[i]);
-                    try newExec.append(exec[i + 1]);
+                    try newExec.append(allocator, exec[i]);
+                    try newExec.append(allocator, exec[i + 1]);
                     i += 1;
                 },
                 else => {
-                    try newExec.append(exec[i]);
+                    try newExec.append(allocator, exec[i]);
                 },
             }
         } else {
-            try newExec.append(exec[i]);
+            try newExec.append(allocator, exec[i]);
         }
     }
-    return try newExec.toOwnedSlice();
+    return try newExec.toOwnedSlice(allocator);
 }
 test "replaceExecIconAndName" {
     const allocator = std.testing.allocator;
@@ -993,96 +994,96 @@ test "replaceExecIconAndName" {
 }
 /// str 中不应该包含没有转义的空格, 未转义的空格会被直接删除
 fn unescape(allocator: Allocator, str: []const u8) ![]u8 {
-    var newExec = std.ArrayList(u8).init(allocator);
-    defer newExec.deinit();
+    var newExec = std.ArrayList(u8){};
+    defer newExec.deinit(allocator);
     var i: usize = 0;
     // 空格、制表符、换行、"、'、\、>、<、~、|、&、;、$、*、?、#、(、)、`。
     while (i < str.len) : (i += 1) {
         if (str[i] == '\\' and i + 1 < str.len) {
             switch (str[i + 1]) {
                 ' ' => {
-                    try newExec.append(' ');
+                    try newExec.append(allocator, ' ');
                     i += 1;
                 },
                 't' => {
-                    try newExec.append('\t');
+                    try newExec.append(allocator, '\t');
                     i += 1;
                 },
                 'n' => {
-                    try newExec.append('\n');
+                    try newExec.append(allocator, '\n');
                     i += 1;
                 },
                 '"' => {
-                    try newExec.append('"');
+                    try newExec.append(allocator, '"');
                     i += 1;
                 },
                 '\'' => {
-                    try newExec.append('\'');
+                    try newExec.append(allocator, '\'');
                     i += 1;
                 },
                 '\\' => {
-                    try newExec.append('\\');
+                    try newExec.append(allocator, '\\');
                     i += 1;
                 },
                 '>' => {
-                    try newExec.append('>');
+                    try newExec.append(allocator, '>');
                     i += 1;
                 },
                 '<' => {
-                    try newExec.append('<');
+                    try newExec.append(allocator, '<');
                     i += 1;
                 },
                 '~' => {
-                    try newExec.append('~');
+                    try newExec.append(allocator, '~');
                     i += 1;
                 },
                 '|' => {
-                    try newExec.append('|');
+                    try newExec.append(allocator, '|');
                     i += 1;
                 },
                 '&' => {
-                    try newExec.append('&');
+                    try newExec.append(allocator, '&');
                     i += 1;
                 },
                 ';' => {
-                    try newExec.append(';');
+                    try newExec.append(allocator, ';');
                     i += 1;
                 },
                 '$' => {
-                    try newExec.append('$');
+                    try newExec.append(allocator, '$');
                     i += 1;
                 },
                 '*' => {
-                    try newExec.append('*');
+                    try newExec.append(allocator, '*');
                     i += 1;
                 },
                 '?' => {
-                    try newExec.append('?');
+                    try newExec.append(allocator, '?');
                     i += 1;
                 },
                 '#' => {
-                    try newExec.append('#');
+                    try newExec.append(allocator, '#');
                     i += 1;
                 },
                 '(' => {
-                    try newExec.append('(');
+                    try newExec.append(allocator, '(');
                     i += 1;
                 },
                 ')' => {
-                    try newExec.append(')');
+                    try newExec.append(allocator, ')');
                     i += 1;
                 },
                 '`' => {
-                    try newExec.append('`');
+                    try newExec.append(allocator, '`');
                     i += 1;
                 },
                 else => {
-                    try newExec.append(str[i]);
+                    try newExec.append(allocator, str[i]);
                 },
             }
         } else if (str[i] == '%' and i + 1 < str.len) {
             if (str[i + 1] == '%') {
-                try newExec.append('%');
+                try newExec.append(allocator, '%');
                 i += 1;
             } else {
                 i += 1;
@@ -1090,10 +1091,10 @@ fn unescape(allocator: Allocator, str: []const u8) ![]u8 {
         } else if (str[i] == ' ') {
             i += 1;
         } else {
-            try newExec.append(str[i]);
+            try newExec.append(allocator, str[i]);
         }
     }
-    return try newExec.toOwnedSlice();
+    return try newExec.toOwnedSlice(allocator);
 }
 test "unescapeExec" {
     const allocator = std.testing.allocator;
@@ -1117,31 +1118,31 @@ test "unescapeExec" {
     }
 }
 fn commandToArgv(allocator: Allocator, command: []const u8) ![]const []const u8 {
-    var args = std.ArrayList([]const u8).init(allocator);
-    defer args.deinit();
-    var arg = std.ArrayList(u8).init(allocator);
-    defer arg.deinit();
+    var args = std.ArrayList([]const u8){};
+    defer args.deinit(allocator);
+    var arg = std.ArrayList(u8){};
+    defer arg.deinit(allocator);
     var i: usize = 0;
     while (i < command.len) : (i += 1) {
         if (command[i] == '\\' and i + 1 < command.len) {
-            try arg.append(command[i]);
-            try arg.append(command[i + 1]);
+            try arg.append(allocator, command[i]);
+            try arg.append(allocator, command[i + 1]);
             i += 1;
         } else if (command[i] == ' ') {
             if (arg.items.len > 0) {
                 const arg_ = try unescape(allocator, arg.items);
-                try args.append(arg_);
+                try args.append(allocator, arg_);
                 arg.items.len = 0;
             }
         } else {
-            try arg.append(command[i]);
+            try arg.append(allocator, command[i]);
         }
     }
     if (arg.items.len > 0) {
         const arg_ = try unescape(allocator, arg.items);
-        try args.append(arg_);
+        try args.append(allocator, arg_);
     }
-    return try args.toOwnedSlice();
+    return try args.toOwnedSlice(allocator);
 }
 test "commandToArgv" {
     const allocator = std.testing.allocator;
@@ -1226,7 +1227,7 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
             child_.* = child;
             _ = glib.childWatchAdd(child.id, struct {
                 fn f(_: glib.Pid, _: c_int, data: ?*anyopaque) callconv(.c) void {
-                    const c: *std.process.Child = @alignCast(@ptrCast(data));
+                    const c: *std.process.Child = @ptrCast(@alignCast(data));
                     const a = c.allocator;
                     _ = c.kill() catch {};
                     a.destroy(c);
@@ -1236,25 +1237,25 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
     }
 }
 fn listApps(allocator: Allocator) ![]Entry {
-    var entrys = std.ArrayList(Entry).init(allocator);
-    defer entrys.deinit();
+    var entrys = std.ArrayList(Entry){};
+    defer entrys.deinit(allocator);
     const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
     defer allocator.free(xdgDataDirs);
     var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
     const locals = try getPreferredLocales(allocator);
     defer allocator.free(locals);
     defer for (locals) |l| allocator.free(l);
-    var usedID = std.ArrayList([]const u8).init(allocator);
-    defer usedID.deinit();
+    var usedID = std.ArrayList([]const u8){};
+    defer usedID.deinit(allocator);
     while (paths.next()) |dirPath| {
         const apps = findApps(allocator, dirPath, locals, usedID.items) catch continue;
         defer allocator.free(apps);
-        try entrys.appendSlice(apps);
+        try entrys.appendSlice(allocator, apps);
         for (apps) |app| {
-            try usedID.append(app.id);
+            try usedID.append(allocator, app.id);
         }
     }
-    return try entrys.toOwnedSlice();
+    return try entrys.toOwnedSlice(allocator);
 }
 test {
     const allocator = std.testing.allocator;

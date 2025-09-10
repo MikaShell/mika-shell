@@ -43,7 +43,7 @@ const Handler = struct {
     fn upgradeWebsocket(_: *Handler, req: *httpz.Request, res: *httpz.Response, ctx: WebsocketHandler.Context) void {
         const result = httpz.upgradeWebsocket(WebsocketHandler, req, res, ctx) catch |err| {
             res.status = 400;
-            res.body = std.fmt.allocPrint(req.arena, "Failed to upgrade websocket: {s}", .{@errorName(err)}) catch unreachable;
+            res.body = std.fmt.allocPrint(req.arena, "Failed to upgrade websocket: {t}", .{err}) catch unreachable;
             return;
         };
         if (!result) {
@@ -77,7 +77,7 @@ pub const ProxyHandler = struct {
         return .{ .ctx = ctx };
     }
     fn onUnixSockMessage(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
-        const ctx: *Context = @alignCast(@ptrCast(data));
+        const ctx: *Context = @ptrCast(@alignCast(data));
         var buf: [512]u8 = undefined;
         const n = ctx.unixSock.read(&buf) catch {
             _ = ctx.conn.close(.{ .code = 1011, .reason = "Internal Server Error" }) catch {};
@@ -152,7 +152,7 @@ const EventManager = struct {
         self.allocator.destroy(self);
     }
     fn onEvent(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
-        const self: *Self = @alignCast(@ptrCast(data));
+        const self: *Self = @ptrCast(@alignCast(data));
         const es: []events.Event = self.channel.load();
         for (es) |*e| {
             defer e.deinit();

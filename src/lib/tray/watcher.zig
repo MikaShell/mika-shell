@@ -62,8 +62,8 @@ pub const Watcher = struct {
         errdefer allocator.destroy(self);
         self.* = Self{
             .allocator = allocator,
-            .items = std.ArrayList([]const u8).init(allocator),
-            .hosts = std.ArrayList([]const u8).init(allocator),
+            .items = std.ArrayList([]const u8){},
+            .hosts = std.ArrayList([]const u8){},
             .bus = bus,
             .emiter = undefined,
         };
@@ -79,8 +79,8 @@ pub const Watcher = struct {
         for (self.hosts.items) |host| {
             self.allocator.free(host);
         }
-        self.items.deinit();
-        self.hosts.deinit();
+        self.items.deinit(self.allocator);
+        self.hosts.deinit(self.allocator);
         self.allocator.destroy(self);
     }
     pub fn publish(self: *Self) !void {
@@ -97,12 +97,12 @@ pub const Watcher = struct {
             busName = sender;
         }
         const item = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ busName, path });
-        try self.items.append(item);
+        try self.items.append(self.allocator, item);
         self.emiter.emit("StatusNotifierItemRegistered", .{dbus.String}, .{item});
     }
     fn registerHost(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
         const host = in.next(dbus.String).?;
-        try self.hosts.append(try self.allocator.dupe(u8, host));
+        try self.hosts.append(self.allocator, try self.allocator.dupe(u8, host));
         self.emiter.emit("StatusNotifierHostRegistered", .{}, null);
     }
     fn get(self: *Self, name: []const u8, _: Allocator, out: *dbus.MessageIter, _: *dbus.RequstError) !void {

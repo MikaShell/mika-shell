@@ -43,7 +43,7 @@ pub fn events(b: *Build, comptime dist: []const u8) *Build.Step {
     }.make;
     return generate_events_step;
 }
-pub fn js_binding(b: *Build, optimize: std.builtin.Mode, comptime dist: []const u8) *Build.Step {
+pub fn js_binding(b: *Build, optimize: std.builtin.OptimizeMode, comptime dist: []const u8) *Build.Step {
     const cmd = b.addSystemCommand(&.{
         "esbuild",
         "npm-package/core/bindings.ts",

@@ -284,14 +284,14 @@ pub const ActiveConnection = struct {
 
         const devices = try active.get("Devices", dbus.Array(dbus.ObjectPath));
         defer devices.deinit();
-        var ds = std.ArrayList(Device).init(allocator);
-        defer ds.deinit();
+        var ds = std.ArrayList(Device){};
+        defer ds.deinit(allocator);
         for (devices.value) |devicePath| {
             const d = try Device.init(allocator, bus, devicePath);
             errdefer d.deinit(allocator);
-            try ds.append(d);
+            try ds.append(allocator, d);
         }
-        ac.devices = try ds.toOwnedSlice();
+        ac.devices = try ds.toOwnedSlice(allocator);
 
         const typ = try active.getAlloc(allocator, "Type", dbus.String);
         defer allocator.free(typ);

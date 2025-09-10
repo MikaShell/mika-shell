@@ -23,8 +23,11 @@ pub const Host = struct {
         errdefer allocator.destroy(self);
         self.allocator = allocator;
         self.bus = bus;
-        self.items = std.ArrayList(*Item).init(allocator);
-        self.listeners = std.ArrayList(Listener).init(allocator);
+        self.items = std.ArrayList(*Item){};
+        self.listeners = std.ArrayList(Listener){};
+        errdefer self.items.deinit(allocator);
+        errdefer self.listeners.deinit(allocator);
+
         const watcher = bus.proxy(
             "org.kde.StatusNotifierWatcher",
             "/StatusNotifierWatcher",
@@ -47,7 +50,7 @@ pub const Host = struct {
         for (allItems.value) |name| {
             const item = try Item.init(allocator, bus, name);
             try item.addListener(onItemUpdated, self);
-            try self.items.append(item);
+            try self.items.append(allocator, item);
         }
         watcher.connect("StatusNotifierItemRegistered", onStatusNotifierItemRegistered, self) catch |e| {
             if (e != dbus.DBusError) return e;
@@ -70,7 +73,7 @@ pub const Host = struct {
         self.triggerListeners(.changed, item.data.service);
     }
     pub fn addListener(self: *Self, func: *const fn (host: *Self, state: ItemState, services: []const u8, data: ?*anyopaque) void, data: ?*anyopaque) !void {
-        try self.listeners.append(.{ .func = func, .data = data });
+        try self.listeners.append(self.allocator, .{ .func = func, .data = data });
     }
     pub fn removeListener(self: *Self, func: *const fn (host: *Self, state: ItemState, services: []const u8, data: ?*anyopaque) void, data: ?*anyopaque) void {
         for (self.listeners.items, 0..) |listener, i| {
@@ -104,7 +107,7 @@ pub const Host = struct {
             return;
         };
         item.addListener(onItemUpdated, self) catch unreachable;
-        self.items.append(item) catch unreachable;
+        self.items.append(self.allocator, item) catch unreachable;
         triggerListeners(self, .added, service);
     }
     fn onStatusNotifierItemUnregistered(e: dbus.Event, data: ?*anyopaque) void {
@@ -123,7 +126,7 @@ pub const Host = struct {
         for (self.items.items) |item| {
             item.deinit();
         }
-        self.items.deinit();
+        self.items.deinit(self.allocator);
         if (self.watcher) |w| {
             blk: {
                 const r = w.call("UnregisterStatusNotifierHost", .{dbus.String}, .{self.bus.uniqueName}) catch {
@@ -133,7 +136,7 @@ pub const Host = struct {
             }
             w.deinit();
         }
-        self.listeners.deinit();
+        self.listeners.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };

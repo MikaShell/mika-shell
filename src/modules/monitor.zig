@@ -83,14 +83,14 @@ pub const Monitor = struct {
         }
         const ctx_ = try self.allocator.create(Ctx);
         ctx_.* = .{
-            .result = ctx.@"async"(),
+            .result = ctx.async(),
             .allocator = self.allocator,
             .usePng = eql(u8, encode, "png"),
         };
         const screencopy = self.screencopy.?;
         try screencopy.capture(struct {
             fn cb(err: ?anyerror, result: ?[]u8, data: ?*anyopaque) void {
-                const ctx__: *Ctx = @alignCast(@ptrCast(data));
+                const ctx__: *Ctx = @ptrCast(@alignCast(data));
                 defer ctx__.allocator.destroy(ctx__);
                 if (err) |e| {
                     ctx__.result.errors("Error while capturing screen: {}", .{e});
@@ -120,16 +120,10 @@ pub const Monitor = struct {
         });
     }
     fn webpToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]const u8 {
-        const encoder = std.base64.standard.Encoder;
-        const base64 = try allocator.alloc(u8, encoder.calcSize(webp.len));
-        defer allocator.free(base64);
-        return try std.fmt.allocPrint(allocator, "data:image/webp;base64,{s}", .{encoder.encode(base64, webp)});
+        return try std.fmt.allocPrint(allocator, "data:image/webp;base64,{b64}", .{webp});
     }
-    fn pngToBase64(allocator: std.mem.Allocator, webp: []const u8) ![]const u8 {
-        const encoder = std.base64.standard.Encoder;
-        const base64 = try allocator.alloc(u8, encoder.calcSize(webp.len));
-        defer allocator.free(base64);
-        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{s}", .{encoder.encode(base64, webp)});
+    fn pngToBase64(allocator: std.mem.Allocator, png: []const u8) ![]const u8 {
+        return try std.fmt.allocPrint(allocator, "data:image/png;base64,{b64}", .{png});
     }
     pub fn list(self: *Self, ctx: *Context) !void {
         const allocator = self.allocator;

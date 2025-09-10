@@ -12,8 +12,8 @@ pub fn withGLibMainLoop(display: *wl.Display) !GLibWatch {
     const ch = glib.IOChannel.unixNew(display.getFd());
     defer ch.unref();
     const source = glib.ioAddWatch(ch, .{ .in = true }, &struct {
-        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.C) c_int {
-            const d: *wl.Display = @alignCast(@ptrCast(data));
+        fn cb(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
+            const d: *wl.Display = @ptrCast(@alignCast(data));
             if (d.prepareRead()) {
                 if (d.readEvents() != .SUCCESS) {
                     std.log.scoped(.wayland).err("Failed to read events", .{});
