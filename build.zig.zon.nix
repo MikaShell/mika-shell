@@ -58,14 +58,6 @@ linkFarm "zig-packages" [
     };
   }
   {
-    name = "libxev-0.0.0-86vtcx8dEwDfl6p4tGVxCygft8oOsggfba9JO-k28J2x";
-    path = fetchgit {
-      url = "https://github.com/mitchellh/libxev";
-      rev = "9f785d202ddccf7a625e799250579253977978b6";
-      hash = "sha256-9dD7TIW5n3rHIPCdpxiVEdVqXs/cslR+VP8XN9H9Efc=";
-    };
-  }
-  {
     name = "wayland-0.4.0-dev-lQa1krLJAQBGO2aKqDcfxUOsW_e4PJZO_K_rxA20RztB";
     path = fetchgit {
       url = "https://codeberg.org/ifreund/zig-wayland";

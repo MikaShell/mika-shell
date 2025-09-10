@@ -110,7 +110,6 @@ const ToplevelContext = struct {
     }
 };
 const common = @import("common.zig");
-const xev = @import("xev");
 pub const Manager = struct {
     const Self = @This();
     listener: Listener,
@@ -118,9 +117,9 @@ pub const Manager = struct {
     foreignToplevelManager: ?*ForeignToplevelManager,
     seat: ?*wl.Seat,
     toplevels: ToplevelList,
-    xevWatch: *common.XevWatch,
+    glibWatch: common.GLibWatch,
     display: *wl.Display,
-    pub fn init(allocator: Allocator, loop: *xev.Loop, listener: Listener) !*Self {
+    pub fn init(allocator: Allocator, listener: Listener) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
@@ -132,7 +131,7 @@ pub const Manager = struct {
         self.display = display;
         try self.check();
         self.foreignToplevelManager.?.setListener(*Self, foreignToplevelManagerListener, self);
-        self.xevWatch = try common.withXevLoop(allocator, display, loop);
+        self.glibWatch = try common.withGLibMainLoop(display);
         return self;
     }
     fn check(self: *Self) !void {
@@ -152,10 +151,13 @@ pub const Manager = struct {
     pub fn deinit(self: *Self) void {
         if (self.foreignToplevelManager) |m| {
             m.stop();
-            _ = self.display.flush();
+            _ = self.display.roundtrip();
         } else {
             self.destroy();
         }
+        self.glibWatch.deinit();
+        self.display.disconnect();
+        self.allocator.destroy(self);
     }
     // 由 wayland 回调的 finish 事件调用
     fn destroy(self: *Self) void {
@@ -165,9 +167,6 @@ pub const Manager = struct {
         }
         self.foreignToplevelManager.?.destroy();
         self.foreignToplevelManager = null;
-
-        self.xevWatch.deinit();
-        self.allocator.destroy(self);
     }
     fn append(self: *Self, t: *ForeignToplevelHandle) void {
         const node = self.allocator.create(ToplevelList.Node) catch unreachable;

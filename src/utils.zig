@@ -13,6 +13,9 @@ pub fn timeoutMainLoop(timeout_ms: u32) void {
 }
 const jsc = @import("jsc");
 pub const JSValue = struct {
+    /// `[]const u8` will be converted to a JavaScript string.
+    ///
+    /// `[]u8` will be converted to a JavaScript Uint8Array.
     pub fn from(ctx: *jsc.Context, value: anytype) *jsc.Value {
         const T = @TypeOf(value);
         switch (@typeInfo(T)) {

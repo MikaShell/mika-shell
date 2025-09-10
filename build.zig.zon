@@ -36,10 +36,6 @@
             .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.3.0/bindings-gnome47.tar.zst",
             .hash = "gobject-0.3.0-Skun7IrmdQHh-PhvmchG9AKnrR2RFS5EhBe5oedb0ITv",
         },
-        .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev#9f785d202ddccf7a625e799250579253977978b6",
-            .hash = "libxev-0.0.0-86vtcx8dEwDfl6p4tGVxCygft8oOsggfba9JO-k28J2x",
-        },
     },
 
     .paths = .{

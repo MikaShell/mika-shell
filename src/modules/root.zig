@@ -154,13 +154,11 @@ pub fn Callable(comptime T: type) type {
     return *const fn (self: T, ctx: *Context) anyerror!void;
 }
 const App = @import("../app.zig").App;
-const xev = @import("xev");
 pub const InitContext = struct {
     allocator: std.mem.Allocator,
     app: *App,
     systemBus: *dbus.Bus,
     sessionBus: *dbus.Bus,
-    loop: *xev.Loop,
 };
 pub fn Registry(T: type) type {
     return struct {
@@ -194,7 +192,6 @@ pub const Modules = struct {
         app: *App,
         systemBus: *dbus.Bus,
         sessionBus: *dbus.Bus,
-        loop: *xev.Loop,
     };
     allocator: std.mem.Allocator,
     table: std.StringHashMap(AnyEntry),
@@ -215,7 +212,6 @@ pub const Modules = struct {
                 .app = option.app,
                 .systemBus = option.systemBus,
                 .sessionBus = option.sessionBus,
-                .loop = option.loop,
             },
             .registered = std.ArrayList(Registered).init(allocator),
             .eventGroups = std.ArrayList(EventGroup).init(allocator),

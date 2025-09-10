@@ -18,7 +18,7 @@
             let his = undefined;
             async function hyprctl(msg) {
                 const promise = new Promise((resolve, reject) => {
-                    const ws = window.mikaShell.socket(
+                    const ws = window.mikaShell.utils.socket(
                         `/${xdgRuntimeDir}/hypr/${his}/.socket.sock`
                     );
                     ws.onmessage = (event) => {
@@ -38,7 +38,9 @@
                 his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
             }
             function listenHyprland() {
-                const ws = window.mikaShell.socket(`/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`);
+                const ws = window.mikaShell.utils.socket(
+                    `/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`
+                );
                 let buffer = "";
                 ws.onmessage = (event) => {
                     buffer += event.data;

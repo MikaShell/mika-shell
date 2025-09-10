@@ -1,6 +1,6 @@
 body {
     color: beige;
-    background-color: rgb(57, 57, 57);
+    background-color: rgba(57, 57, 57, 0.9);
     display: flex;
     justify-content: start;
     align-items: start;

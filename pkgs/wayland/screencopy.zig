@@ -66,6 +66,7 @@ pub const Manager = struct {
         while (self.outputs.pop()) |node| {
             self.allocator.destroy(node);
         }
+        self.display.disconnect();
         self.allocator.destroy(self);
     }
     fn initContext(self: *Self, frame: *ScreencopyFrame, opt: Option, callback: Callback, userdata: ?*anyopaque) !*Contxt {

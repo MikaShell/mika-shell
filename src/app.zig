@@ -391,7 +391,6 @@ fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: 
         try dist.put(key_, val_);
     }
 }
-const xev = @import("xev");
 pub const App = struct {
     modules: *Modules,
     mutex: std.Thread.Mutex,
@@ -411,7 +410,6 @@ pub const App = struct {
         configDir: []const u8,
         eventChannel: *events.EventChannel,
         port: u16,
-        loop: *xev.Loop,
     }) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
@@ -447,7 +445,6 @@ pub const App = struct {
             .app = app,
             .sessionBus = sessionBus,
             .systemBus = systemBus,
-            .loop = option.loop,
         });
 
         const modules = app.modules;
