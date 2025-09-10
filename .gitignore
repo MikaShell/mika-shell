@@ -12,3 +12,5 @@ perf.data*
 src/bindings.js
 example/example/extra.js
 example/example/public/BongoCat
+webview_cache
+webview_data

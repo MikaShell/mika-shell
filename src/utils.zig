@@ -128,12 +128,16 @@ pub const JSValue = struct {
                     if (ptr_info.size == .many and ptr_info.sentinel() == null)
                         @compileError("unable to stringify type '" ++ @typeName(T) ++ "' without sentinel");
                     const slice = if (ptr_info.size == .many) std.mem.span(value) else value;
-
                     if (ptr_info.child == u8) {
                         // This is a []const u8, or some similar Zig string.
                         if (ptr_info.is_const and std.unicode.utf8ValidateSlice(slice)) {
                             if (slice.len == 0) {
                                 return jsc.Value.newString(ctx, "");
+                            }
+                            if (ptr_info.sentinel() != 0) {
+                                const str = std.heap.page_allocator.dupeZ(u8, slice) catch unreachable;
+                                defer std.heap.page_allocator.free(str);
+                                return jsc.Value.newString(ctx, str.ptr);
                             } else {
                                 return jsc.Value.newString(ctx, @ptrCast(slice.ptr));
                             }

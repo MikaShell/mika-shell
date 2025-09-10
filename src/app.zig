@@ -29,18 +29,32 @@ pub const Webview = struct {
     container: *gtk.Window,
     _modules: *Modules,
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
-    pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backendPort: u16) !*Webview {
+    pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backendPort: u16, configDir: []const u8) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
-            .id = 0,
+            .id = undefined,
+            .impl = undefined,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
-            .impl = webkit.WebView.new(),
             .container = gtk.Window.new(),
             ._modules = m,
             .type = .None,
         };
+        const dataDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_data" });
+        defer allocator.free(dataDir);
+        const cacheDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_cache" });
+        defer allocator.free(cacheDir);
+        const network_session = webkit.NetworkSession.new(dataDir.ptr, cacheDir.ptr);
+        w.impl = g.ext.cast(webkit.WebView, g.Object.new(
+            webkit.WebView.getGObjectType(),
+            "web-context",
+            webkit.WebContext.getDefault(),
+            "network-session",
+            network_session,
+            @as(?[*:0]const u8, null),
+        )).?;
         w.id = w.impl.getPageId();
+        w.impl.getSettings().setDefaultCharset("utf-8");
         const settings = w.impl.getSettings();
         settings.setEnableDeveloperExtras(1);
         const manager = w.impl.getUserContentManager();
@@ -55,8 +69,7 @@ pub const Webview = struct {
         defer setPortScript.unref();
         manager.addScript(setPortScript);
         _ = g.signalConnectData(manager.as(g.Object), "script-message-with-reply-received::mikaShell", @ptrCast(&struct {
-            fn f(_: *webkit.UserContentManager, v: *jsc.Value, reply: *webkit.ScriptMessageReply, data: ?*anyopaque) callconv(.c) c_int {
-                const wv: *Webview = @ptrCast(@alignCast(data));
+            fn f(_: *webkit.UserContentManager, v: *jsc.Value, reply: *webkit.ScriptMessageReply, wv: *Webview) callconv(.c) c_int {
                 const alc = wv.allocator;
 
                 // {
@@ -491,8 +504,6 @@ pub const App = struct {
                     defer alloc.free(url);
                     var client = std.http.Client{ .allocator = alloc };
                     defer client.deinit();
-                    var store = std.ArrayList(u8).init(std.heap.c_allocator);
-                    defer store.deinit();
                     const uri_ = std.Uri.parse(url) catch {
                         returnError(app_inner, request, "Invalid URL: {s}", .{url});
                         return;
@@ -520,22 +531,17 @@ pub const App = struct {
                         returnError(app_inner, request, "Failed to request {s}: {s}", .{ url, @tagName(req.response.status) });
                         return;
                     }
-                    var buf: [256]u8 = undefined;
-                    while (true) {
-                        const n = req.read(&buf) catch |err| {
-                            if (err == error.EndOfStream) break;
-                            returnError(app_inner, request, "Failed to read {s}: {s}", .{ url, @errorName(err) });
-                            return;
-                        };
-                        if (n == 0) break;
-                        store.appendSlice(buf[0..n]) catch unreachable;
-                    }
+                    const buf = req.reader().readAllAlloc(alloc, 1024 * 1024 * 100) catch |err| {
+                        returnError(app_inner, request, "Failed to read {s}: {s}", .{ url, @errorName(err) });
+                        return;
+                    };
+                    defer alloc.free(buf);
                     const content_type = alloc.dupeZ(u8, req.response.content_type orelse "application/octet-stream") catch unreachable;
                     defer alloc.free(content_type);
-                    const size: isize = @intCast(store.items.len);
-                    const payload = glib.malloc(store.items.len);
-                    const payload_slice: [*]u8 = @ptrCast(payload);
-                    @memcpy(payload_slice[0..store.items.len], store.items);
+                    const size: isize = @intCast(buf.len);
+                    const payload = glib.malloc(buf.len);
+                    const payload_ptr: [*]u8 = @ptrCast(payload);
+                    @memcpy(payload_ptr[0..buf.len], buf);
                     const stream = gio.MemoryInputStream.newFromData(@ptrCast(payload), size, struct {
                         fn free(data_: ?*anyopaque) callconv(.c) void {
                             glib.free(data_);
@@ -545,7 +551,6 @@ pub const App = struct {
                     request.finish(stream.as(gio.InputStream), size, content_type.ptr);
                     return;
                 }
-                var size: isize = 0;
                 const file_path = std.fs.path.joinZ(alloc, &.{ dir, host, path, if (std.mem.endsWith(u8, path, "/")) "index.html" else "" }) catch unreachable;
                 defer alloc.free(file_path);
                 const f = std.fs.openFileAbsolute(file_path, .{}) catch |err| {
@@ -553,22 +558,33 @@ pub const App = struct {
                     return;
                 };
                 defer f.close();
-                const pos = f.getPos() catch |err| {
+                var pos = f.getEndPos() catch |err| {
                     returnError(app_inner, request, "Failed to get file size: {s}: {s}", .{ file_path, @errorName(err) });
                     return;
                 };
-                size = @intCast(pos);
-                const res = gio.File.newForPath(file_path.ptr);
-                defer res.unref();
-                var gError: ?*glib.Error = undefined;
+                const size: isize = @intCast(pos);
+                const payload = glib.malloc(pos);
+                const payload_ptr: [*]u8 = @ptrCast(payload);
+                pos = 0; // now, pos is used as offset of payload_ptr
+                var buf: [512 * 1024]u8 = undefined;
+                while (true) {
+                    const n = f.read(&buf) catch |err| {
+                        returnError(app_inner, request, "Failed to read file: {s}: {s}", .{ file_path, @errorName(err) });
+                        return;
+                    };
+                    if (n == 0) break;
+                    @memcpy(payload_ptr[pos .. pos + n], buf[0..n]);
+                    pos += n;
+                }
 
-                const content_type = gio.contentTypeGuess(file_path.ptr, null, 0, null);
+                const content_type = gio.contentTypeGuess(file_path.ptr, payload_ptr, 256, null);
                 defer glib.free(content_type);
 
-                const stream = res.read(null, &gError) orelse {
-                    returnError(app_inner, request, "Failed to read file: {s}", .{file_path});
-                    return;
-                };
+                const stream = gio.MemoryInputStream.newFromData(@ptrCast(payload_ptr), size, struct {
+                    fn free(data_: ?*anyopaque) callconv(.c) void {
+                        glib.free(data_);
+                    }
+                }.free);
                 defer stream.unref();
                 request.finish(stream.as(gio.InputStream), size, content_type);
             }
@@ -610,7 +626,7 @@ pub const App = struct {
         return self.openS(uri, pageName);
     }
     fn openS(self: *App, uri: [:0]const u8, name: []const u8) *Webview {
-        const webview = Webview.init(self.allocator, self.modules, name, self.port) catch unreachable;
+        const webview = Webview.init(self.allocator, self.modules, name, self.port, self.configDir) catch unreachable;
         webview.impl.loadUri(uri);
         self.mutex.lock();
         self.webviews.append(webview) catch unreachable;

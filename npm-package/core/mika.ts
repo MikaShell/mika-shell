@@ -3,6 +3,13 @@ import * as events from "./events";
 import { Mika } from "./events-define";
 
 export function open(name: string): Promise<number> {
+    if (name.startsWith("/")) {
+        return call("mika.open", "/" + globalThis.location.host + name);
+    } else {
+        return call("mika.open", globalThis.location.host + "." + name);
+    }
+}
+export function open2(name: string): Promise<number> {
     return call("mika.open", name);
 }
 export function close(id: number): Promise<void> {

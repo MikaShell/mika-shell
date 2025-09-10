@@ -450,8 +450,16 @@ pub const Icon = struct {
         const size = try ctx.args.integer(1);
         const scale = try ctx.args.integer(2);
         const img = lookupIcon(allocator, name, @intCast(size), @intCast(scale)) catch |err| blk: {
-            if (!std.fs.path.isAbsolute(name)) return err;
-            break :blk makeHtmlImg(allocator, name) catch return err;
+            if (!std.fs.path.isAbsolute(name)) {
+                ctx.errors("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                std.log.scoped(.webview).err("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                return;
+            }
+            break :blk makeHtmlImg(allocator, name) catch {
+                ctx.errors("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                std.log.scoped(.webview).err("Failed to lookup icon [{s}] {s}", .{ name, @errorName(err) });
+                return;
+            };
         };
         defer allocator.free(img);
         ctx.commit(img);
