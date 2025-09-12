@@ -62,9 +62,9 @@ pub const Libinput = struct {
     }
     fn onEvent(self: *Self, e: libinput.Event) void {
         switch (e) {
-            .keyboardKey => |key| self.app.emitEvent(.libinput_keyboard_key, key),
-            .pointerMotion => |motion| self.app.emitEvent(.libinput_pointer_motion, motion),
-            .pointerButton => |button| self.app.emitEvent(.libinput_pointer_button, button),
+            .keyboardKey => |key| self.app.emitEventUseSocket(.libinput_keyboard_key, key),
+            .pointerMotion => |motion| self.app.emitEventUseSocket(.libinput_pointer_motion, motion),
+            .pointerButton => |button| self.app.emitEventUseSocket(.libinput_pointer_button, button),
             else => @panic("Unsupported event type"),
         }
     }

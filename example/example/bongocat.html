@@ -48,7 +48,7 @@ https://github.com/ayangweb/BongoCat 的简单实现
             //     backgroundTransparent: true,
             // });
             mikaShell.layer.on("show", async () => {
-                const monitor = await mikaShell.monitor.get();
+                const monitor = await mikaShell.monitor.getCurrent();
                 let isMouseDown = false;
                 let pointerX = 0;
                 let pointerY = 0;
@@ -207,13 +207,17 @@ https://github.com/ayangweb/BongoCat 的简单实现
                     setParameterValue("CatParamLeftHandDown", isPressed);
                 });
                 const isNil = (value) => value === null || value === undefined;
-                const monitor = await mikaShell.monitor.get();
+                const monitor = await mikaShell.monitor.getCurrent();
+                const width = monitor.width;
+                const height = monitor.height;
                 let x = 0;
                 let y = 0;
                 let pendingAnimation = false;
                 const handleMouseMove = async () => {
-                    const xRatio = x / monitor.width;
-                    const yRatio = y / monitor.height;
+                    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                    const xRatio = x / width;
+                    const yRatio = y / height;
+
                     for (const id of ["ParamMouseX", "ParamMouseY", "ParamAngleX", "ParamAngleY"]) {
                         const { min, max } = getParameterRange(id);
 
@@ -231,8 +235,8 @@ https://github.com/ayangweb/BongoCat 的简单实现
                 mikaShell.libinput.on("pointer-motion", async (e) => {
                     const x_ = x + e.dxUnaccelerated;
                     const y_ = y + e.dyUnaccelerated;
-                    if (x_ > 0 && x_ < monitor.width) x = Math.floor(x_);
-                    if (y_ > 0 && y_ < monitor.height) y = Math.floor(y_);
+                    x = Math.min(Math.max(0, Math.floor(x_)), width);
+                    y = Math.min(Math.max(0, Math.floor(y_)), height);
 
                     if (!pendingAnimation) {
                         pendingAnimation = true;

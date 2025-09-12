@@ -104,6 +104,18 @@
                     e.preventDefault();
                     tray.getMenu(item.service).then((menu) => {
                         console.log("tray-menu", menu);
+                        const rect = img.getBoundingClientRect();
+                        // Popover needs parent, x, y, w, h to set the position of the pop-up
+                        // service is used to get the menu data
+                        mikaShell.mika.open(
+                            "/traymenu.html?" +
+                                `service=${item.service}` +
+                                `&parent=${mikaShell.id}` +
+                                `&x=${rect.x}` +
+                                `&y=${rect.y}` +
+                                `&w=${rect.width}` +
+                                `&h=${rect.height}`
+                        );
                     });
                 });
                 img.onclick = () => mikaShell.tray.activate(item.service, 0, 0);
@@ -126,6 +138,11 @@
                     addTrayIcon(item);
                 }
             });
+            const openDebugPage = () => {
+                mikaShell.mika.open("debug").then(() => {
+                    console.log("debug page closed");
+                });
+            };
         </script>
         <!-- Hyprland Workspace -->
         <style>
@@ -218,7 +235,7 @@
     </head>
     <body>
         <div id="left">
-            <button id="debug" onclick="mikaShell.mika.open('debug')">Debug</button>
+            <button id="debug" onclick="openDebugPage()">Debug</button>
             <div id="tray"></div>
             <div id="hyprland-workspaces"></div>
         </div>

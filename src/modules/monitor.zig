@@ -28,7 +28,7 @@ pub const Monitor = struct {
         return .{
             .exports = &.{
                 .{ "list", list },
-                .{ "get", get },
+                .{ "getCurrent", getCurrent },
                 .{ "capture", capture },
             },
         };
@@ -132,10 +132,16 @@ pub const Monitor = struct {
         defer for (monitors) |monitor| monitor.deinit();
         ctx.commit(monitors);
     }
-    pub fn get(self: *Self, ctx: *Context) !void {
-        const w = try self.app.getWebview(ctx.caller);
+    pub fn getCurrent(self: *Self, ctx: *Context) !void {
+        const w = try self.app.getWebviewWithId(ctx.caller);
         const display = gdk.Display.getDefault().?;
-        const surface = w.container.as(gtk.Native).getSurface();
+
+        const surface = switch (w.container) {
+            .none => null,
+            .window => |window| window.as(gtk.Native).getSurface(),
+            .layer => |layer| layer.inner.as(gtk.Native).getSurface(),
+            .popover => |popover| popover.as(gtk.Native).getSurface(),
+        };
         if (surface == null) {
             return ctx.errors("you should call this function after the window is realized", .{});
         }

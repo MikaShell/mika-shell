@@ -48,11 +48,11 @@ pub const Notifd = struct {
 
     fn onNotificationAdded(self: *Self, id: u32) void {
         const app = self.app;
-        app.emitEvent(.notifd_added, id);
+        app.emitEventUseSocket(.notifd_added, id);
     }
     fn onNotificationRemoved(self: *Self, id: u32) void {
         const app = self.app;
-        app.emitEvent(.notifd_removed, id);
+        app.emitEventUseSocket(.notifd_removed, id);
     }
     fn initNotifd(self: *Self) !void {
         if (self.notifd == null) {

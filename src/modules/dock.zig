@@ -63,16 +63,16 @@ pub const Dock = struct {
         };
     }
     fn onChanged(self: *Self, client: ForeignToplevelManager.Toplevel) void {
-        self.app.emitEvent(.dock_changed, client);
+        self.app.emitEventUseSocket(.dock_changed, client);
     }
     fn onClosed(self: *Self, id: u32) void {
-        self.app.emitEvent(.dock_closed, id);
+        self.app.emitEventUseSocket(.dock_closed, id);
     }
     fn onEnter(self: *Self, id: u32) void {
-        self.app.emitEvent(.dock_enter, id);
+        self.app.emitEventUseSocket(.dock_enter, id);
     }
     fn onLeave(self: *Self, id: u32) void {
-        self.app.emitEvent(.dock_leave, id);
+        self.app.emitEventUseSocket(.dock_leave, id);
     }
     pub fn list(self: *Self, ctx: *Context) !void {
         try self.setup();

@@ -10,11 +10,15 @@ export interface Monitor {
     model: string | null;
     refreshRate: number;
 }
-export function list(): Promise<Monitor[]> {
+export async function list(): Promise<Monitor[]> {
     return call("monitor.list");
 }
-export function get(): Promise<Monitor> {
-    return call("monitor.get");
+export async function get(index: number): Promise<Monitor> {
+    const monitors = await call("monitor.list");
+    return monitors[index];
+}
+export async function getCurrent(): Promise<Monitor> {
+    return call("monitor.getCurrent");
 }
 export type CaptureOption = {
     overlayCursor: boolean;
@@ -22,7 +26,7 @@ export type CaptureOption = {
     webpQuality: number;
     pngCompression: number;
 };
-export function capture(
+export async function capture(
     output: number,
     region: null | { x: number; y: number; w: number; h: number } = null,
     option: Partial<CaptureOption> = {}

@@ -101,7 +101,7 @@ pub const Tray = struct {
             .removed => Events.tray_removed,
             .changed => Events.tray_changed,
         };
-        self.app.emitEvent(event, service);
+        self.app.emitEventUseSocket(event, service);
     }
     pub fn getItems(self: *Self, ctx: *Context) !void {
         try self.setup(ctx);

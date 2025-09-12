@@ -4,6 +4,7 @@ import * as _icon from "./icon";
 import * as _os from "./os";
 import * as _window from "./window";
 import * as _layer from "./layer";
+import * as _popover from "./popover";
 import * as _apps from "./apps";
 import * as _monitor from "./monitor";
 import * as _notifd from "./notifd";
@@ -18,6 +19,7 @@ const core = {
     os: _os,
     window: _window,
     layer: _layer,
+    popover: _popover,
     apps: _apps,
     monitor: _monitor,
     notifd: _notifd,
@@ -27,7 +29,10 @@ const core = {
     utils: _utils,
 };
 declare global {
-    var mikaShell: typeof core;
+    var mikaShell: typeof core & {
+        backendPort: number;
+        id: number;
+    };
 }
 export default core;
 export * as mika from "./mika";
@@ -36,6 +41,7 @@ export * as icon from "./icon";
 export * as os from "./os";
 export * as window from "./window";
 export * as layer from "./layer";
+export * as popover from "./popover";
 export * as apps from "./apps";
 export * as monitor from "./monitor";
 export * as notifd from "./notifd";

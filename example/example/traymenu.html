@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Tray Menu Example</title>
+    </head>
+    <body>
+        <div id="menu">
+            <ul id="menu-list"></ul>
+        </div>
+
+        <style>
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                background: transparent;
+            }
+
+            #menu {
+                background: #333;
+                padding: 15px;
+                border-radius: 8px;
+                border: 1px solid #419d4e;
+                margin-top: 20px;
+                min-width: 150px;
+            }
+            #menu ul {
+                height: 100%;
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                gap: 10px;
+            }
+            #menu li {
+                color: #fff;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: color 0.2s;
+                padding: 4px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            #menu li:hover {
+                background-color: #419d4e;
+            }
+            img {
+                width: 25px;
+                height: 25px;
+            }
+        </style>
+        <script>
+            const tray = mikaShell.tray;
+            const popover = mikaShell.popover;
+
+            const params = new URLSearchParams(window.location.search);
+            const parent = Number(params.get("parent"));
+            const x = Number(params.get("x")).toFixed(0);
+            const y = Number(params.get("y")).toFixed(0);
+            const w = Number(params.get("w")).toFixed(0);
+            const h = Number(params.get("h")).toFixed(0);
+            const service = params.get("service");
+
+            async function createItem(item) {
+                const prop = item.properties;
+
+                const li = document.createElement("li");
+                document.getElementById("menu-list").appendChild(li);
+
+                if (prop.type === "separator") {
+                    return;
+                }
+
+                if (prop.enabled) {
+                    li.addEventListener("click", () => {
+                        tray.activateMenu(service, item.id);
+                        popover.close();
+                    });
+                } else {
+                    li.style.color = "#aaa";
+                    li.style.cursor = "not-allowed";
+                }
+                if (prop.iconName || prop.iconData) {
+                    const img = document.createElement("img");
+                    if (prop.iconName) img.src = await mikaShell.icon.lookup(prop.iconName, 256);
+                    li.appendChild(img);
+                }
+                if (prop.label) {
+                    const span = document.createElement("span");
+                    span.innerText = prop.label;
+                    li.appendChild(span);
+                }
+
+                if (prop.childrenDisplay === "submenu") {
+                    li.innerText += " (submenu not implemented)";
+                }
+            }
+            async function main() {
+                const menu = await tray.getMenu(service);
+                for (let item of menu.children) {
+                    createItem(item);
+                }
+                setTimeout(popover.show, 0);
+            }
+            main().then(() => {
+                popover.init({
+                    parent: parent,
+                    positionTo: { x, y, w, h },
+                    backgroundTransparent: true,
+                    hidden: true,
+                });
+            });
+            let closeOnHide = true;
+            popover.on("hide", () => {
+                if (closeOnHide) {
+                    popover.close();
+                } else {
+                    popover.show();
+                    closeOnHide = true;
+                }
+            });
+            setTimeout(() => {
+                // setSize 会使 gtk 控件重新布局, 会触发 hide 事件, 但是这时候不应该关闭 popover
+                // 当然, 最好还是不要更新 Size
+                closeOnHide = false;
+                popover.setSize(300, 200);
+                popover.show();
+            }, 1000);
+        </script>
+    </body>
+</html>

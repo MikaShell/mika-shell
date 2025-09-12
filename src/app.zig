@@ -6,9 +6,10 @@ const g = @import("gobject");
 const jsc = @import("jsc");
 const events = @import("events.zig");
 pub const WebviewType = enum {
-    None,
-    Window,
-    Layer,
+    none,
+    window,
+    layer,
+    popover,
 };
 pub const WindowOptions = @import("./modules/window.zig").Options;
 pub const LayerOptions = @import("./modules/layer.zig").Options;
@@ -24,9 +25,48 @@ pub const Webview = struct {
     id: u64,
     allocator: Allocator,
     name: []const u8,
-    type: WebviewType,
     impl: *webkit.WebView,
-    container: *gtk.Window,
+    container: union(enum) {
+        none: void,
+        window: *gtk.Window,
+        layer: @import("layershell").Layer,
+        popover: *gtk.Popover,
+        fn destroy(self: @This()) void {
+            switch (self) {
+                .none => {},
+                .window => |w| w.destroy(),
+                .layer => |l| l.inner.destroy(),
+                .popover => |p| {
+                    p.as(gtk.Widget).unparent();
+                },
+            }
+        }
+        fn show(self: @This()) void {
+            switch (self) {
+                .none => {},
+                .window => |w| w.present(),
+                .layer => |l| {
+                    if (l.inner.as(gtk.Widget).getVisible() == 1) {
+                        l.inner.present();
+                    } else {
+                        l.inner.as(gtk.Widget).show();
+                    }
+                },
+                .popover => |p| {
+                    p.popup();
+                    p.present();
+                },
+            }
+        }
+        fn hide(self: @This()) void {
+            switch (self) {
+                .none => {},
+                .window => |w| w.as(gtk.Widget).hide(),
+                .layer => |l| l.inner.as(gtk.Widget).hide(),
+                .popover => |p| p.popdown(),
+            }
+        }
+    },
     _modules: *Modules,
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
     pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backendPort: u16, configDir: []const u8) !*Webview {
@@ -36,38 +76,41 @@ pub const Webview = struct {
             .impl = undefined,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
-            .container = gtk.Window.new(),
+            .container = .{ .none = {} },
             ._modules = m,
-            .type = .None,
         };
-        const dataDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_data" });
-        defer allocator.free(dataDir);
-        const cacheDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_cache" });
-        defer allocator.free(cacheDir);
-        const network_session = webkit.NetworkSession.new(dataDir.ptr, cacheDir.ptr);
-        w.impl = g.ext.cast(webkit.WebView, g.Object.new(
-            webkit.WebView.getGObjectType(),
-            "web-context",
-            webkit.WebContext.getDefault(),
-            "network-session",
-            network_session,
-            @as(?[*:0]const u8, null),
-        )).?;
+        _ = configDir;
+        // TODO: 设置存储路径之后 localStorage 不同步
+        // const dataDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_data" });
+        // defer allocator.free(dataDir);
+        // const cacheDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_cache" });
+        // defer allocator.free(cacheDir);
+        // const networkSession = webkit.NetworkSession.getDefault();
+        // w.impl = g.ext.cast(webkit.WebView, g.Object.new(
+        //     webkit.WebView.getGObjectType(),
+        //     "network-session",
+        //     networkSession,
+        //     @as(?[*:0]const u8, null),
+        // )).?;
+        w.impl = webkit.WebView.new();
         w.id = w.impl.getPageId();
         w.impl.getSettings().setDefaultCharset("utf-8");
+
         const settings = w.impl.getSettings();
         settings.setEnableDeveloperExtras(1);
         const manager = w.impl.getUserContentManager();
         _ = manager.registerScriptMessageHandlerWithReply("mikaShell", null);
 
+        const setPropJs = std.fmt.allocPrintSentinel(allocator, "window.mikaShell = {{backendPort: {d}, id: {d}}};", .{ backendPort, w.id }, 0) catch unreachable;
+        defer allocator.free(setPropJs);
+        const setPortScript = webkit.UserScript.new(setPropJs, .all_frames, .start, null, null);
+        defer setPortScript.unref();
+        manager.addScript(setPortScript);
+
         const bindingsScript = webkit.UserScript.new(@embedFile("bindings.js"), .all_frames, .start, null, null);
         defer bindingsScript.unref();
         manager.addScript(bindingsScript);
-        const setPortJs = std.fmt.allocPrintSentinel(allocator, "window.mikaShell.backendPort = {d};", .{backendPort}, 0) catch unreachable;
-        defer allocator.free(setPortJs);
-        const setPortScript = webkit.UserScript.new(setPortJs, .all_frames, .start, null, null);
-        defer setPortScript.unref();
-        manager.addScript(setPortScript);
+
         _ = g.signalConnectData(manager.as(g.Object), "script-message-with-reply-received::mikaShell", @ptrCast(&struct {
             fn f(_: *webkit.UserContentManager, v: *jsc.Value, reply: *webkit.ScriptMessageReply, wv: *Webview) callconv(.c) c_int {
                 const alc = wv.allocator;
@@ -120,40 +163,35 @@ pub const Webview = struct {
                 return 0;
             }
         }.f), w, null, .flags_default);
-        w.container.setChild(w.impl.as(gtk.Widget));
         return w;
     }
     pub fn getInfo(self: *Webview) Info {
         return Info{
-            .type = switch (self.type) {
-                .None => "none",
-                .Window => "window",
-                .Layer => "layer",
-            },
+            .type = @tagName(self.container),
             .id = self.id,
             .uri = std.mem.span(self.impl.getUri()),
             .alias = self.name,
-            .visible = self.container.as(gtk.Widget).getVisible() == 1,
+            .visible = switch (self.container) {
+                .none => false,
+                .window => |w| w.as(gtk.Widget).getVisible() == 1,
+                .layer => |l| l.inner.as(gtk.Widget).getVisible() == 1,
+                .popover => |p| p.as(gtk.Widget).getVisible() == 1,
+            },
             .title = if (@as([*c]const u8, @ptrCast(self.impl.getTitle()))) |title| std.mem.span(title) else "",
         };
     }
     pub fn forceClose(self: *Webview) void {
         self.allocator.free(self.name);
         self.container.destroy();
-        self.allocator.destroy(self);
+        self.allocator.destroy(self); // BUG: double free?
     }
     pub fn forceShow(self: *Webview) void {
         // 对于 Layer 类型的 Webview, 在不可见的情况下使用 present() 可能会导致窗口大小异常
         // 所以先判断是否可见再调用 present()
-        const w = self.container.as(gtk.Widget);
-        if (w.getVisible() == 1) {
-            self.container.present();
-        } else {
-            w.show();
-        }
+        self.container.show();
     }
     pub fn forceHide(self: *Webview) void {
-        self.container.as(gtk.Widget).hide();
+        self.container.hide();
     }
 };
 const dbus = @import("dbus");
@@ -445,6 +483,7 @@ pub const App = struct {
         try modules.mount(@import("modules/mika.zig").Mika, "mika");
         try modules.mount(@import("modules/window.zig").Window, "window");
         try modules.mount(@import("modules/layer.zig").Layer, "layer");
+        try modules.mount(@import("modules/popover.zig").Popover, "popover");
         try modules.mount(@import("modules/tray.zig").Tray, "tray");
         try modules.mount(@import("modules/icon.zig").Icon, "icon");
         try modules.mount(@import("modules/os.zig").OS, "os");
@@ -469,7 +508,7 @@ pub const App = struct {
                         defer a.allocator.free(msg);
                         const e = glib.Error.new(webkit.NetworkError.quark(), @intFromEnum(webkit.NetworkError.failed), msg);
                         defer e.free();
-                        const w = a.getWebview(r.getWebView().getPageId()) catch unreachable;
+                        const w = a.getWebviewWithId(r.getWebView().getPageId()) catch unreachable;
                         w.forceShow();
                         r.finishError(e);
                     }
@@ -578,15 +617,32 @@ pub const App = struct {
             }
         }.cb, app, null);
 
+        // add css for popover
+        const cssProvider = gtk.CssProvider.new();
+        defer cssProvider.unref();
+        cssProvider.loadFromString(".mika-shell-popover > contents {background-color: transparent; border: none; padding: 0; margin: 0; border-radius: 0;}");
+        gtk.StyleContext.addProviderForDisplay(@import("gdk").Display.getDefault().?, cssProvider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
         return app;
     }
+    fn sortPopoverFirst(_: void, a: *Webview, b: *Webview) bool {
+        if (a.container == .popover and b.container != .popover) {
+            return true;
+        }
+        if (a.container != .popover and b.container == .popover) {
+            return false;
+        }
+        return a.id > b.id;
+    }
+
     pub fn deinit(self: *App) void {
         self.isQuit = true;
         self.sessionBusWatcher.deinit();
         self.systemBusWatcher.deinit();
+        std.mem.sort(*Webview, self.webviews.items, {}, sortPopoverFirst);
         for (self.webviews.items) |webview| {
             webview.forceClose();
         }
@@ -613,64 +669,91 @@ pub const App = struct {
         defer self.allocator.free(uri);
         return self.openS(uri, pageName);
     }
+    /// 初始化 webview 的 contianer, 为其绑定事件
+    pub fn setupContianer(self: *App, webview: *Webview, contianer: enum { popover, window, layer }) void {
+        switch (contianer) {
+            .window, .layer => {
+                const window = gtk.Window.new();
+                webview.container = if (contianer == .window) .{ .window = window } else .{ .layer = @import("layershell").Layer.init(window) };
+                const widget = window.as(gtk.Widget);
+                window.setChild(webview.impl.as(gtk.Widget));
+                const cssProvider = gtk.CssProvider.new();
+                defer cssProvider.unref();
+                cssProvider.loadFromString("window {background-color: transparent;}");
+                widget.getStyleContext().addProvider(cssProvider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+                _ = g.signalConnectData(window.as(g.Object), "close-request", @ptrCast(&struct {
+                    fn f(o: *g.Object, app_inner: *App) callconv(.c) c_int {
+                        const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
+                        app_inner.emitEventUseJS(wb, .mika_close_request, wb.id);
+                        return 1;
+                    }
+                }.f), self, null, .flags_default);
+            },
+            .popover => {
+                const popover = gtk.Popover.new();
+                const widget = popover.as(gtk.Widget);
+
+                widget.addCssClass("mika-shell-popover");
+                popover.setHasArrow(0);
+                popover.setAutohide(0);
+                popover.setMnemonicsVisible(0);
+
+                webview.container = .{ .popover = popover };
+                popover.setChild(webview.impl.as(gtk.Widget));
+            },
+        }
+        const obj = switch (webview.container) {
+            .none => unreachable,
+            .window => |w| w.as(g.Object),
+            .layer => |l| l.inner.as(g.Object),
+            .popover => |p| p.as(g.Object),
+        };
+
+        // `destroy` signal is connected in other places, and we need to make sure this callback is the last one to be called.
+        _ = g.signalConnectData(obj, "destroy", @ptrCast(&struct {
+            fn f(o: *g.Object, app_inner: *App) callconv(.c) void {
+                if (app_inner.isQuit) return;
+                const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
+                const id = wb.id;
+                app_inner.mutex.lock();
+                defer app_inner.mutex.unlock();
+                for (app_inner.webviews.items, 0..app_inner.webviews.items.len) |w_, i| {
+                    if (w_.id == id) {
+                        _ = app_inner.webviews.orderedRemove(i);
+                        app_inner.emitEventUseJS(null, .mika_close, id);
+                        break;
+                    }
+                }
+            }
+        }.f), self, null, .flags_after);
+
+        _ = g.signalConnectData(obj, "show", @ptrCast(&struct {
+            fn f(o: *g.Object, app_inner: *App) callconv(.c) void {
+                const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
+                app_inner.emitEventUseJS(null, .mika_show, wb.id);
+            }
+        }.f), self, null, .flags_default);
+
+        _ = g.signalConnectData(obj, "hide", @ptrCast(&struct {
+            fn f(o: *g.Object, app_inner: *App) callconv(.c) void {
+                const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
+                app_inner.emitEventUseJS(null, .mika_hide, wb.id);
+            }
+        }.f), self, null, .flags_default);
+    }
     fn openS(self: *App, uri: [:0]const u8, name: []const u8) *Webview {
         const webview = Webview.init(self.allocator, self.modules, name, self.port, self.configDir) catch unreachable;
         webview.impl.loadUri(uri);
         self.mutex.lock();
         self.webviews.append(self.allocator, webview) catch unreachable;
         self.mutex.unlock();
-
-        const cssProvider = gtk.CssProvider.new();
-        defer cssProvider.unref();
-        cssProvider.loadFromString("window {background-color: transparent;}");
-        const contianer = webview.container.as(gtk.Widget);
-        contianer.getStyleContext().addProvider(cssProvider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
-        _ = g.signalConnectData(contianer.as(g.Object), "close-request", @ptrCast(&struct {
-            fn f(w: *gtk.Window, data: ?*anyopaque) callconv(.c) c_int {
-                const a: *App = @ptrCast(@alignCast(data));
-                const wb = a.getWebview2(w.as(gtk.Widget));
-                const id = wb.id;
-                a.emitEvent2(wb, .mika_close_request, id);
-                return 1;
-            }
-        }.f), self, null, .flags_default);
-
-        _ = g.signalConnectData(contianer.as(g.Object), "destroy", @ptrCast(&struct {
-            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const a: *App = @ptrCast(@alignCast(data));
-                if (a.isQuit) return;
-                const id = a.getWebview2(w).id;
-                a.mutex.lock();
-                defer a.mutex.unlock();
-                for (a.webviews.items, 0..a.webviews.items.len) |w_, i| {
-                    if (w_.id == id) {
-                        _ = a.webviews.orderedRemove(i);
-                        a.emitEvent2(null, .mika_close, id);
-                        break;
-                    }
-                }
-            }
-        }.f), self, null, .flags_default);
-
-        _ = g.signalConnectData(contianer.as(g.Object), "show", @ptrCast(&struct {
-            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const a: *App = @ptrCast(@alignCast(data));
-                const wb = a.getWebview2(w);
-                a.emitEvent2(null, .mika_show, wb.id);
-            }
-        }.f), self, null, .flags_default);
-        _ = g.signalConnectData(contianer.as(g.Object), "hide", @ptrCast(&struct {
-            fn f(w: *gtk.Widget, data: ?*anyopaque) callconv(.c) void {
-                const a: *App = @ptrCast(@alignCast(data));
-                const wb = a.getWebview2(w);
-                a.emitEvent2(null, .mika_hide, wb.id);
-            }
-        }.f), self, null, .flags_default);
         const info = webview.getInfo();
-        self.emitEvent(.mika_open, info);
+        self.emitEventUseSocket(.mika_open, info);
+
         return webview;
     }
-    pub fn getWebview(self: *App, id: u64) !*Webview {
+    pub fn getWebviewWithId(self: *App, id: u64) !*Webview {
         for (self.webviews.items) |webview| {
             if (webview.id == id) {
                 return webview;
@@ -678,18 +761,28 @@ pub const App = struct {
         }
         return Error.WebviewNotExists;
     }
-    fn getWebview2(self: *App, widget: *gtk.Widget) *Webview {
+    pub fn getWebviewWithWidget(self: *App, widget: *gtk.Widget) *Webview {
         for (self.webviews.items) |webview| {
-            if (webview.container.as(gtk.Widget) == widget or webview.impl.as(gtk.Widget) == widget) {
-                return webview;
+            if (webview.impl.as(gtk.Widget) == widget) return webview;
+            switch (webview.container) {
+                .none => {},
+                .window => |w| {
+                    if (w.as(gtk.Widget) == widget) return webview;
+                },
+                .layer => |l| {
+                    if (l.inner.as(gtk.Widget) == widget) return webview;
+                },
+                .popover => |p| {
+                    if (p.as(gtk.Widget) == widget) return webview;
+                },
             }
         }
         unreachable;
     }
-    pub fn emitEvent(self: *App, event: events.Events, data: anytype) void {
+    pub fn emitEventUseSocket(self: *App, event: events.Events, data: anytype) void {
         self.emitter.emit(event, data);
     }
-    pub fn emitEvent2(self: *App, dist: ?*Webview, event: events.Events, data: anytype) void {
+    pub fn emitEventUseJS(self: *App, dist: ?*Webview, event: events.Events, data: anytype) void {
         const alc = std.heap.page_allocator;
         const dataJson = std.json.Stringify.valueAlloc(alc, data, .{}) catch unreachable;
         defer alc.free(dataJson);
@@ -704,13 +797,13 @@ pub const App = struct {
         }
     }
     pub fn showRequest(self: *App, w: *Webview) void {
-        self.emitEvent2(w, .mika_show_request, w.id);
+        self.emitEventUseJS(w, .mika_show_request, w.id);
     }
     pub fn hideRequest(self: *App, w: *Webview) void {
-        self.emitEvent2(w, .mika_hide_request, w.id);
+        self.emitEventUseJS(w, .mika_hide_request, w.id);
     }
     pub fn closeRequest(self: *App, w: *Webview) void {
-        self.emitEvent2(w, .mika_close_request, w.id);
+        self.emitEventUseJS(w, .mika_close_request, w.id);
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell

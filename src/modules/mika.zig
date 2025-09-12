@@ -24,8 +24,8 @@ pub const Mika = struct {
     pub fn register() Registry(Self) {
         return .{
             .exports = &.{
-                .{ "getId", getId },
                 .{ "open", open },
+                .{ "openAsync", openAsync },
                 .{ "close", close },
                 .{ "forceClose", forceClose },
                 .{ "show", show },
@@ -35,6 +35,7 @@ pub const Mika = struct {
                 .{ "subscribe", subscribe },
                 .{ "unsubscribe", unsubcribe },
                 .{ "getConfigDir", getConfigDir },
+                .{ "openDevTools", openDevTools },
                 .{ "list", list },
             },
             .events = &.{
@@ -59,48 +60,67 @@ pub const Mika = struct {
         const event = try ctx.args.uInteger(0);
         try self.app.emitter.unsubscribe(ctx.caller, @enumFromInt(event));
     }
-    pub fn getId(_: *Self, ctx: *CallContext) !void {
-        ctx.commit(ctx.caller);
-    }
-    pub fn open(self: *Self, ctx: *CallContext) !void {
+    pub fn openAsync(self: *Self, ctx: *CallContext) !void {
         const pageName = try ctx.args.string(0);
         const webview = try self.app.open(pageName);
         ctx.commit(webview.id);
     }
+    pub fn openDevTools(self: *Self, ctx: *CallContext) !void {
+        var id = try ctx.args.uInteger(0);
+        if (id == 0) id = ctx.caller;
+        const w = try self.app.getWebviewWithId(id);
+        w.impl.getInspector().show();
+    }
+    pub fn open(self: *Self, ctx: *CallContext) !void {
+        const pageName = try ctx.args.string(0);
+        const webview = try self.app.open(pageName);
+        const gtk = @import("gtk");
+        const g = @import("gobject");
+
+        const async = try std.heap.page_allocator.create(modules.Async);
+        async.* = ctx.async();
+
+        _ = g.signalConnectData(webview.impl.as(g.Object), "destroy", @ptrCast(&struct {
+            fn cb(_: *gtk.Window, a: *modules.Async) callconv(.c) void {
+                a.commit({});
+                std.heap.page_allocator.destroy(a);
+            }
+        }.cb), async, null, .flags_default);
+    }
     pub fn close(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         self.app.closeRequest(w);
     }
     pub fn forceClose(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         w.forceClose();
     }
     pub fn show(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         self.app.showRequest(w);
     }
     pub fn forceShow(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         w.forceShow();
     }
     pub fn hide(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         self.app.hideRequest(w);
     }
     pub fn forceHide(self: *Self, ctx: *CallContext) !void {
         var id = try ctx.args.uInteger(0);
         if (id == 0) id = ctx.caller;
-        const w = try self.app.getWebview(id);
+        const w = try self.app.getWebviewWithId(id);
         w.forceHide();
     }
     pub fn list(self: *Self, ctx: *CallContext) !void {

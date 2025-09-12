@@ -1,5 +1,4 @@
 import call from "./call";
-import * as events from "./events";
 
 export type Options = {
     title: string;
@@ -36,18 +35,6 @@ export function init(options: Partial<Options> = {}): Promise<void> {
         return _init(opt);
     }
 }
-export function show(): Promise<void> {
-    return call("mika.show", 0);
-}
-export function hide(): Promise<void> {
-    return call("mika.hide", 0);
-}
-export function close(): Promise<void> {
-    return call("mika.close", 0);
-}
-export function openDevTools(): Promise<void> {
-    return call("window.openDevTools");
-}
 export function getSize(): Promise<{ width: number; height: number }> {
     return call("window.getSize");
 }
@@ -64,3 +51,7 @@ import * as layer from "./layer";
 export const on = layer.on;
 export const off = layer.off;
 export const once = layer.once;
+export const show = layer.show;
+export const hide = layer.hide;
+export const close = layer.close;
+export const openDevTools = layer.openDevTools;

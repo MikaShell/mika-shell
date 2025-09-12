@@ -63,7 +63,7 @@ export function close(): Promise<void> {
     return call("mika.close", 0);
 }
 export function openDevTools(): Promise<void> {
-    return call("layer.openDevTools");
+    return call("mika.openDevTools", 0);
 }
 export function resetAnchor(): Promise<void> {
     return call("layer.resetAnchor");
@@ -113,16 +113,15 @@ type EventMap = {
 };
 const listeners: Map<number, Array<() => void>> = new Map(); // only handle xxx-request event
 const onceListeners: Map<number, Array<() => void>> = new Map(); // only handle xxx-request event
-var selfId = 0;
-mika.getId().then((id_) => (selfId = id_));
+
 mika.on("show", (id: number) => {
-    if (id !== selfId) return;
+    if (id !== globalThis.mikaShell.id) return;
     listeners.get(Mika["show"])?.forEach((cb) => cb());
     onceListeners.get(Mika["show"])?.forEach((cb) => cb());
     onceListeners.delete(Mika["show"]);
 });
 mika.on("hide", (id: number) => {
-    if (id !== selfId) return;
+    if (id !== globalThis.mikaShell.id) return;
     listeners.get(Mika["hide"])?.forEach((cb) => cb());
     onceListeners.get(Mika["hide"])?.forEach((cb) => cb());
     onceListeners.delete(Mika["hide"]);

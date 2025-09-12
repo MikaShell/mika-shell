@@ -2,23 +2,21 @@ import call from "./call";
 import { socket } from "./utils";
 const listeners: Map<number, Function[]> = new Map();
 const onceListeners: Map<number, Function[]> = new Map();
-call("mika.getId").then((id) => {
-    try {
-        const ws = socket(`?event=${id}`);
-        ws.onmessage = (event_) => {
-            const { event, data } = JSON.parse(event_.data);
-            dispatch(event, data);
-        };
-        ws.onclose = () => {
-            console.error("Event WebSocket connection closed");
-        };
-        ws.onerror = (error) => {
-            console.error("Event WebSocket error", error);
-        };
-    } catch (error) {
-        console.error("Failed to connect to Event WebSocket", error);
-    }
-});
+try {
+    const ws = socket(`?event=${globalThis.mikaShell.id}`);
+    ws.onmessage = (event_) => {
+        const { event, data } = JSON.parse(event_.data);
+        dispatch(event, data);
+    };
+    ws.onclose = () => {
+        console.error("Event WebSocket connection closed");
+    };
+    ws.onerror = (error) => {
+        console.error("Event WebSocket error", error);
+    };
+} catch (error) {
+    console.error("Failed to connect to Event WebSocket", error);
+}
 window.addEventListener("mika-shell-event", (e: any) => {
     const { event, data } = e.detail;
     dispatch(event, data);

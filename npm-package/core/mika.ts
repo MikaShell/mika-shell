@@ -2,15 +2,25 @@ import call from "./call";
 import * as events from "./events";
 import { Mika } from "./events-define";
 
-export function open(name: string): Promise<number> {
+function setHost_(name: string) {
     if (name.startsWith("/")) {
-        return call("mika.open", "/" + globalThis.location.host + name);
+        return "/" + globalThis.location.host + name;
     } else {
-        return call("mika.open", globalThis.location.host + "." + name);
+        return globalThis.location.host + "." + name;
     }
 }
-export function open2(name: string): Promise<number> {
-    return call("mika.open", name);
+// Open a webview, and wait for the webview to close before returning.
+// If `setHost` is `true`, it will automatically add the host prefix to the url, which is consistent with the command line behavior, ensuring that the url of the opened webview is correct.
+export function open(name: string, setHost: boolean = true): Promise<void> {
+    return call("mika.open", setHost ? setHost_(name) : name);
+}
+// Open a webview, the promise will return the id of the webview when the webview is opened.
+// If `setHost` is `true`, it will automatically add the host prefix to the url, which is consistent with the command line behavior, ensuring that the url of the opened webview is correct.
+export function openAsync(name: string, setHost: boolean = true): Promise<number> {
+    return call("mika.openAsync", setHost ? setHost_(name) : name);
+}
+export function openDevTools(id: number): Promise<void> {
+    return call("mika.openDevTools", id);
 }
 export function close(id: number): Promise<void> {
     return call("mika.close", id);
@@ -29,9 +39,6 @@ export function forceHide(id: number): Promise<void> {
 }
 export function forceClose(id: number): Promise<void> {
     return call("mika.forceClose", id);
-}
-export function getId(): Promise<number> {
-    return call("mika.getId");
 }
 export function getConfigDir(): Promise<string> {
     return call("mika.getConfigDir");
@@ -75,7 +82,7 @@ events.on(Mika["close-request"], (id: number) => {
 });
 export interface WebviewInfo {
     id: number;
-    type: "none" | "layer" | "window";
+    type: "none" | "layer" | "window" | "popup";
     uri: string;
     title: string;
     visible: boolean;

@@ -146,12 +146,12 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "show")) {
-        const w = app.getWebview(r.id.?) catch {
+        const w = app.getWebviewWithId(r.id.?) catch {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
             return;
         };
-        switch (w.type) {
-            .None => {
+        switch (w.container) {
+            .none => {
                 if (r.force.?) {
                     w.forceShow();
                 } else {
@@ -165,7 +165,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "hide")) {
-        const w = app.getWebview(r.id.?) catch {
+        const w = app.getWebviewWithId(r.id.?) catch {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
             return;
         };
@@ -176,7 +176,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "close")) {
-        const w = app.getWebview(r.id.?) catch {
+        const w = app.getWebviewWithId(r.id.?) catch {
             try out.print("Can`t find webview with id: {d}\n", .{r.id.?});
             return;
         };

@@ -39,7 +39,6 @@ pub const Layer = struct {
         return .{
             .exports = &.{
                 .{ "init", initLayer },
-                .{ "openDevTools", openDevTools },
                 .{ "resetAnchor", resetAnchor },
                 .{ "setAnchor", setAnchor },
                 .{ "setLayer", setLayer },
@@ -56,37 +55,36 @@ pub const Layer = struct {
         };
     }
     fn getWebview(self: *Self, ctx: *CallContext) !*Webview {
-        const w = self.app.getWebview(ctx.caller) catch unreachable;
-        if (w.type != .Layer) {
+        const w = self.app.getWebviewWithId(ctx.caller) catch unreachable;
+        if (w.container != .layer) {
             return error.WebviewIsNotALayer;
         }
         return w;
     }
     fn getLayer(self: *Self, ctx: *CallContext) !layershell.Layer {
-        const w = self.app.getWebview(ctx.caller) catch unreachable;
-        if (w.type != .Layer) {
+        const w = self.app.getWebviewWithId(ctx.caller) catch unreachable;
+        if (w.container != .layer) {
             return error.WebviewIsNotALayer;
         }
-        const layer = layershell.Layer.init(w.container);
-        return layer;
+        return w.container.layer;
     }
     pub fn initLayer(self: *Self, ctx: *CallContext) !void {
-        const w = self.app.getWebview(ctx.caller) catch unreachable;
-
+        const wb = self.app.getWebviewWithId(ctx.caller) catch unreachable;
         const allocator = std.heap.page_allocator;
         const options = try std.json.parseFromValue(Options, allocator, try ctx.args.value(0), .{});
         defer options.deinit();
         const opt = options.value;
-        if (w.type == .Window) {
-            // 已经被初始化为 Window, 无法再次初始化为 Layer
-            return error.WebviewIsAlreadyAWindow;
+        switch (wb.container) {
+            .none => {
+                self.app.setupContianer(wb, .layer);
+                _ = wb.container.layer.setMonitor(opt.monitor) catch {};
+            },
+            .window, .popover => {
+                return error.WebviewAlreadyInitializedAsOtherType;
+            },
+            else => {},
         }
-
-        const layer = layershell.Layer.init(w.container);
-        if (w.type == .None) {
-            _ = layer.setMonitor(opt.monitor) catch {};
-        }
-        w.type = .Layer;
+        const layer = wb.container.layer;
         layer.resetAnchor();
         for (opt.anchor) |a| {
             layer.setAnchor(a, true);
@@ -94,27 +92,25 @@ pub const Layer = struct {
         layer.setLayer(opt.layer);
         layer.setKeyboardMode(opt.keyboardMode);
         layer.setNamespace(opt.namespace);
-        layer.setMargin(layershell.Edge.Top, opt.margin[0]);
-        layer.setMargin(layershell.Edge.Right, opt.margin[1]);
-        layer.setMargin(layershell.Edge.Bottom, opt.margin[2]);
-        layer.setMargin(layershell.Edge.Left, opt.margin[3]);
+        layer.setMargin(.top, opt.margin[0]);
+        layer.setMargin(.right, opt.margin[1]);
+        layer.setMargin(.bottom, opt.margin[2]);
+        layer.setMargin(.left, opt.margin[3]);
         layer.setExclusiveZone(opt.exclusiveZone);
         if (opt.autoExclusiveZone) {
             layer.autoExclusiveZoneEnable();
         }
         if (opt.backgroundTransparent) {
-            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 0 });
+            wb.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 0 });
         } else {
-            w.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 1 });
+            wb.impl.setBackgroundColor(&.{ .f_red = 1, .f_green = 1, .f_blue = 1, .f_alpha = 1 });
         }
-        w.container.setDefaultSize(@intCast(opt.width), @intCast(opt.height));
+        layer.inner.setDefaultSize(@intCast(opt.width), @intCast(opt.height));
         if (!opt.hidden) {
-            self.app.showRequest(w);
+            self.app.showRequest(wb);
         }
-    }
-    pub fn openDevTools(self: *Self, ctx: *CallContext) !void {
-        const w = try self.getWebview(ctx);
-        w.impl.getInspector().show();
+        const widget = layer.inner.as(gtk.Widget);
+        if (widget.getVisible() == 1) layer.inner.present();
     }
     pub fn resetAnchor(self: *Self, ctx: *CallContext) !void {
         const layer = try self.getLayer(ctx);
@@ -158,7 +154,7 @@ pub const Layer = struct {
     }
     pub fn getSize(self: *Self, ctx: *CallContext) !void {
         const w = try self.getWebview(ctx);
-        const surface = w.container.as(gtk.Native).getSurface();
+        const surface = w.container.layer.inner.as(gtk.Native).getSurface();
         if (surface == null) {
             ctx.errors("you should call this function after the window is realized", .{});
             return;
@@ -169,11 +165,11 @@ pub const Layer = struct {
         const w = try self.getWebview(ctx);
         const width = try ctx.args.integer(0);
         const height = try ctx.args.integer(1);
-        w.container.setDefaultSize(@intCast(width), @intCast(height));
+        w.container.layer.inner.setDefaultSize(@intCast(width), @intCast(height));
     }
     pub fn getScale(self: *Self, ctx: *CallContext) !void {
         const w = try self.getWebview(ctx);
-        const surface = w.container.as(gtk.Native).getSurface();
+        const surface = w.container.layer.inner.as(gtk.Native).getSurface();
         if (surface == null) {
             ctx.errors("you should call this function after the window is realized", .{});
             return;
@@ -182,7 +178,7 @@ pub const Layer = struct {
     }
     pub fn setInputRegion(self: *Self, ctx: *CallContext) !void {
         const w = try self.getWebview(ctx);
-        const surface = w.container.as(gtk.Native).getSurface();
+        const surface = w.container.layer.inner.as(gtk.Native).getSurface();
         if (surface == null) {
             ctx.errors("you should call this function after the window is realized", .{});
             return;
