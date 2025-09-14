@@ -290,6 +290,7 @@ pub fn daemon() !void {
         .eventChannel = &eventChannel,
         .port = config.port,
     });
+    errdefer app.deinit();
     const ipcServer = try ipc.Server.init(allocator, app, config.port);
     defer ipcServer.deinit();
     try ipcServer.listen();

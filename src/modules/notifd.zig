@@ -40,19 +40,19 @@ pub const Notifd = struct {
                 .{ "getAll", getAll },
             },
             .events = &.{
-                .notifd_added,
-                .notifd_removed,
+                .@"notifd.added",
+                .@"notifd.removed",
             },
         };
     }
 
     fn onNotificationAdded(self: *Self, id: u32) void {
         const app = self.app;
-        app.emitEventUseSocket(.notifd_added, id);
+        app.emitEventUseSocket(.@"notifd.added", id);
     }
     fn onNotificationRemoved(self: *Self, id: u32) void {
         const app = self.app;
-        app.emitEventUseSocket(.notifd_removed, id);
+        app.emitEventUseSocket(.@"notifd.removed", id);
     }
     fn initNotifd(self: *Self) !void {
         if (self.notifd == null) {

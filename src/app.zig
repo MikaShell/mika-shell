@@ -18,13 +18,13 @@ pub const Webview = struct {
         type: []const u8,
         id: u64,
         uri: []const u8,
-        alias: []const u8,
+        alias: []const u8, // FIXME
         visible: bool,
         title: []const u8,
     };
     id: u64,
     allocator: Allocator,
-    name: []const u8,
+    name: []const u8, // FIXME: 这个字段获取并不应该出现在这里，连同上方的 Info.alias 一起删除
     impl: *webkit.WebView,
     container: union(enum) {
         none: void,
@@ -186,9 +186,13 @@ pub const Webview = struct {
         self.allocator.destroy(self); // BUG: double free?
     }
     pub fn forceShow(self: *Webview) void {
-        // 对于 Layer 类型的 Webview, 在不可见的情况下使用 present() 可能会导致窗口大小异常
-        // 所以先判断是否可见再调用 present()
-        self.container.show();
+        if (self.container == .none) {
+            std.log.scoped(.webview).warn("Webview [{}] is not initialized, force show will initialize it as window", .{self.id});
+            const js = "window.mikaShell.window.init()";
+            self.impl.evaluateJavascript(js.ptr, js.len, null, null, null, null, null);
+        } else {
+            self.container.show();
+        }
     }
     pub fn forceHide(self: *Webview) void {
         self.container.hide();
@@ -208,6 +212,8 @@ pub const Config = struct {
     // name: path e.g. "bar": "/bar.html"
     alias: std.StringHashMap([]const u8),
     startup: [][]const u8 = &.{},
+    // event:path/alias e.g. ["notifd.added:/notify.html", "notifyd.added:notify"]
+    services: [][]const u8 = &.{},
     pub fn load(allocator: Allocator, configDir: []const u8) !*Config {
         const configJson = blk: {
             const config_path = try std.fs.path.join(allocator, &.{ configDir, "config.json" });
@@ -217,7 +223,7 @@ pub const Config = struct {
             break :blk try file.readToEndAlloc(allocator, 1024 * 1024);
         };
         defer allocator.free(configJson);
-        const cfgJson = try std.json.parseFromSlice(std.json.Value, allocator, configJson, .{});
+        const cfgJson: std.json.Parsed(std.json.Value) = try std.json.parseFromSlice(std.json.Value, allocator, configJson, .{});
         defer cfgJson.deinit();
         const value = cfgJson.value.object;
         const cfg = try allocator.create(Config);
@@ -242,7 +248,8 @@ pub const Config = struct {
                     const val = switch (kv.value_ptr.*) {
                         .string => |v| v,
                         else => {
-                            @panic("invalid dev value type, expected string");
+                            std.log.err("Invalid `dev` value type, expected string", .{});
+                            return error.InvalidConfigJson;
                         },
                     };
                     try cfg.dev.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
@@ -276,16 +283,17 @@ pub const Config = struct {
                     const val = switch (kv.value_ptr.*) {
                         .string => |v| v,
                         else => {
-                            @panic("invalid alias value type, expected string");
+                            std.log.err("Invalid `alias` value type, expected string", .{});
+                            return error.InvalidConfigJson;
                         },
                     };
                     if (key[0] == '/') {
-                        std.log.err("alias key should not start with '/', key: {s}", .{key});
-                        return error.InvalidAliasJson;
+                        std.log.err("`alias` key should not start with '/', key: {s}", .{key});
+                        return error.InvalidConfigJson;
                     }
                     if (val[0] != '/') {
-                        std.log.err("alias value should start with '/', value: {s}", .{val});
-                        return error.InvalidAliasJson;
+                        std.log.err("`alias` value should start with '/', value: {s}", .{val});
+                        return error.InvalidConfigJson;
                     }
                     try cfg.alias.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));
                 }
@@ -350,6 +358,7 @@ pub const Config = struct {
             }
             cfg.alias.deinit();
         }
+        // load startup
         var startup = std.ArrayList([]const u8){};
         errdefer startup.deinit(allocator);
         if (value.get("startup")) |startup_| {
@@ -358,30 +367,85 @@ pub const Config = struct {
                 switch (item) {
                     .string => |v| try startup.append(allocator, try allocator.dupe(u8, v)),
                     else => {
-                        @panic("invalid startup value type, expected string");
+                        std.log.err("Invalid `startup` value type, expected string", .{});
+                        return error.InvalidConfigJson;
                     },
                 }
             }
         }
         cfg.startup = try startup.toOwnedSlice(allocator);
+        errdefer {
+            for (cfg.startup) |p| allocator.free(p);
+            allocator.free(cfg.startup);
+        }
+        // load services
+        var services = std.ArrayList([]const u8){};
+        errdefer {
+            for (services.items) |p| allocator.free(p);
+            services.deinit(allocator);
+        }
+        if (value.get("services")) |services_| {
+            switch (services_) {
+                .array => {},
+                else => {
+                    std.log.err("Invalid `services` type, expected array", .{});
+                    return error.InvalidConfigJson;
+                },
+            }
 
+            for (services_.array.items) |item| switch (item) {
+                .string => {
+                    const i = std.mem.indexOf(u8, item.string, ":") orelse {
+                        std.log.err("Invalid `services` value, expected 'event:path/alias', got: {s}", .{item.string});
+                        return error.InvalidConfigJson;
+                    };
+                    const event = item.string[0..i];
+                    if (item.string[i..].len == 0) {
+                        std.log.err("Invalid `services` value, expected 'event:path/alias', got: {s}", .{item.string});
+                        return error.InvalidConfigJson;
+                    }
+                    var path = item.string[i + 1 ..];
+                    if (path[0] != '/') {
+                        path = cfg.alias.get(path) orelse {
+                            std.log.err("Invalid `services` value, alias '{s}' not found", .{path});
+                            return error.InvalidConfigJson;
+                        };
+                    }
+                    try services.append(allocator, try std.fmt.allocPrint(allocator, "{s}:{s}", .{ event, path }));
+                },
+                else => {
+                    std.log.err("Invalid `services` value type, expected string", .{});
+                    return error.InvalidConfigJson;
+                },
+            };
+        }
+        cfg.services = try services.toOwnedSlice(allocator);
         return cfg;
     }
     pub fn deinit(self: *Config, allocator: Allocator) void {
-        var it = self.alias.iterator();
-        while (it.next()) |kv| {
-            allocator.free(kv.key_ptr.*);
-            allocator.free(kv.value_ptr.*);
+        {
+            var it = self.alias.iterator();
+            while (it.next()) |kv| {
+                allocator.free(kv.key_ptr.*);
+                allocator.free(kv.value_ptr.*);
+            }
+            self.alias.deinit();
         }
-        self.alias.deinit();
-        var it2 = self.dev.iterator();
-        while (it2.next()) |kv| {
-            allocator.free(kv.key_ptr.*);
-            allocator.free(kv.value_ptr.*);
+        {
+            var it = self.dev.iterator();
+            while (it.next()) |kv| {
+                allocator.free(kv.key_ptr.*);
+                allocator.free(kv.value_ptr.*);
+            }
+            self.dev.deinit();
         }
-        self.dev.deinit();
+
         for (self.startup) |p| allocator.free(p);
         allocator.free(self.startup);
+
+        for (self.services) |s| allocator.free(s);
+        allocator.free(self.services);
+
         allocator.destroy(self);
     }
 };
@@ -444,39 +508,55 @@ pub const App = struct {
     }) !*App {
         const app = try allocator.create(App);
         errdefer allocator.destroy(app);
+
         app.config = Config.load(allocator, option.configDir) catch |err| {
             std.log.err("Failed to load config 'config.json' from {s}", .{option.configDir});
             return err;
         };
         errdefer app.config.deinit(allocator);
+
         app.server = try std.fmt.allocPrint(allocator, "http://localhost:{d}/", .{option.port});
         errdefer allocator.free(app.server);
+
         app.port = option.port;
+
         app.configDir = try std.fs.path.resolve(allocator, &.{option.configDir});
+        errdefer allocator.free(app.configDir);
+
         app.mutex = std.Thread.Mutex{};
         app.webviews = std.ArrayList(*Webview){};
         app.allocator = allocator;
         app.isQuit = false;
+
         const sessionBus = dbus.Bus.init(allocator, .Session) catch {
             @panic("can not connect to session dbus");
         };
+        errdefer sessionBus.deinit();
+
         const systemBus = dbus.Bus.init(allocator, .System) catch {
             @panic("can not connect to system dbus");
         };
+        errdefer systemBus.deinit();
+
         app.sessionBus = sessionBus;
         app.systemBus = systemBus;
+
         app.sessionBusWatcher = dbus.withGLibLoop(sessionBus) catch {
             @panic("can not watch session dbus loop");
         };
+        errdefer app.sessionBusWatcher.deinit();
+
         app.systemBusWatcher = dbus.withGLibLoop(systemBus) catch {
             @panic("can not watch system dbus loop");
         };
+        errdefer app.systemBusWatcher.deinit();
 
         app.modules = Modules.init(allocator, .{
             .app = app,
             .sessionBus = sessionBus,
             .systemBus = systemBus,
         });
+        errdefer app.modules.deinit();
 
         const modules = app.modules;
 
@@ -494,7 +574,13 @@ pub const App = struct {
         try modules.mount(@import("modules/dock.zig").Dock, "dock");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
 
-        app.emitter = try Emitter.init(app, allocator, option.eventChannel, modules.eventGroups.items);
+        app.emitter = try Emitter.init(allocator, .{
+            .app = app,
+            .channel = option.eventChannel,
+            .eventGroups = modules.eventGroups.items,
+            .services = app.config.services,
+        });
+        errdefer app.emitter.deinit();
 
         const context = webkit.WebContext.getDefault();
 
@@ -509,6 +595,7 @@ pub const App = struct {
                         const e = glib.Error.new(webkit.NetworkError.quark(), @intFromEnum(webkit.NetworkError.failed), msg);
                         defer e.free();
                         const w = a.getWebviewWithId(r.getWebView().getPageId()) catch unreachable;
+                        std.log.scoped(.webview).err("Failed to load URI: {s}: {s}", .{ std.mem.span(r.getUri()), msg });
                         w.forceShow();
                         r.finishError(e);
                     }
@@ -656,18 +743,19 @@ pub const App = struct {
         self.allocator.free(self.server);
         self.allocator.destroy(self);
     }
-    pub fn open(self: *App, pageName: []const u8) !*Webview {
+    /// pageName 开头为 "/" 时，表示 path 直接拼接 url 传递，否则从 alias 中查找
+    pub fn open(self: *App, aliasOrPath: []const u8) !*Webview {
         const path = blk: {
-            if (std.mem.startsWith(u8, pageName, "/")) {
-                break :blk pageName;
+            if (aliasOrPath[0] == '/') {
+                break :blk aliasOrPath;
             } else {
-                if (self.config.alias.get(pageName)) |alias| break :blk alias;
+                if (self.config.alias.get(aliasOrPath)) |alias| break :blk alias;
                 return error.AliasNotFound;
             }
         };
         const uri = std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
         defer self.allocator.free(uri);
-        return self.openS(uri, pageName);
+        return self.openS(uri, aliasOrPath);
     }
     /// 初始化 webview 的 contianer, 为其绑定事件
     pub fn setupContianer(self: *App, webview: *Webview, contianer: enum { popover, window, layer }) void {
@@ -685,7 +773,7 @@ pub const App = struct {
                 _ = g.signalConnectData(window.as(g.Object), "close-request", @ptrCast(&struct {
                     fn f(o: *g.Object, app_inner: *App) callconv(.c) c_int {
                         const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
-                        app_inner.emitEventUseJS(wb, .mika_close_request, wb.id);
+                        app_inner.emitEventUseJS(wb, .@"mika.close-request", wb.id);
                         return 1;
                     }
                 }.f), self, null, .flags_default);
@@ -721,7 +809,7 @@ pub const App = struct {
                 for (app_inner.webviews.items, 0..app_inner.webviews.items.len) |w_, i| {
                     if (w_.id == id) {
                         _ = app_inner.webviews.orderedRemove(i);
-                        app_inner.emitEventUseJS(null, .mika_close, id);
+                        app_inner.emitEventUseJS(null, .@"mika.close", id);
                         break;
                     }
                 }
@@ -731,14 +819,14 @@ pub const App = struct {
         _ = g.signalConnectData(obj, "show", @ptrCast(&struct {
             fn f(o: *g.Object, app_inner: *App) callconv(.c) void {
                 const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
-                app_inner.emitEventUseJS(null, .mika_show, wb.id);
+                app_inner.emitEventUseJS(null, .@"mika.show", wb.id);
             }
         }.f), self, null, .flags_default);
 
         _ = g.signalConnectData(obj, "hide", @ptrCast(&struct {
             fn f(o: *g.Object, app_inner: *App) callconv(.c) void {
                 const wb: *Webview = app_inner.getWebviewWithWidget(g.ext.cast(gtk.Widget, o).?);
-                app_inner.emitEventUseJS(null, .mika_hide, wb.id);
+                app_inner.emitEventUseJS(null, .@"mika.hide", wb.id);
             }
         }.f), self, null, .flags_default);
     }
@@ -749,7 +837,7 @@ pub const App = struct {
         self.webviews.append(self.allocator, webview) catch unreachable;
         self.mutex.unlock();
         const info = webview.getInfo();
-        self.emitEventUseSocket(.mika_open, info);
+        self.emitEventUseSocket(.@"mika.open", info);
 
         return webview;
     }
@@ -797,13 +885,13 @@ pub const App = struct {
         }
     }
     pub fn showRequest(self: *App, w: *Webview) void {
-        self.emitEventUseJS(w, .mika_show_request, w.id);
+        self.emitEventUseJS(w, .@"mika.show-request", w.id);
     }
     pub fn hideRequest(self: *App, w: *Webview) void {
-        self.emitEventUseJS(w, .mika_hide_request, w.id);
+        self.emitEventUseJS(w, .@"mika.hide-request", w.id);
     }
     pub fn closeRequest(self: *App, w: *Webview) void {
-        self.emitEventUseJS(w, .mika_close_request, w.id);
+        self.emitEventUseJS(w, .@"mika.close-request", w.id);
     }
 };
 // 查找 $XDG_CONFIG_HOME/mika-shell $HOME/.config/mika-shell

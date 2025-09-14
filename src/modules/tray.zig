@@ -61,9 +61,9 @@ pub const Tray = struct {
                 .{ "activateMenu", activateMenu },
             },
             .events = &.{
-                .tray_added,
-                .tray_removed,
-                .tray_changed,
+                .@"tray.added",
+                .@"tray.removed",
+                .@"tray.changed",
             },
         };
     }
@@ -97,9 +97,9 @@ pub const Tray = struct {
     fn onItemUpdated(_: *tray.Host, state: tray.ItemState, service: []const u8, data: ?*anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(data));
         const event = switch (state) {
-            .added => Events.tray_added,
-            .removed => Events.tray_removed,
-            .changed => Events.tray_changed,
+            .added => Events.@"tray.added",
+            .removed => Events.@"tray.removed",
+            .changed => Events.@"tray.changed",
         };
         self.app.emitEventUseSocket(event, service);
     }

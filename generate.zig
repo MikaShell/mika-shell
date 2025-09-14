@@ -19,7 +19,7 @@ pub fn events(b: *Build, comptime dist: []const u8) *Build.Step {
             const format = std.fmt.allocPrint;
             const allocator = step.owner.allocator;
             inline for (typ.@"enum".fields) |field| {
-                var parts = std.mem.splitAny(u8, field.name, "_");
+                var parts = std.mem.splitAny(u8, field.name, ".");
                 const first_part = parts.next().?;
                 var namespace_: []u8 = try allocator.dupe(u8, first_part);
                 namespace_[0] = std.ascii.toUpper(namespace_[0]);
@@ -30,7 +30,7 @@ pub fn events(b: *Build, comptime dist: []const u8) *Build.Step {
                     namespace = namespace_;
                     _ = try f.write(try format(allocator, "export const {s} = {{\n", .{namespace_}));
                 }
-                const name = (try std.mem.replaceOwned(u8, allocator, field.name, "_", "-"))[namespace_.len + 1 ..];
+                const name = parts.next().?;
                 const value = field.value;
                 if (std.mem.indexOf(u8, name, "-") != null) {
                     _ = try f.write(std.fmt.allocPrint(allocator, "    \"{s}\": {d},\n", .{ name, value }) catch @panic("OOM"));

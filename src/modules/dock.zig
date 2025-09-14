@@ -55,24 +55,24 @@ pub const Dock = struct {
                 .{ "fullscreen", setFullscreen },
             },
             .events = &.{
-                .dock_changed,
-                .dock_closed,
-                .dock_enter,
-                .dock_leave,
+                .@"dock.changed",
+                .@"dock.closed",
+                .@"dock.enter",
+                .@"dock.leave",
             },
         };
     }
     fn onChanged(self: *Self, client: ForeignToplevelManager.Toplevel) void {
-        self.app.emitEventUseSocket(.dock_changed, client);
+        self.app.emitEventUseSocket(.@"dock.changed", client);
     }
     fn onClosed(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.dock_closed, id);
+        self.app.emitEventUseSocket(.@"dock.closed", id);
     }
     fn onEnter(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.dock_enter, id);
+        self.app.emitEventUseSocket(.@"dock.enter", id);
     }
     fn onLeave(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.dock_leave, id);
+        self.app.emitEventUseSocket(.@"dock.leave", id);
     }
     pub fn list(self: *Self, ctx: *Context) !void {
         try self.setup();

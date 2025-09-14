@@ -2,5 +2,6 @@
     "alias": {
         "bongocat": "/example/bongocat.html"
     },
-    "startup": ["example.bar", "example.dock"]
+    "startup": ["example.bar", "example.dock"],
+    "services": ["notifd.added:/notify.html"]
 }

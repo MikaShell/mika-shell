@@ -39,13 +39,13 @@ pub const Mika = struct {
                 .{ "list", list },
             },
             .events = &.{
-                .mika_close_request,
-                .mika_show_request,
-                .mika_hide_request,
-                .mika_open,
-                .mika_close,
-                .mika_show,
-                .mika_hide,
+                .@"mika.close-request",
+                .@"mika.show-request",
+                .@"mika.hide-request",
+                .@"mika.open",
+                .@"mika.close",
+                .@"mika.show",
+                .@"mika.hide",
             },
         };
     }

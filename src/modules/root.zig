@@ -154,6 +154,7 @@ pub fn Callable(comptime T: type) type {
     return *const fn (self: T, ctx: *Context) anyerror!void;
 }
 const App = @import("../app.zig").App;
+const Webview = @import("../app.zig").Webview;
 pub const InitContext = struct {
     allocator: std.mem.Allocator,
     app: *App,
@@ -331,34 +332,91 @@ pub const Emitter = struct {
             }
         }
     };
+    const Service = struct {
+        event: events.Events,
+        path: []const u8,
+        webview: ?*Webview,
+    };
     allocator: Allocator,
     app: *App,
     subscriber: std.AutoHashMap(events.Events, std.ArrayList(u64)),
     channel: *events.EventChannel,
     groups: []Group,
-    pub fn init(app: *App, allocator: Allocator, channel: *events.EventChannel, eventGroups: []Modules.EventGroup) !*Self {
+    services: std.ArrayList(Service),
+    pub fn init(
+        allocator: Allocator,
+        options: struct {
+            app: *App,
+            channel: *events.EventChannel,
+            eventGroups: []Modules.EventGroup,
+            // [event, path, event, path, ...]
+            // e.g. ["notifd.add:/notification.html", "window.close:/app/window2"]
+            // 如果页面存在，则不发送
+            services: []const []const u8,
+        },
+    ) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
-        var groups = try allocator.alloc(Group, eventGroups.len);
+
+        var groups = try allocator.alloc(Group, options.eventGroups.len);
         errdefer allocator.free(groups);
-        for (eventGroups, 0..) |group, i| {
+
+        for (options.eventGroups, 0..) |group, i| {
             groups[i] = .{ .count = 0, .group = group };
         }
         self.* = .{
             .allocator = allocator,
-            .app = app,
+            .app = options.app,
             .subscriber = std.AutoHashMap(events.Events, std.ArrayList(u64)).init(allocator),
-            .channel = channel,
+            .channel = options.channel,
             .groups = groups,
+            .services = std.ArrayList(Service){},
         };
+        errdefer self.services.deinit(self.allocator);
+
+        for (options.services) |service| {
+            const i = std.mem.indexOf(u8, service, ":").?;
+
+            const event: events.Events = blk: {
+                inline for (@typeInfo(events.Events).@"enum".fields) |field| {
+                    if (std.mem.eql(u8, field.name, service[0..i])) {
+                        break :blk @enumFromInt(field.value);
+                    }
+                }
+                return error.InvalidEventName;
+            };
+
+            const path = try self.allocator.dupe(u8, service[i + 1 ..]);
+            errdefer self.allocator.free(path);
+
+            self.subscribe(0, event) catch |err| {
+                std.log.err("Failed to subscribe event `{t}` to service: {t}", .{ event, err });
+                self.allocator.free(path);
+                continue;
+            };
+
+            try self.services.append(self.allocator, Service{
+                .event = event,
+                .path = path,
+                .webview = null,
+            });
+        }
+
         return self;
     }
     pub fn deinit(self: *Self) void {
+        const allocator = self.allocator;
+
         var it = self.subscriber.valueIterator();
-        while (it.next()) |v| v.deinit(self.allocator);
+        while (it.next()) |v| v.deinit(allocator);
         self.subscriber.deinit();
-        self.allocator.free(self.groups);
-        self.allocator.destroy(self);
+
+        allocator.free(self.groups);
+
+        for (self.services.items) |service| allocator.free(service.path);
+        self.services.deinit(allocator);
+
+        allocator.destroy(self);
     }
     pub fn subscribe(
         self: *Self,
@@ -441,8 +499,38 @@ pub const Emitter = struct {
         const json = std.json.Stringify.valueAlloc(self.allocator, .{ .event = @intFromEnum(event), .data = data }, .{}) catch unreachable;
         defer self.allocator.free(json);
         for (list.items) |id| {
-            const json_ = self.allocator.dupe(u8, json) catch unreachable;
-            self.channel.store(.{ .dist = id, .allocator = self.allocator, .data = json_ }) catch unreachable;
+            if (id == 0) {
+                for (self.services.items) |*service| {
+                    if (service.event != event) continue;
+                    if (service.webview != null) continue;
+                    var args = std.Io.Writer.Allocating.init(self.allocator);
+                    defer args.deinit();
+
+                    const dataJson = std.json.Stringify.valueAlloc(self.allocator, data, .{}) catch unreachable;
+                    defer self.allocator.free(dataJson);
+                    var query = std.Uri.Component{ .raw = dataJson };
+                    query.formatEscaped(&args.writer) catch unreachable;
+
+                    const path = std.fmt.allocPrint(self.allocator, "{s}?data={s}", .{ service.path, args.written() }) catch unreachable;
+                    defer self.allocator.free(path);
+                    service.webview = self.app.open(path) catch |err| {
+                        std.log.err("Cannot wake up service `{t}:{s}`, failed to open url: {t}", .{ service.event, service.path, err });
+                        continue;
+                    };
+                    std.log.debug("Service `{t}:{s}` woken up", .{ service.event, service.path });
+
+                    const g = @import("gobject");
+                    _ = g.signalConnectData(service.webview.?.impl.as(g.Object), "destroy", @ptrCast(&struct {
+                        fn cb(_: *g.Object, s: *Service) callconv(.c) void {
+                            std.log.debug("Service `{t}:{s}` destroyed", .{ s.event, s.path });
+                            s.webview = null;
+                        }
+                    }.cb), service, null, .flags_default);
+                }
+            } else {
+                const json_ = self.allocator.dupe(u8, json) catch unreachable;
+                self.channel.store(.{ .dist = id, .allocator = self.allocator, .data = json_ }) catch unreachable;
+            }
         }
     }
 };

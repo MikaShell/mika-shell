@@ -39,9 +39,9 @@ pub const Libinput = struct {
     }
     fn convertEvent(e: events.Events) libinput.EventType {
         return switch (e) {
-            .libinput_keyboard_key => .keyboardKey,
-            .libinput_pointer_motion => .pointerMotion,
-            .libinput_pointer_button => .pointerButton,
+            .@"libinput.keyboard-key" => .keyboardKey,
+            .@"libinput.pointer-motion" => .pointerMotion,
+            .@"libinput.pointer-button" => .pointerButton,
             else => @panic("Unsupported event type"),
         };
     }
@@ -62,18 +62,18 @@ pub const Libinput = struct {
     }
     fn onEvent(self: *Self, e: libinput.Event) void {
         switch (e) {
-            .keyboardKey => |key| self.app.emitEventUseSocket(.libinput_keyboard_key, key),
-            .pointerMotion => |motion| self.app.emitEventUseSocket(.libinput_pointer_motion, motion),
-            .pointerButton => |button| self.app.emitEventUseSocket(.libinput_pointer_button, button),
+            .keyboardKey => |key| self.app.emitEventUseSocket(.@"libinput.keyboard-key", key),
+            .pointerMotion => |motion| self.app.emitEventUseSocket(.@"libinput.pointer-motion", motion),
+            .pointerButton => |button| self.app.emitEventUseSocket(.@"libinput.pointer-button", button),
             else => @panic("Unsupported event type"),
         }
     }
     pub fn register() Registry(Self) {
         return .{
             .events = &.{
-                .libinput_pointer_motion,
-                .libinput_pointer_button,
-                .libinput_keyboard_key,
+                .@"libinput.pointer-motion",
+                .@"libinput.pointer-button",
+                .@"libinput.keyboard-key",
             },
         };
     }

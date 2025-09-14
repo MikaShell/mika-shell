@@ -1,24 +1,24 @@
 const std = @import("std");
 pub const Events = enum(u32) {
-    mika_close_request,
-    mika_show_request,
-    mika_hide_request,
-    mika_open,
-    mika_close,
-    mika_show,
-    mika_hide,
-    tray_added,
-    tray_removed,
-    tray_changed,
-    notifd_added,
-    notifd_removed,
-    dock_changed,
-    dock_closed,
-    dock_enter,
-    dock_leave,
-    libinput_pointer_motion,
-    libinput_pointer_button,
-    libinput_keyboard_key,
+    @"mika.close-request",
+    @"mika.show-request",
+    @"mika.hide-request",
+    @"mika.open",
+    @"mika.close",
+    @"mika.show",
+    @"mika.hide",
+    @"tray.added",
+    @"tray.removed",
+    @"tray.changed",
+    @"notifd.added",
+    @"notifd.removed",
+    @"dock.changed",
+    @"dock.closed",
+    @"dock.enter",
+    @"dock.leave",
+    @"libinput.pointer-motion",
+    @"libinput.pointer-button",
+    @"libinput.keyboard-key",
 };
 pub const ChangeState = enum {
     add,
@@ -117,7 +117,7 @@ test {
 }
 var count: i32 = 0;
 fn glibCallback(_: *glib.IOChannel, _: glib.IOCondition, data: ?*anyopaque) callconv(.c) c_int {
-    const c: *TestChannel = @alignCast(@ptrCast(data));
+    const c: *TestChannel = @ptrCast(@alignCast(data));
     const events = c.load();
     for (events) |event| {
         testing.expectEqual(count, event) catch return 0;

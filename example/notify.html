@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Notification</title>
+        <style>
+            body {
+                background-color: rgb(27, 30, 33);
+                padding: 0;
+                margin: 0;
+            }
+            * {
+                color: aliceblue;
+            }
+            button {
+                width: 100%;
+                height: 100%;
+                border: none;
+                background-color: transparent;
+                display: flex;
+                flex-direction: row;
+            }
+            #icon {
+                width: 50px;
+                height: 50px;
+                margin-right: 10px;
+            }
+            #summary-body {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: flex-start;
+                width: 100%;
+                height: 100%;
+            }
+            #summary {
+                font-size: 1em;
+                font-weight: bold;
+                margin-bottom: 5px;
+            }
+            #body {
+                font-size: 0.9em;
+                margin-bottom: 5px;
+            }
+        </style>
+        <script>
+            mikaShell.layer.init({
+                layer: "top",
+                anchor: ["right", "top"],
+                autoExclusiveZone: true,
+                backgroundTransparent: true,
+                height: 60,
+                width: 300,
+            });
+            let notification = null;
+            const initId = Number(new URLSearchParams(window.location.search).get("data"));
+            let closeTimer = null;
+
+            function tryClose() {
+                if (closeTimer) clearTimeout(closeTimer);
+                setTimeout(() => {
+                    mikaShell.layer.close();
+                }, 3000);
+            }
+
+            function update(data) {
+                tryClose();
+                notification = data;
+                const $ = document.querySelector.bind(document);
+                const icon = $("#icon");
+                const summary = $("#summary");
+                const body = $("#body");
+
+                if (data.appIcon.length > 0) {
+                    mikaShell.icon
+                        .lookup(data.appIcon, 256)
+                        .then((image) => {
+                            icon.src = image;
+                        })
+                        .then(() => {});
+                } else {
+                    mikaShell.icon
+                        .lookup(data.appName.toLowerCase(), 256)
+                        .then((image) => {
+                            icon.src = image;
+                        })
+                        .then(() => {});
+                }
+
+                summary.textContent = data.summary;
+                body.textContent = data.body;
+            }
+
+            mikaShell.notifd.get(initId).then((data) => {
+                update(data);
+            });
+
+            mikaShell.notifd.on("added", (id) => {
+                mikaShell.notifd.get(id).then((data) => {
+                    update(data);
+                });
+            });
+            function activate() {
+                mikaShell.notifd.activate(notification.id);
+                mikaShell.layer.close();
+            }
+        </script>
+    </head>
+    <body>
+        <button onclick="activate()">
+            <img id="icon" />
+            <div id="summary-body">
+                <span id="summary"></span>
+                <span id="body"></span>
+            </div>
+        </button>
+    </body>
+</html>
