@@ -18,13 +18,13 @@ pub const Webview = struct {
         type: []const u8,
         id: u64,
         uri: []const u8,
-        alias: []const u8, // FIXME
+        alias: []const u8,
         visible: bool,
         title: []const u8,
     };
     id: u64,
     allocator: Allocator,
-    name: []const u8, // FIXME: 这个字段获取并不应该出现在这里，连同上方的 Info.alias 一起删除
+    alias: ?[]const u8,
     impl: *webkit.WebView,
     container: union(enum) {
         none: void,
@@ -69,16 +69,17 @@ pub const Webview = struct {
     },
     _modules: *Modules,
     // FIXME: 鼠标在窗口中移动时会占用大量CPU资源
-    pub fn init(allocator: Allocator, m: *Modules, name: []const u8, backendPort: u16, configDir: []const u8) !*Webview {
+    pub fn init(allocator: Allocator, m: *Modules, alias: ?[]const u8, backendPort: u16, configDir: []const u8) !*Webview {
         const w = try allocator.create(Webview);
         w.* = .{
             .id = undefined,
             .impl = undefined,
             .allocator = allocator,
-            .name = try allocator.dupe(u8, name),
+            .alias = null,
             .container = .{ .none = {} },
             ._modules = m,
         };
+        if (alias) |n| w.alias = try allocator.dupe(u8, n);
         _ = configDir;
         // TODO: 设置存储路径之后 localStorage 不同步
         // const dataDir = try std.fs.path.joinZ(allocator, &.{ configDir, "webview_data" });
@@ -170,7 +171,7 @@ pub const Webview = struct {
             .type = @tagName(self.container),
             .id = self.id,
             .uri = std.mem.span(self.impl.getUri()),
-            .alias = self.name,
+            .alias = self.alias orelse "",
             .visible = switch (self.container) {
                 .none => false,
                 .window => |w| w.as(gtk.Widget).getVisible() == 1,
@@ -181,7 +182,7 @@ pub const Webview = struct {
         };
     }
     pub fn forceClose(self: *Webview) void {
-        self.allocator.free(self.name);
+        if (self.alias) |alias| self.allocator.free(alias);
         self.container.destroy();
         self.allocator.destroy(self); // BUG: double free?
     }
@@ -755,7 +756,7 @@ pub const App = struct {
         };
         const uri = std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
         defer self.allocator.free(uri);
-        return self.openS(uri, aliasOrPath);
+        return self.openS(uri, if (aliasOrPath[0] == '/') null else aliasOrPath);
     }
     /// 初始化 webview 的 contianer, 为其绑定事件
     pub fn setupContianer(self: *App, webview: *Webview, contianer: enum { popover, window, layer }) void {
@@ -830,8 +831,8 @@ pub const App = struct {
             }
         }.f), self, null, .flags_default);
     }
-    fn openS(self: *App, uri: [:0]const u8, name: []const u8) *Webview {
-        const webview = Webview.init(self.allocator, self.modules, name, self.port, self.configDir) catch unreachable;
+    fn openS(self: *App, uri: [:0]const u8, alias: ?[]const u8) *Webview {
+        const webview = Webview.init(self.allocator, self.modules, alias, self.port, self.configDir) catch unreachable;
         webview.impl.loadUri(uri);
         self.mutex.lock();
         self.webviews.append(self.allocator, webview) catch unreachable;

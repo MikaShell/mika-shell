@@ -115,7 +115,8 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         var i = app.webviews.items.len - 1;
         while (i >= 0) {
             const w = app.webviews.items[i];
-            if (mem.eql(u8, w.name, r.pageName.?)) {
+            if (w.alias == null) continue;
+            if (mem.eql(u8, w.alias.?, r.pageName.?)) {
                 app.closeRequest(w);
                 return;
             }
