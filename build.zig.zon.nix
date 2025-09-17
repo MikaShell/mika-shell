@@ -50,4 +50,12 @@ linkFarm "zig-packages" [
       hash = "sha256-1wRkixysjdFMyrATxlXdukAc34MwfNj0B6ydYVn+UKw=";
     };
   }
+  {
+    name = "websocket-0.1.0-ZPISdZJxAwAt6Ys_JpoHQQV3NpWCof_N9Jg-Ul2g7OoV";
+    path = fetchgit {
+      url = "https://github.com/karlseguin/websocket.zig";
+      rev = "4deaaef2b4475a63f19c5e2f43e38fd55464b118";
+      hash = "sha256-lEZNQ+vJR29E6yovJhTsByJK3XZMSqsgF0PjgyFsIjY=";
+    };
+  }
 ]

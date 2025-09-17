@@ -98,6 +98,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("libinput", dynamic_link_opts);
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
+    const websocket = b.dependency("websocketz", .{ .target = target, .optimize = optimize });
 
     exe_mod.addImport("example", example_mod);
     exe_mod.addImport("cli", cli.module("cli"));
@@ -115,7 +116,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("gdk", gobject.module("gdk4"));
     exe_mod.addImport("gio", gobject.module("gio2"));
     exe_mod.addImport("gdk-wayland", gobject.module("gdkwayland4"));
-    exe_mod.addImport("soup", gobject.module("soup3"));
+    exe_mod.addImport("websocket", websocket.module("websocket"));
 
     b.installArtifact(exe);
     // CMD
