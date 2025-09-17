@@ -328,8 +328,10 @@ pub const Config = struct {
             while (dev_it.next()) |kv| {
                 const key = kv.key_ptr.*;
                 const val = kv.value_ptr.*;
+
                 const alias_path = try std.fs.path.join(allocator, &.{ val, "alias.json" });
                 defer allocator.free(alias_path);
+
                 var client = std.http.Client{ .allocator = allocator };
                 defer client.deinit();
                 var result = std.Io.Writer.Allocating.init(allocator);
