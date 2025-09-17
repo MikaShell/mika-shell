@@ -16,10 +16,6 @@
             .url = "git+https://gitlab.freedesktop.org/wayland/wayland-protocols#fff667c829b067500a5a3bf84e7bae1bb293d3aa",
             .hash = "N-V-__8AAIrmDgBCnmm4bZ_KJ9NauVmPd1n7htBPSUi_rQxP",
         },
-        .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig#94fc151741af0f8b6962966046743c0726b1ec35",
-            .hash = "httpz-0.0.0-PNVzrFe5BgDabt7p2mEiv4PXNOZxJvxR0cMOBtQmP3uR",
-        },
         .cli = .{
             .url = "git+https://github.com/sam701/zig-cli#f9a516ddc9771ddd2c8c46a280a9ab6cab8261f2",
             .hash = "cli-0.10.0-2eKe_5kEAQBeHqKxUHNTGnETzu81rqKWwT1WPt1jXBt0",

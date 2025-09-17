@@ -8,7 +8,7 @@ async function setupSocket() {
         console.error("Hyprland event socket error:", event);
     };
     let buffer = "";
-    socket.onmessage = (event) => {
+    socket.onmessage = async (event) => {
         buffer += event.data;
         const parts = buffer.split("\n");
         // 如果不是以 \n 结尾，最后一部分是残缺的，作为新的 buffer

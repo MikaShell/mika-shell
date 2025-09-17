@@ -1,9 +1,10 @@
 import call from "./call";
-import { socket } from "./utils";
 const listeners: Map<number, Function[]> = new Map();
 const onceListeners: Map<number, Function[]> = new Map();
 try {
-    const ws = socket(`?event=${globalThis.mikaShell.id}`);
+    const ws = new WebSocket(
+        `ws://localhost:${globalThis.mikaShell.backendPort}/?type=string&event=${globalThis.mikaShell.id}`
+    );
     ws.onmessage = (event_) => {
         const { event, data } = JSON.parse(event_.data);
         dispatch(event, data);

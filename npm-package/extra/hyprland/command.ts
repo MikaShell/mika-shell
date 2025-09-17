@@ -3,7 +3,7 @@ import { getSocket } from "./common";
 export async function send(message: string, json: boolean = true): Promise<string | null> {
     const socket = await getSocket("command");
     return new Promise((resolve, reject) => {
-        var buffer = "";
+        let buffer = "";
         socket.onopen = () => {
             socket.send((json ? "[j]/" : "") + message);
         };

@@ -1,5 +1,4 @@
 const std = @import("std");
-const assets = @import("assets.zig");
 const App = @import("app.zig").App;
 const getConfigDir = @import("app.zig").getConfigDir;
 const ipc = @import("ipc.zig");
@@ -279,12 +278,6 @@ pub fn daemon() !void {
     var eventChannel = try events.EventChannel.init();
     defer eventChannel.deinit();
 
-    var assetsserver = try assets.Server.init(allocator, configDir, &eventChannel, config.port);
-    defer {
-        assetsserver.stop();
-        assetsserver.deinit();
-    }
-    _ = try assetsserver.start();
     const app = try App.init(allocator, .{
         .configDir = configDir,
         .eventChannel = &eventChannel,

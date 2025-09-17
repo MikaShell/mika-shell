@@ -96,12 +96,10 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
     exe_mod.linkSystemLibrary("libudev", dynamic_link_opts);
     exe_mod.linkSystemLibrary("libinput", dynamic_link_opts);
-    const httpz = b.dependency("httpz", .{ .target = target, .optimize = optimize });
     const cli = b.dependency("cli", .{ .target = target, .optimize = optimize });
     const ini = b.dependency("ini", .{ .target = target, .optimize = optimize });
 
     exe_mod.addImport("example", example_mod);
-    exe_mod.addImport("httpz", httpz.module("httpz"));
     exe_mod.addImport("cli", cli.module("cli"));
     exe_mod.addImport("ini", ini.module("ini"));
     exe_mod.addImport("layershell", layershell_mod); // layershell must be imported before gtk4
@@ -117,6 +115,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("gdk", gobject.module("gdk4"));
     exe_mod.addImport("gio", gobject.module("gio2"));
     exe_mod.addImport("gdk-wayland", gobject.module("gdkwayland4"));
+    exe_mod.addImport("soup", gobject.module("soup3"));
 
     b.installArtifact(exe);
     // CMD

@@ -340,19 +340,20 @@ pub const Emitter = struct {
     allocator: Allocator,
     app: *App,
     subscriber: std.AutoHashMap(events.Events, std.ArrayList(u64)),
-    channel: *events.EventChannel,
     groups: []Group,
     services: std.ArrayList(Service),
+    emitFunc: *const fn (userdata: ?*anyopaque, dist: u64, data: [:0]const u8) void,
+    userdata: ?*anyopaque,
     pub fn init(
         allocator: Allocator,
         options: struct {
             app: *App,
-            channel: *events.EventChannel,
             eventGroups: []Modules.EventGroup,
             // [event, path, event, path, ...]
             // e.g. ["notifd.add:/notification.html", "window.close:/app/window2"]
-            // 如果页面存在，则不发送
             services: []const []const u8,
+            emitFunc: *const fn (userdata: ?*anyopaque, dist: u64, data: [:0]const u8) void,
+            userdata: ?*anyopaque,
         },
     ) !*Self {
         const self = try allocator.create(Self);
@@ -368,9 +369,10 @@ pub const Emitter = struct {
             .allocator = allocator,
             .app = options.app,
             .subscriber = std.AutoHashMap(events.Events, std.ArrayList(u64)).init(allocator),
-            .channel = options.channel,
             .groups = groups,
             .services = std.ArrayList(Service){},
+            .emitFunc = options.emitFunc,
+            .userdata = options.userdata,
         };
         errdefer self.services.deinit(self.allocator);
 
@@ -496,8 +498,7 @@ pub const Emitter = struct {
     }
     pub fn emit(self: *Self, event: events.Events, data: anytype) void {
         const list = self.subscriber.get(event) orelse return;
-        const json = std.json.Stringify.valueAlloc(self.allocator, .{ .event = @intFromEnum(event), .data = data }, .{}) catch unreachable;
-        defer self.allocator.free(json);
+
         for (list.items) |id| {
             if (id == 0) {
                 for (self.services.items) |*service| {
@@ -528,8 +529,12 @@ pub const Emitter = struct {
                     }.cb), service, null, .flags_default);
                 }
             } else {
-                const json_ = self.allocator.dupe(u8, json) catch unreachable;
-                self.channel.store(.{ .dist = id, .allocator = self.allocator, .data = json_ }) catch unreachable;
+                var json = std.Io.Writer.Allocating.init(self.allocator);
+                defer json.deinit();
+                std.json.Stringify.value(.{ .event = @intFromEnum(event), .data = data }, .{}, &json.writer) catch unreachable;
+                json.writer.writeByte(0) catch unreachable;
+                const written = json.written();
+                self.emitFunc(self.userdata, id, written[0 .. written.len - 1 :0]);
             }
         }
     }

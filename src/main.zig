@@ -21,13 +21,8 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const scope_prefix = "(" ++ switch (scope) {
-        .dbus, .assets, .webview, std.log.default_log_scope => @tagName(scope),
-        else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err))
-            @tagName(scope)
-        else
-            return,
-    } ++ "): ";
+    if (@intFromEnum(level) > @intFromEnum(std.options.log_level)) return;
+    const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
     const red = "\x1b[31m";
     const green = "\x1b[32m";
     const yellow = "\x1b[33m";

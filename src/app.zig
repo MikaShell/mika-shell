@@ -502,6 +502,7 @@ pub const App = struct {
     emitter: *Emitter,
     server: []const u8,
     port: u16,
+    websocket: *SocketServer,
     pub fn init(allocator: Allocator, option: struct {
         configDir: []const u8,
         eventChannel: *events.EventChannel,
@@ -575,11 +576,15 @@ pub const App = struct {
         try modules.mount(@import("modules/dock.zig").Dock, "dock");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
 
+        app.websocket = try SocketServer.init(allocator, option.port);
+        errdefer app.websocket.deinit();
+
         app.emitter = try Emitter.init(allocator, .{
             .app = app,
-            .channel = option.eventChannel,
             .eventGroups = modules.eventGroups.items,
             .services = app.config.services,
+            .emitFunc = @ptrCast(&SocketServer.sendEvent),
+            .userdata = @ptrCast(app.websocket),
         });
         errdefer app.emitter.deinit();
 
@@ -588,7 +593,6 @@ pub const App = struct {
         context.registerUriScheme("mika-shell", struct {
             fn cb(request: *webkit.URISchemeRequest, data: ?*anyopaque) callconv(.c) void {
                 const app_inner: *App = @ptrCast(@alignCast(data));
-                const gio = @import("gio");
                 const returnError = struct {
                     fn f(a: *App, r: *webkit.URISchemeRequest, comptime fmt: []const u8, args: anytype) void {
                         const msg = std.fmt.allocPrintSentinel(a.allocator, fmt, args, 0) catch unreachable;
@@ -714,6 +718,7 @@ pub const App = struct {
         for (app.config.startup) |startup| {
             _ = try app.open(startup);
         }
+
         return app;
     }
     fn sortPopoverFirst(_: void, a: *Webview, b: *Webview) bool {
@@ -728,14 +733,19 @@ pub const App = struct {
 
     pub fn deinit(self: *App) void {
         self.isQuit = true;
+
+        self.modules.deinit();
+
         self.sessionBusWatcher.deinit();
         self.systemBusWatcher.deinit();
+        self.websocket.deinit();
+
         std.mem.sort(*Webview, self.webviews.items, {}, sortPopoverFirst);
         for (self.webviews.items) |webview| {
             webview.forceClose();
         }
         self.webviews.deinit(self.allocator);
-        self.modules.deinit();
+
         self.sessionBus.deinit();
         self.systemBus.deinit();
         self.config.deinit(self.allocator);
@@ -911,3 +921,238 @@ pub fn getConfigDir(allocator: Allocator) ![]const u8 {
     defer allocator.free(baseConfigDir);
     return try std.fs.path.resolve(allocator, &.{ baseConfigDir, "mika-shell" });
 }
+
+const soup = @import("soup");
+const gio = @import("gio");
+const SocketServer = struct {
+    const Self = @This();
+    allocator: Allocator,
+    events: std.AutoHashMap(u64, *soup.WebsocketConnection),
+    server: *soup.Server,
+
+    const Context = struct {
+        source: c_uint,
+        conn: *soup.WebsocketConnection,
+        proxy: *gio.SocketConnection,
+    };
+    pub fn init(allocator: Allocator, port: u16) !*Self {
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+        self.* = .{
+            .events = .init(allocator),
+            .allocator = allocator,
+            .server = undefined,
+        };
+        errdefer self.events.deinit();
+
+        self.server = soup.Server.new(
+            "server-header",
+            "Mika-Shell/0.1",
+            @as(?[*:0]const u8, null),
+        ) orelse {
+            return error.SoupServerFailed;
+        };
+        errdefer self.server.unref();
+
+        const addr = gio.InetAddress.newLoopback(.ipv4);
+        defer addr.unref();
+        const server_addr = gio.InetSocketAddress.new(addr, port);
+        defer server_addr.unref();
+
+        var err: ?*glib.Error = null;
+        defer if (err) |e| e.free();
+        _ = self.server.listen(server_addr.as(gio.SocketAddress), .{}, &err);
+        if (err) |_| {
+            return error.WebsocketListenFailed;
+        }
+        self.server.addWebsocketHandler(null, null, null, @ptrCast(&onConnect), self, null);
+
+        return self;
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.events.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.unref();
+        }
+        self.server.unref();
+
+        self.events.deinit();
+        self.allocator.destroy(self);
+    }
+    pub fn sendEvent(self: *Self, target: u64, data: [:0]const u8) void {
+        const conn = self.events.get(target) orelse return;
+        if (conn.getState() != .open) return;
+        conn.sendText(data.ptr);
+    }
+    fn onConnect(_: *soup.Server, _: *soup.ServerMessage, path_c: [*:0]const u8, conn: *soup.WebsocketConnection, self: *Self) callconv(.c) void {
+        const path = std.mem.span(path_c);
+        const query = conn.getUri().getQuery() orelse {
+            conn.close(400, "Bad Request");
+            return;
+        };
+        var socketType: enum { event, proxy } = .proxy;
+        var messageType: enum { string, binary } = .string;
+        var id: u64 = 0;
+        var queryIt = std.mem.splitAny(u8, std.mem.span(query), "&");
+        while (queryIt.next()) |pair| {
+            const i = std.mem.indexOf(u8, pair, "=") orelse {
+                conn.close(400, "Bad Request");
+                return;
+            };
+            const key = pair[0..i];
+            const value = pair[i + 1 ..];
+            const eql = std.mem.eql;
+            if (eql(u8, key, "type")) {
+                if (eql(u8, value, "string")) {
+                    messageType = .string;
+                } else if (eql(u8, value, "binary")) {
+                    messageType = .binary;
+                } else {
+                    conn.close(400, "Bad Request");
+                    return;
+                }
+            } else if (eql(u8, key, "event")) {
+                socketType = .event;
+                id = std.fmt.parseUnsigned(u64, value, 10) catch {
+                    conn.close(400, "Bad Request");
+                    return;
+                };
+            } else {
+                conn.close(400, "Bad Request");
+                return;
+            }
+        }
+
+        const origin = blk: {
+            const o = conn.getOrigin() orelse break :blk "";
+            break :blk std.mem.span(o);
+        };
+        if (!std.mem.startsWith(u8, origin, "mika-shell://")) {
+            conn.close(403, "Forbidden");
+            return;
+        }
+        switch (socketType) {
+            .event => {
+                std.log.scoped(.websocket).debug("Connect to events {d}", .{id});
+
+                if (self.events.contains(id)) {
+                    conn.close(400, "Bad Request");
+                    return;
+                }
+                self.events.put(id, conn) catch unreachable;
+
+                _ = g.signalConnectData(conn.as(g.Object), "closed", @ptrCast(&struct {
+                    fn read(conn_inner: *soup.WebsocketConnection, self_inner: *Self) callconv(.c) void {
+                        var it = self_inner.events.iterator();
+                        while (it.next()) |entry| {
+                            if (entry.value_ptr.* == conn_inner) {
+                                if (self_inner.events.remove(entry.key_ptr.*) == false) unreachable;
+                                return;
+                            }
+                        }
+                        unreachable;
+                    }
+                }.read), self, null, .flags_default);
+
+                conn.ref();
+            },
+            .proxy => {
+                const unixSocket = gio.UnixSocketAddress.new(path);
+                defer unixSocket.unref();
+
+                const socket = gio.SocketClient.new();
+                defer socket.unref();
+
+                std.log.scoped(.websocket).debug("Connect to unix socket {s}", .{path});
+
+                const proxy = socket.connect(unixSocket.as(gio.SocketConnectable), null, null) orelse {
+                    std.log.scoped(.websocket).err("Failed to connect to {s} ", .{path});
+                    conn.close(404, "Not Found");
+                    return;
+                };
+
+                const ctx = std.heap.page_allocator.create(Context) catch unreachable;
+                ctx.* = .{
+                    .conn = conn,
+                    .proxy = proxy,
+                    .source = undefined,
+                };
+
+                _ = g.signalConnectData(conn.as(g.Object), "closed", @ptrCast(&struct {
+                    fn read(_: *soup.WebsocketConnection, ctx_inner: *Context) callconv(.c) void {
+                        if (ctx_inner.source > 0) _ = glib.Source.remove(ctx_inner.source);
+                        ctx_inner.proxy.unref();
+                        ctx_inner.conn.unref();
+                        std.heap.page_allocator.destroy(ctx_inner);
+                    }
+                }.read), ctx, null, .flags_default);
+
+                _ = g.signalConnectData(conn.as(g.Object), "message", @ptrCast(&struct {
+                    fn read(_: *soup.WebsocketConnection, _: soup.WebsocketDataType, msg: *glib.Bytes, s: *gio.SocketConnection) callconv(.c) void {
+                        var len: usize = 0;
+                        const data = msg.getData(&len) orelse return;
+                        var err: ?*glib.Error = null;
+                        defer if (err) |e| e.free();
+                        if (s.getSocket().sendWithBlocking(data, len, 0, null, &err) == -1) {
+                            std.log.scoped(.websocket).err("Failed to send data to unix socket: {s}", .{err.?.f_message.?});
+                        }
+                    }
+                }.read), proxy, null, .flags_default);
+
+                const ch = glib.IOChannel.unixNew(proxy.getSocket().getFd());
+                defer ch.unref();
+                const read = switch (messageType) {
+                    .string => &readFunc(.string).read,
+                    .binary => &readFunc(.binary).read,
+                };
+                ctx.source = glib.ioAddWatch(ch, .{ .in = true, .hup = true }, @ptrCast(read), ctx);
+
+                conn.ref();
+            },
+        }
+    }
+    fn readFunc(comptime typ: enum { string, binary }) type {
+        return struct {
+            fn read(ch_inner: *glib.IOChannel, condition: glib.IOCondition, ctx: *Context) callconv(.c) c_int {
+                if (condition.in) {
+                    const bufSize = 1024;
+                    var buf: [bufSize:0]u8 = undefined;
+                    var len: usize = 0;
+                    const ret = ch_inner.read(&buf, 1024, &len);
+                    switch (ret) {
+                        .none => {
+                            if (len == 0) {
+                                ctx.source = 0;
+                                ctx.conn.close(1000, null);
+                                return 0;
+                            } else {
+                                if (ctx.conn.getState() != .open) return 1;
+                                switch (typ) {
+                                    .binary => {
+                                        ctx.conn.sendBinary(&buf, len);
+                                    },
+                                    .string => {
+                                        if (len < bufSize) buf[len] = 0;
+                                        ctx.conn.sendText(&buf);
+                                    },
+                                }
+                            }
+                        },
+                        .again => {},
+                        else => {
+                            ctx.source = 0;
+                            ctx.conn.close(1007, "Cannot read from unix socket");
+                            return 0;
+                        },
+                    }
+                } else if (condition.hup) {
+                    ctx.source = 0;
+                    ctx.conn.close(1000, null);
+                    return 0;
+                }
+                return 1;
+            }
+        };
+    }
+};
