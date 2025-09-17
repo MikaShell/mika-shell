@@ -20,8 +20,8 @@ const Theme = struct {
         var section: []const u8 = "";
         defer allocator.free(section);
         const eql = std.mem.eql;
-        var dirs = std.ArrayList([]const u8).init(allocator);
-        defer dirs.deinit();
+        var dirs = std.ArrayList([]const u8){};
+        defer dirs.deinit(allocator);
         var index: usize = undefined;
         var parser = ini.parse(allocator, reader, ";#");
         defer parser.deinit();
@@ -43,17 +43,17 @@ const Theme = struct {
                         if (eql(u8, prop.key, "Comment")) theme.comment = try allocator.dupe(u8, prop.value);
                         if (eql(u8, prop.key, "Inherits")) {
                             var iter = std.mem.splitAny(u8, prop.value, ",");
-                            var parents = std.ArrayList([]const u8).init(allocator);
-                            defer parents.deinit();
+                            var parents = std.ArrayList([]const u8){};
+                            defer parents.deinit(allocator);
                             while (iter.next()) |parent| {
-                                try parents.append(try allocator.dupe(u8, parent));
+                                try parents.append(allocator, try allocator.dupe(u8, parent));
                             }
-                            theme.inherits = try parents.toOwnedSlice();
+                            theme.inherits = try parents.toOwnedSlice(allocator);
                         }
                         if (eql(u8, prop.key, "Directories")) {
                             var iter = std.mem.splitAny(u8, prop.value, ",");
                             while (iter.next()) |dir| {
-                                try dirs.append(try allocator.dupe(u8, dir));
+                                try dirs.append(allocator, try allocator.dupe(u8, dir));
                             }
                             theme.directories = try allocator.alloc(Directory, dirs.items.len);
                             for (theme.directories, 0..) |*dir, i| {
@@ -225,8 +225,8 @@ fn getGtkIconThemeName(allocator: Allocator) ![]const u8 {
     return theme;
 }
 fn getGtkIconTheme(allocator: Allocator, themeFolder: []const u8) !Theme {
-    var searchDirs = std.ArrayList([]const u8).init(allocator);
-    defer searchDirs.deinit();
+    var searchDirs = std.ArrayList([]const u8){};
+    defer searchDirs.deinit(allocator);
     defer for (searchDirs.items) |path| allocator.free(path);
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();
@@ -239,7 +239,7 @@ fn getGtkIconTheme(allocator: Allocator, themeFolder: []const u8) !Theme {
             try searchDirs.append(try std.fs.path.join(allocator, &.{ dir, "icons" }));
         }
     }
-    try searchDirs.append(try allocator.dupe(u8, "/usr/share/pixmaps"));
+    try searchDirs.append(allocator, try allocator.dupe(u8, "/usr/share/pixmaps"));
     for (searchDirs.items) |path| {
         var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch continue;
         defer dir.close();

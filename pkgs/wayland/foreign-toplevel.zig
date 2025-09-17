@@ -266,7 +266,7 @@ test "foreign-toplevel" {
 
     const glib = @import("glib");
     _ = glib.idleAdd(@ptrCast(&struct {
-        fn f(data: ?*anyopaque) callconv(.C) c_int {
+        fn f(data: ?*anyopaque) callconv(.c) c_int {
             const m: *Manager = @ptrCast(@alignCast(data));
             const toplevels = m.list(allocator) catch unreachable;
             allocator.free(toplevels);
