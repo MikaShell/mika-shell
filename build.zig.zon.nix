@@ -35,14 +35,6 @@ linkFarm "zig-packages" [
     };
   }
   {
-    name = "httpz-0.0.0-PNVzrFe5BgDabt7p2mEiv4PXNOZxJvxR0cMOBtQmP3uR";
-    path = fetchgit {
-      url = "https://github.com/karlseguin/http.zig";
-      rev = "94fc151741af0f8b6962966046743c0726b1ec35";
-      hash = "sha256-nhfMScgS0CYDDAbJTKSFIRInyE4wyce4Tn3txPkU4SM=";
-    };
-  }
-  {
     name = "ini-0.1.0-YCQ9YkUnAAA7SjpLwvomwrngMn3TConSAlNgo7Q8ibMZ";
     path = fetchgit {
       url = "https://github.com/ziglibs/ini";
@@ -51,25 +43,11 @@ linkFarm "zig-packages" [
     };
   }
   {
-    name = "metrics-0.0.0-W7G4eP2_AQBKsaql3dhLJ-pkf-RdP-zV3vflJy4N34jC";
-    path = fetchzip {
-      url = "https://github.com/karlseguin/metrics.zig/archive/13d8706e1ae921a8cc0d2f88283c1b5412c73e2f.tar.gz";
-      hash = "sha256-iu19RwA2pIhT+tSwaaLT+9XPNR8Ucaq88XfH9lkeyMk=";
-    };
-  }
-  {
     name = "wayland-0.5.0-dev-lQa1khrMAQDJDwYFKpdH3HizherB7sHo5dKMECfvxQHe";
     path = fetchgit {
       url = "https://codeberg.org/ifreund/zig-wayland";
       rev = "1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea";
       hash = "sha256-1wRkixysjdFMyrATxlXdukAc34MwfNj0B6ydYVn+UKw=";
-    };
-  }
-  {
-    name = "websocket-0.1.0-ZPISdYluAwBl2ckLPQ_q5_1IPEmNmaJ9vU1V0ap1-_dD";
-    path = fetchzip {
-      url = "https://github.com/karlseguin/websocket.zig/archive/59aaa71e64a669aa90016f8a342ceeee6381b4a6.tar.gz";
-      hash = "sha256-MDkxGJSoLQ2dQ43Zu4fsqZ7rMOM+10z6PZYsfO/48wk=";
     };
   }
 ]
