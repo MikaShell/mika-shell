@@ -1117,7 +1117,7 @@ const SocketServer = struct {
             fn read(ch_inner: *glib.IOChannel, condition: glib.IOCondition, ctx: *Context) callconv(.c) c_int {
                 if (condition.in) {
                     const bufSize = 1024;
-                    var buf: [bufSize:0]u8 = undefined;
+                    var buf: [bufSize:0]u8 = [_:0]u8{0} ** 1024;
                     var len: usize = 0;
                     const ret = ch_inner.read(&buf, 1024, &len);
                     switch (ret) {
