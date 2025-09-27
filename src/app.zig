@@ -451,44 +451,45 @@ pub const Config = struct {
 
         allocator.destroy(self);
     }
-};
-fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: *std.StringHashMap([]const u8)) !void {
-    var reader_ = std.json.Reader.init(allocator, reader);
-    defer reader_.deinit();
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const sub_alias_json = std.json.Value.jsonParse(arena.allocator(), &reader_, .{ .max_value_len = 1024 * 1024 * 1024 }) catch |err| {
-        std.log.err("Failed to parse alias.json in {s}: {t}", .{ dir, err });
-        return err;
-    };
-    switch (sub_alias_json) {
-        .object => {},
-        else => {
-            std.log.err("Invalid alias.json in {s}: expected object", .{dir});
-            return error.InvalidAliasJson;
-        },
-    }
-    const obj = sub_alias_json.object;
-
-    var it = obj.iterator();
-    while (it.next()) |kv| {
-        const key = kv.key_ptr.*;
-        const val = switch (kv.value_ptr.*) {
-            .string => |v| v,
+    fn parseAliasJson(allocator: Allocator, reader: anytype, dir: []const u8, dist: *std.StringHashMap([]const u8)) !void {
+        var reader_ = std.json.Reader.init(allocator, reader);
+        defer reader_.deinit();
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const sub_alias_json = std.json.Value.jsonParse(arena.allocator(), &reader_, .{ .max_value_len = 1024 * 1024 * 1024 }) catch |err| {
+            std.log.err("Failed to parse alias.json in {s}: {t}", .{ dir, err });
+            return err;
+        };
+        switch (sub_alias_json) {
+            .object => {},
             else => {
-                std.log.err("invalid alias value type '{t}', expected string", .{kv.value_ptr.*});
+                std.log.err("Invalid alias.json in {s}: expected object", .{dir});
                 return error.InvalidAliasJson;
             },
-        };
-        if (key[0] == '/') {
-            std.log.err("Invalid alias.json in '{s}': key should not start with /, got '{s}'", .{ dir, key });
-            return error.InvalidAliasJson;
         }
-        const key_ = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ dir, key });
-        const val_ = try std.fmt.allocPrint(allocator, "/{s}/{s}", .{ dir, if (val[0] == '/') val[1..] else val });
-        try dist.put(key_, val_);
+        const obj = sub_alias_json.object;
+
+        var it = obj.iterator();
+        while (it.next()) |kv| {
+            const key = kv.key_ptr.*;
+            const val = switch (kv.value_ptr.*) {
+                .string => |v| v,
+                else => {
+                    std.log.err("invalid alias value type '{t}', expected string", .{kv.value_ptr.*});
+                    return error.InvalidAliasJson;
+                },
+            };
+            if (key[0] == '/') {
+                std.log.err("Invalid alias.json in '{s}': key should not start with /, got '{s}'", .{ dir, key });
+                return error.InvalidAliasJson;
+            }
+            const key_ = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ dir, key });
+            const val_ = try std.fmt.allocPrint(allocator, "/{s}/{s}", .{ dir, if (val[0] == '/') val[1..] else val });
+            try dist.put(key_, val_);
+        }
     }
-}
+};
+
 pub const App = struct {
     modules: *Modules,
     mutex: std.Thread.Mutex,
@@ -701,7 +702,7 @@ pub const App = struct {
                 const content_type = gio.contentTypeGuess(file_path.ptr, payload_ptr, 256, null);
                 defer glib.free(content_type);
 
-                const stream = gio.MemoryInputStream.newFromData(@ptrCast(payload_ptr), size, struct {
+                const stream = gio.MemoryInputStream.newFromData(payload_ptr, size, struct {
                     fn free(data_: ?*anyopaque) callconv(.c) void {
                         glib.free(data_);
                     }
