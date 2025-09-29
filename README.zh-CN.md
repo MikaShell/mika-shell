@@ -6,13 +6,16 @@
 
 ## 目录
 
-* [特性](#特性)
-* [模块](#模块)
-* [开始](#开始)
-  * [依赖](#依赖)
-  * [启动](#启动)
-  * [教程](#教程)
-* [配置](#配置)
+- [MikaShell](#mikashell)
+  - [目录](#目录)
+  - [特性](#特性)
+    - [模块](#模块)
+      - [Todo](#todo)
+  - [开始](#开始)
+    - [依赖](#依赖)
+    - [启动](#启动)
+    - [教程](#教程)
+  - [配置](#配置)
 
 ---
 
@@ -52,17 +55,17 @@ npm install @mika-shell/extra
 
 #### Todo
 
-* [ ]powerprofile
-* [ ]bluetooth
-* [ ]pam
-* [ ]locksession
-* [~]network
-  * [ ]实现相关事件
-* [ ]mpris
-* [ ]battery
-* [ ]cava
-* [ ]wireplumber
-* [ ]wayland
+- [ ]powerprofile
+- [ ]bluetooth
+- [ ]pam
+- [ ]locksession
+- [~]network
+  - [ ]实现相关事件
+- [ ]mpris
+- [ ]battery
+- [ ]cava
+- [ ]wireplumber
+- [ ]wayland
 
 ---
 
@@ -87,7 +90,7 @@ npm install @mika-shell/extra
 
 ### 教程
 
-教程/Wiki 尚未准备好 ~~（还没开始写）~~ ，但是你可以看 [Example](https://github.com/HumXC/mika-shell/tree/main/example)!
+请查看 [Website](mikashell.github.io/) 和 [Example](https://github.com/HumXC/mika-shell/tree/main/example)!
 
 ---
 

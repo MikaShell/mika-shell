@@ -6,14 +6,16 @@
 
 ## Table of Contents
 
-- [Features](#features)
-- [Modules](#modules)
-- [Getting Started](#getting-started)
-
-  - [Dependencies](#dependencies)
-  - [Launching](#launching)
-  - [Tutorial](#tutorial)
-- [Configuration](#configuration)
+- [MikaShell](#mikashell)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+    - [Modules](#modules)
+      - [Todo](#todo)
+  - [Getting Started](#getting-started)
+    - [Dependencies](#dependencies)
+    - [Launching](#launching)
+    - [Tutorial](#tutorial)
+  - [Configuration](#configuration)
 
 ---
 
@@ -93,7 +95,7 @@ If everything works properly, you should see a bar appear at the top of your scr
 
 ### Tutorial
 
-The tutorial or Wiki is not yet available ~~(hasn’t been written yet)~~, but you can explore the [example directory](https://github.com/HumXC/mika-shell/tree/main/example) for working samples!
+Please check out [Website](mikashell.github.io/) and [Example](https://github.com/HumXC/mika-shell/tree/main/example)!
 
 ---
 
