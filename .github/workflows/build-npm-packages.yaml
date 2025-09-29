@@ -1,0 +1,36 @@
+name: Build mika-shell
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          chmod +x ./build-npm.sh
+          ./build-npm.sh core pack
+          ./build-npm.sh extra pack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-core
+          path: mika-shell-core-*.tgz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-extra
+          path: mika-shell-extra-*.tgz

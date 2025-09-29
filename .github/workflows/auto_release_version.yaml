@@ -1,56 +1,82 @@
 name: Auto Release Version
 
 on:
-    push:
-        tags: ["v*"]
+  push:
+    tags: ["v*"]
 
 jobs:
-    build:
-        permissions:
-            contents: write
-            id-token: write
-        uses: ./.github/workflows/build.yaml
+  build-npm-packages:
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/build-npm-packages.yaml
 
-    release:
-        needs: build
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-            id-token: write
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+  build-mika-shell:
+    needs: build-npm-packages
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/build-mika-shell.yaml
 
-            - name: Download Artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: mika-shell
+  release:
+    needs: build-mika-shell
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Get Version Info
-              id: version
-              run: |
-                  if [[ $GITHUB_REF == refs/tags/* ]]; then
-                    # 提取 tag 并校验格式
-                    TAG_NAME=${GITHUB_REF#refs/tags/}
-                    if [[ $TAG_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.?[0-9]*)?$ ]]; then
-                      echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
-                      echo "RELEASE_NAME=$TAG_NAME" >> $GITHUB_ENV
-                    else
-                      echo "::error::Tag format invalid, must be vX.Y.Z or vX.Y.Z-rc.n"
-                      exit 1
-                    fi
-                  fi
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mika-shell
 
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@v2
-              with:
-                  token: ${{ secrets.GITHUB_TOKEN }}
-                  tag_name: ${{ env.RELEASE_TAG }}
-                  name: ${{ env.RELEASE_NAME }}
-                  body: |
-                      ${{ github.event.head_commit.message }}
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mika-shell-debug
 
-                      Commit SHA: ${{ github.sha }}
-                  draft: true
-                  prerelease: ${{ contains(env.RELEASE_TAG, '-') }} # 包含连字符标记为预发布
-                  files: mika-shell
+      - name: Download Core Package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package-core
+
+      - name: Download Extra Package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package-extra
+
+      - name: Get Version Info
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # 提取 tag 并校验格式
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            if [[ $TAG_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.?[0-9]*)?$ ]]; then
+              echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+              echo "RELEASE_NAME=$TAG_NAME" >> $GITHUB_ENV
+            else
+              echo "::error::Tag format invalid, must be vX.Y.Z or vX.Y.Z-rc.n"
+              exit 1
+            fi
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body: |
+            ${{ github.event.head_commit.message }}
+
+            Commit SHA: ${{ github.sha }}
+          draft: true
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }} # 包含连字符标记为预发布
+          files: |
+            mika-shell
+            mika-shell-debug
+            mika-shell-core-*.tgz
+            mika-shell-extra-*.tgz

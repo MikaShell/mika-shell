@@ -4,13 +4,21 @@ on:
     workflow_dispatch:
 
 jobs:
-    build:
+    build-npm-packages:
         permissions:
             contents: write
             id-token: write
-        uses: ./.github/workflows/build.yaml
+        uses: ./.github/workflows/build-npm-packages.yaml
+
+    build-mika-shell:
+        needs: build-npm-packages
+        permissions:
+            contents: write
+            id-token: write
+        uses: ./.github/workflows/build-mika-shell.yaml
+
     release:
-        needs: build
+        needs: build-mika-shell
         runs-on: ubuntu-latest
         permissions:
             contents: write
@@ -28,6 +36,16 @@ jobs:
               uses: actions/download-artifact@v4
               with:
                   name: mika-shell
+
+            - name: Download Core Package
+              uses: actions/download-artifact@v4
+              with:
+                  name: npm-package-core
+
+            - name: Download Extra Package
+              uses: actions/download-artifact@v4
+              with:
+                  name: npm-package-extra
 
             - name: Delete Old Releases
               env:
@@ -53,3 +71,5 @@ jobs:
                   files: |
                       mika-shell
                       mika-shell-debug
+                      mika-shell-core-*.tgz
+                      mika-shell-extra-*.tgz
