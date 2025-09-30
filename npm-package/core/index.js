@@ -10,5 +10,6 @@ export const apps = globalThis.mikaShell.apps;
 export const monitor = globalThis.mikaShell.monitor;
 export const notifd = globalThis.mikaShell.notifd;
 export const network = globalThis.mikaShell.network;
-export const dock = globalThis.mikaShell.dock;
+export const foreignToplevel = globalThis.mikaShell.foreignToplevel;
 export const libinput = globalThis.mikaShell.libinput;
+export const workspace = globalThis.mikaShell.workspace;

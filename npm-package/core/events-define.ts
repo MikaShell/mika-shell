@@ -18,7 +18,7 @@ export const Notifd = {
     added: 10,
     removed: 11,
 };
-export const Dock = {
+export const ForeignToplevel = {
     changed: 12,
     closed: 13,
     enter: 14,
@@ -28,4 +28,15 @@ export const Libinput = {
     "pointer-motion": 16,
     "pointer-button": 17,
     "keyboard-key": 18,
+};
+export const Workspace = {
+    "workspace-changed": 19,
+    "workspace-added": 20,
+    "workspace-removed": 21,
+    "group-added": 22,
+    "group-removed": 23,
+    "group-enter": 24,
+    "group-leave": 25,
+    "group-workspace-enter": 26,
+    "group-workspace-leave": 27,
 };

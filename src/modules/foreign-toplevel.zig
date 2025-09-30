@@ -7,7 +7,7 @@ const Registry = modules.Registry;
 const Allocator = std.mem.Allocator;
 const App = @import("../app.zig").App;
 const ForeignToplevelManager = @import("wayland").ForeignToplevel;
-pub const Dock = struct {
+pub const ForeignToplevel = struct {
     const Self = @This();
     allocator: Allocator,
     app: *App,
@@ -55,24 +55,24 @@ pub const Dock = struct {
                 .{ "fullscreen", setFullscreen },
             },
             .events = &.{
-                .@"dock.changed",
-                .@"dock.closed",
-                .@"dock.enter",
-                .@"dock.leave",
+                .@"foreignToplevel.changed",
+                .@"foreignToplevel.closed",
+                .@"foreignToplevel.enter",
+                .@"foreignToplevel.leave",
             },
         };
     }
     fn onChanged(self: *Self, client: ForeignToplevelManager.Toplevel) void {
-        self.app.emitEventUseSocket(.@"dock.changed", client);
+        self.app.emitEventUseSocket(.@"foreignToplevel.changed", client);
     }
     fn onClosed(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.@"dock.closed", id);
+        self.app.emitEventUseSocket(.@"foreignToplevel.closed", id);
     }
     fn onEnter(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.@"dock.enter", id);
+        self.app.emitEventUseSocket(.@"foreignToplevel.enter", id);
     }
     fn onLeave(self: *Self, id: u32) void {
-        self.app.emitEventUseSocket(.@"dock.leave", id);
+        self.app.emitEventUseSocket(.@"foreignToplevel.leave", id);
     }
     pub fn list(self: *Self, ctx: *Context) !void {
         try self.setup();

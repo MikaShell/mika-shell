@@ -12,7 +12,7 @@ const OutputNode = struct {
 pub const Manager = struct {
     const Self = @This();
     allocator: Allocator,
-    screencopyManager: *ScreencopyManager,
+    screencopyManager: ?*ScreencopyManager,
     shm: *wl.Shm,
     outputs: std.DoublyLinkedList,
     display: *wl.Display,
@@ -57,9 +57,11 @@ pub const Manager = struct {
 
         self.allocator = allocator;
         self.outputs = .{};
+        self.screencopyManager = null;
 
         const display = try common.init(*Self, registryListener, self);
         errdefer display.disconnect();
+        try self.check();
         self.display = display;
 
         self.glibWatch = try common.withGLibMainLoop(display);
@@ -73,6 +75,9 @@ pub const Manager = struct {
         }
         self.display.disconnect();
         self.allocator.destroy(self);
+    }
+    fn check(self: *Self) !void {
+        if (self.screencopyManager == null) return common.ErrNoAvarible;
     }
     fn initContext(self: *Self, frame: *ScreencopyFrame, opt: Option, callback: Callback, userdata: ?*anyopaque) !*Contxt {
         const ctx = try self.allocator.create(Contxt);
@@ -88,6 +93,7 @@ pub const Manager = struct {
         return ctx;
     }
     pub fn capture(self: *Self, callback: Callback, data: ?*anyopaque, option: Option) !void {
+        try self.check();
         const overlayCursor: i32 = if (option.overlayCursor) 1 else 0;
         const outputNode: *OutputNode = blk: {
             var node = self.outputs.first;
@@ -100,9 +106,9 @@ pub const Manager = struct {
         };
         const frame = blk: {
             if (option.x == 0 and option.y == 0 and option.w == 0 and option.h == 0) {
-                break :blk try self.screencopyManager.captureOutput(overlayCursor, outputNode.data);
+                break :blk try self.screencopyManager.?.captureOutput(overlayCursor, outputNode.data);
             } else {
-                break :blk try self.screencopyManager.captureOutputRegion(overlayCursor, outputNode.data, option.x, option.y, option.w, option.h);
+                break :blk try self.screencopyManager.?.captureOutputRegion(overlayCursor, outputNode.data, option.x, option.y, option.w, option.h);
             }
         };
         const ctx = try self.initContext(frame, option, callback, data);

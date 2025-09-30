@@ -577,8 +577,9 @@ pub const App = struct {
         try modules.mount(@import("modules/monitor.zig").Monitor, "monitor");
         try modules.mount(@import("modules/notifd.zig").Notifd, "notifd");
         try modules.mount(@import("modules/network.zig").Network, "network");
-        try modules.mount(@import("modules/dock.zig").Dock, "dock");
+        try modules.mount(@import("modules/foreign-toplevel.zig").ForeignToplevel, "foreignToplevel");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
+        try modules.mount(@import("modules/workspace.zig").Workspace, "workspace");
 
         app.websocket = try SocketServer.init(allocator, option.port);
         errdefer app.websocket.deinit();

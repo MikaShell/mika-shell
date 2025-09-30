@@ -3,6 +3,7 @@ const listeners: Map<number, Function[]> = new Map();
 const onceListeners: Map<number, Function[]> = new Map();
 try {
     const ws = new WebSocket(
+        // @ts-ignore
         `ws://localhost:${globalThis.mikaShell.backendPort}/?type=string&event=${globalThis.mikaShell.id}`
     );
     ws.onmessage = (event_) => {

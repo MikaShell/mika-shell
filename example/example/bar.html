@@ -58,7 +58,7 @@
             });
         </script>
         <!-- Clock -->
-        <script>
+        <script type="module">
             window.addEventListener("load", () => {
                 const clock = document.getElementById("clock");
                 const updateClock = () => {
@@ -71,6 +71,142 @@
                 updateClock();
                 setInterval(updateClock, 100);
             });
+            import { hyprland } from "./extra.js";
+
+            class Workspace extends HTMLElement {
+                static {
+                    customElements.define("my-workspace", this);
+                }
+
+                connectedCallback() {
+                    if (mikaShell.os.getEnv("HYPRLAND_INSTANCE_SIGNATURE") === "") {
+                        // use ext-workspace
+                        const addWorkspace = (id, activate) => {
+                            const dom = this;
+                            const el = document.createElement("div");
+                            el.classList.add("workspace");
+                            el.dataset["id"] = id;
+                            el.onclick = () => {
+                                mikaShell.workspace.activate(id).catch(() => {});
+                            };
+                            if (activate) {
+                                el.classList.add("workspace-active");
+                            }
+                            dom.appendChild(el);
+                        };
+                        const activateWorkspace = (id) => {
+                            const dom = this;
+                            for (let i = 0; i < dom.children.length; i++) {
+                                const el = dom.children[i];
+                                if (Number(el.dataset["id"]) === id) {
+                                    el.classList.add("workspace-active");
+                                } else {
+                                    el.classList.remove("workspace-active");
+                                }
+                            }
+                        };
+                        const updateWorkspace = async () => {
+                            const dom = this;
+                            const ws = await mikaShell.workspace.list();
+                            dom.innerHTML = "";
+                            function isNumeric(str) {
+                                if (typeof str !== "string") return false;
+                                return !isNaN(str) && str.trim() !== "";
+                            }
+                            ws.sort((a, b) => {
+                                if (a.workspaceId !== null && b.workspaceId !== null) {
+                                    if (isNumeric(a.workspaceId) && isNumeric(b.workspaceId)) {
+                                        return Number(a.workspaceId) - Number(b.workspaceId);
+                                    }
+                                }
+                                if (isNumeric(a.name) && isNumeric(b.name)) {
+                                    return Number(a.name) - Number(b.name);
+                                }
+                                for (
+                                    let i = 0;
+                                    i < Math.min(a.coordinates.length, b.coordinates.length);
+                                    i++
+                                ) {
+                                    if (a.coordinates[i] !== b.coordinates[i]) {
+                                        return a.coordinates[i] - b.coordinates[i];
+                                    }
+                                }
+                            });
+                            for (const w of ws) {
+                                addWorkspace(w.id, w.state.active);
+                            }
+                        };
+                        mikaShell.workspace.on("workspace-changed", (w) => {
+                            const dom = this;
+                            const target = dom.querySelector(`[data-id="${w.id}"]`);
+                            if (!target) return;
+                            if (!target.classList.contains("workspace-active") && w.state.active) {
+                                activateWorkspace(w.id);
+                            }
+                        });
+                        mikaShell.workspace.on("workspace-added", () => {
+                            updateWorkspace();
+                        });
+                        mikaShell.workspace.on("workspace-removed", () => {
+                            updateWorkspace();
+                        });
+                        updateWorkspace();
+                    } else {
+                        // use hyprland-workspace
+                        this.addEventListener("wheel", (e) => {
+                            e.preventDefault();
+                            hyprland.command.dispatch("workspace", e.deltaY > 0 ? "+1" : "-1");
+                        });
+
+                        const addWorkspace = (isEmpty) => {
+                            const dom = this;
+                            const el = document.createElement("div");
+                            el.classList.add("workspace");
+                            const id = dom.children.length + 1;
+                            el.onclick = () => {
+                                hyprland.command.dispatch("workspace", id);
+                            };
+                            if (isEmpty) {
+                                el.classList.add("workspace-empty");
+                            }
+                            dom.appendChild(el);
+                        };
+                        const activateWorkspace = (id) => {
+                            const dom = this;
+                            for (let i = 0; i < dom.children.length; i++) {
+                                const el = dom.children[i];
+                                el.classList.remove("workspace-active");
+                                if (i === id - 1) {
+                                    el.classList.add("workspace-active");
+                                }
+                            }
+                        };
+                        const updateWorkspace = async () => {
+                            const dom = this;
+                            const ws = await hyprland.workspace.list();
+                            dom.innerHTML = "";
+                            let index = 1;
+                            ws.sort((a, b) => a.id - b.id);
+                            for (let i = 0; i < ws.length; i++) {
+                                if (index !== ws[i].id) {
+                                    addWorkspace(true);
+                                    i--;
+                                } else {
+                                    addWorkspace(false);
+                                }
+                                index++;
+                            }
+                            hyprland.workspace.active().then((w) => activateWorkspace(w.id));
+                        };
+                        hyprland.workspace.on("create", updateWorkspace);
+                        hyprland.workspace.on("destroy", updateWorkspace);
+                        hyprland.workspace.on("active", ({ workspaceId, workspaceName }) =>
+                            activateWorkspace(workspaceId)
+                        );
+                        updateWorkspace();
+                    }
+                }
+            }
         </script>
         <!-- Tray -->
         <style>
@@ -146,7 +282,7 @@
         </script>
         <!-- Hyprland Workspace -->
         <style>
-            #hyprland-workspaces {
+            my-workspace {
                 display: flex;
                 flex-direction: row;
                 gap: 4px;
@@ -158,7 +294,7 @@
                 border-radius: 8px;
             }
 
-            .hyprland-workspace {
+            .workspace {
                 display: flex;
                 width: 10px;
                 height: 10px;
@@ -169,75 +305,21 @@
                 background-color: #4f96b6;
             }
 
-            .hyprland-workspace-empty {
+            .workspace-empty {
                 border: solid 1px #d1d1d199;
                 background-color: #5b5b5b8e;
             }
-            .hyprland-workspace-active {
+            .workspace-active {
                 border: none;
                 background-color: #42d475 !important;
             }
         </style>
-        <script type="module">
-            import { hyprland } from "./extra.js";
-            const hyprlandWorkspaces = document.getElementById("hyprland-workspaces");
-            hyprlandWorkspaces.addEventListener("wheel", (e) => {
-                e.preventDefault();
-                hyprland.command.dispatch("workspace", e.deltaY > 0 ? "+1" : "-1");
-            });
-            const addWorkspace = (isEmpty = false) => {
-                const dom = hyprlandWorkspaces;
-                const el = document.createElement("div");
-                el.classList.add("hyprland-workspace");
-                const id = dom.children.length + 1;
-                el.onclick = () => {
-                    hyprland.command.dispatch("workspace", id);
-                };
-                if (isEmpty) {
-                    el.classList.add("hyprland-workspace-empty");
-                }
-                dom.appendChild(el);
-            };
-            const activateWorkspace = (id) => {
-                const dom = hyprlandWorkspaces;
-                for (let i = 0; i < dom.children.length; i++) {
-                    const el = dom.children[i];
-                    el.classList.remove("hyprland-workspace-active");
-                    if (i === id - 1) {
-                        el.classList.add("hyprland-workspace-active");
-                    }
-                }
-            };
-            const updateWorkspace = async () => {
-                const dom = hyprlandWorkspaces;
-                const ws = await hyprland.workspace.list();
-                dom.innerHTML = "";
-                let index = 1;
-                ws.sort((a, b) => a.id - b.id);
-                for (let i = 0; i < ws.length; i++) {
-                    if (index !== ws[i].id) {
-                        addWorkspace(true);
-                        i--;
-                    } else {
-                        addWorkspace();
-                    }
-                    index++;
-                }
-                hyprland.workspace.active().then((w) => activateWorkspace(w.id));
-            };
-            hyprland.workspace.on("create", updateWorkspace);
-            hyprland.workspace.on("destroy", updateWorkspace);
-            hyprland.workspace.on("active", ({ workspaceId, workspaceName }) =>
-                activateWorkspace(workspaceId)
-            );
-            updateWorkspace();
-        </script>
     </head>
     <body>
         <div id="left">
             <button id="debug" onclick="openDebugPage()">Debug</button>
             <div id="tray"></div>
-            <div id="hyprland-workspaces"></div>
+            <my-workspace></my-workspace>
         </div>
         <div id="center">
             <span id="clock"> </span>

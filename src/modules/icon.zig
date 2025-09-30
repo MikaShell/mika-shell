@@ -493,17 +493,12 @@ fn makeHtmlImg(allocator: Allocator, filePath: []const u8) ![]const u8 {
     if (std.mem.endsWith(u8, filePath, ".svg")) {
         var uri = std.Io.Writer.Allocating.init(allocator);
         defer uri.deinit();
-        try std.Uri.Component.percentEncode(&uri.writer, payload, isValidcharhar);
+        var comp = std.Uri.Component{ .raw = payload };
+        try comp.formatEscaped(&uri.writer);
         return try std.fmt.allocPrint(allocator, "data:image/svg+xml,{s}", .{uri.written()});
     }
     if (std.mem.endsWith(u8, filePath, ".png")) {
         return try std.fmt.allocPrint(allocator, "data:image/png;base64,{b64}", .{payload});
     }
     return error.IconNotSupported;
-}
-fn isValidcharhar(char: u8) bool {
-    return (char >= 'a' and char <= 'z') or
-        (char >= 'A' and char <= 'Z') or
-        (char >= '0' and char <= '9') or
-        char == '-' or char == '_' or char == '.' or char == '~';
 }

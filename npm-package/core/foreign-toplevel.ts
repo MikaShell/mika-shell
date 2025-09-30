@@ -1,5 +1,5 @@
 import call from "./call";
-import { Dock } from "./events-define";
+import { ForeignToplevel } from "./events-define";
 export type State = "maximized" | "minimized" | "activated" | "fullscreen";
 export type Client = {
     id: number;
@@ -8,25 +8,25 @@ export type Client = {
     state: State[];
 };
 export function list(): Promise<Client[]> {
-    return call("dock.list");
+    return call("foreignToplevel.list");
 }
 export function activate(id: number): Promise<void> {
-    return call("dock.activate", id);
+    return call("foreignToplevel.activate", id);
 }
 export function close(id: number): Promise<void> {
-    return call("dock.close", id);
+    return call("foreignToplevel.close", id);
 }
 export function setMaximized(id: number, maximized: boolean): Promise<void> {
-    return call("dock.setMaximized", id, maximized);
+    return call("foreignToplevel.setMaximized", id, maximized);
 }
 export function setMinimized(id: number, minimized: boolean): Promise<void> {
-    return call("dock.setMinimized", id, minimized);
+    return call("foreignToplevel.setMinimized", id, minimized);
 }
 export function setFullscreen(id: number, fullscreen: boolean): Promise<void> {
-    return call("dock.setFullscreen", id, fullscreen);
+    return call("foreignToplevel.setFullscreen", id, fullscreen);
 }
 
-type Events = keyof typeof Dock;
+type Events = keyof typeof ForeignToplevel;
 type EventMap = {
     [K in Events]: K extends "changed"
         ? (item: Client) => void
@@ -42,11 +42,11 @@ type EventMap = {
 };
 import * as events from "./events";
 export function on<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    events.on(Dock[event], callback);
+    events.on(ForeignToplevel[event], callback);
 }
 export function off<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    events.off(Dock[event], callback);
+    events.off(ForeignToplevel[event], callback);
 }
 export function once<K extends Events>(event: K, callback: (e: EventMap[K]) => void) {
-    events.once(Dock[event], callback);
+    events.once(ForeignToplevel[event], callback);
 }

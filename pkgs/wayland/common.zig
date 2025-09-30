@@ -1,6 +1,7 @@
 const wayland = @import("zig-wayland");
 const wl = wayland.client.wl;
 const glib = @import("glib");
+pub const ErrNoAvarible = error.NoAvarible;
 pub const GLibWatch = struct {
     source: c_uint,
     display: *wl.Display,

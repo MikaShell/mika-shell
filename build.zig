@@ -41,11 +41,12 @@ pub fn build(b: *std.Build) void {
 
             const wlr_protocols = b.dependency("wlr-protocols", .{});
             const wayland_protocols = b.dependency("wayland-protocols", .{});
-            _ = wayland_protocols;
             scanner.addCustomProtocol(wlr_protocols.path("unstable/wlr-foreign-toplevel-management-unstable-v1.xml"));
             scanner.addCustomProtocol(wlr_protocols.path("unstable/wlr-screencopy-unstable-v1.xml"));
+            scanner.addCustomProtocol(wayland_protocols.path("staging/ext-workspace/ext-workspace-v1.xml"));
             scanner.generate("zwlr_foreign_toplevel_manager_v1", 3);
             scanner.generate("zwlr_screencopy_manager_v1", 3);
+            scanner.generate("ext_workspace_manager_v1", 1);
             scanner.generate("wl_output", 4);
             scanner.generate("wl_seat", 9);
             scanner.generate("wl_shm", 2);

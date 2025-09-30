@@ -9,9 +9,10 @@ import * as _apps from "./apps";
 import * as _monitor from "./monitor";
 import * as _notifd from "./notifd";
 import * as _network from "./network";
-import * as _dock from "./dock";
+import * as _foreignToplevel from "./foreign-toplevel";
 import * as _libinput from "./libinput";
 import * as _utils from "./utils";
+import * as _workspace from "./workspace";
 const core = {
     mika: _mika,
     tray: _tray,
@@ -24,8 +25,9 @@ const core = {
     monitor: _monitor,
     notifd: _notifd,
     network: _network,
-    dock: _dock,
+    foreignToplevel: _foreignToplevel,
     libinput: _libinput,
+    workspace: _workspace,
     utils: _utils,
 };
 declare global {
@@ -46,6 +48,7 @@ export * as apps from "./apps";
 export * as monitor from "./monitor";
 export * as notifd from "./notifd";
 export * as network from "./network";
-export * as dock from "./dock";
+export * as foreignToplevel from "./foreign-toplevel";
 export * as libinput from "./libinput";
+export * as workspace from "./workspace";
 export * as utils from "./utils";

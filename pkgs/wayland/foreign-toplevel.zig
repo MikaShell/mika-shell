@@ -17,7 +17,7 @@ fn handleToplevel(h: *ForeignToplevelHandle, event: ForeignToplevelHandle.Event,
         var it = ctx.toplevels.first;
         while (it) |node| {
             const toplevelNode: *ToplevelNode = @fieldParentPtr("node", node);
-            if (toplevelNode.data.handler == h) {
+            if (toplevelNode.data.handle == h) {
                 break :blk toplevelNode;
             }
             it = node.next;
@@ -28,17 +28,17 @@ fn handleToplevel(h: *ForeignToplevelHandle, event: ForeignToplevelHandle.Event,
     const allocator = ctx.allocator;
     const span = std.mem.span;
     switch (event) {
-        .app_id => |appId| {
+        .app_id => |e| {
             allocator.free(t.appId);
-            t.appId = allocator.dupe(u8, span(appId.app_id)) catch return;
+            t.appId = allocator.dupe(u8, span(e.app_id)) catch return;
         },
         .title => |title| {
             allocator.free(t.title);
             t.title = allocator.dupe(u8, span(title.title)) catch return;
         },
-        .state => |state| {
+        .state => |e| {
             allocator.free(t.state);
-            const status = state.state.slice(c_int);
+            const status = e.state.slice(c_int);
             var status_ = allocator.alloc(ForeignToplevelHandle.State, status.len) catch return;
             for (status, 0..) |s, i| {
                 status_[i] = @enumFromInt(s);
@@ -85,14 +85,14 @@ pub const Toplevel = struct {
 };
 const ToplevelContext = struct {
     allocator: Allocator,
-    handler: *ForeignToplevelHandle,
+    handle: *ForeignToplevelHandle,
     title: []const u8,
     appId: []const u8,
     state: []ForeignToplevelHandle.State,
-    fn init(allocator: Allocator, handler: *ForeignToplevelHandle) ToplevelContext {
+    fn init(allocator: Allocator, handle: *ForeignToplevelHandle) ToplevelContext {
         return .{
             .allocator = allocator,
-            .handler = handler,
+            .handle = handle,
             .title = "",
             .appId = "",
             .state = &.{},
@@ -102,11 +102,11 @@ const ToplevelContext = struct {
         self.allocator.free(self.title);
         self.allocator.free(self.appId);
         self.allocator.free(self.state);
-        self.handler.destroy();
+        self.handle.destroy();
     }
     fn make(self: *ToplevelContext) Toplevel {
         return .{
-            .id = self.handler.getId(),
+            .id = self.handle.getId(),
             .title = self.title,
             .appId = self.appId,
             .state = self.state,
@@ -130,6 +130,9 @@ pub const Manager = struct {
         self.allocator = allocator;
         self.listener = listener;
         self.toplevels = .{};
+        self.foreignToplevelManager = null;
+        self.seat = null;
+
         const display = try common.init(*Self, registryListener, self);
         errdefer display.disconnect();
         self.display = display;
@@ -139,15 +142,15 @@ pub const Manager = struct {
         return self;
     }
     fn check(self: *Self) !void {
-        if (self.foreignToplevelManager == null) return error.NotAvailable;
-        if (self.seat == null) return error.NotAvailable;
+        if (self.foreignToplevelManager == null) return common.ErrNoAvarible;
+        if (self.seat == null) return common.ErrNoAvarible;
     }
-    fn getHandler(self: *Self, id: u32) ?*ForeignToplevelHandle {
+    fn getHandle(self: *Self, id: u32) ?*ForeignToplevelHandle {
         var it = self.toplevels.first;
         while (it) |node| {
             const toplevel: *ToplevelNode = @fieldParentPtr("node", node);
-            if (toplevel.data.handler.getId() == id) {
-                return toplevel.data.handler;
+            if (toplevel.data.handle.getId() == id) {
+                return toplevel.data.handle;
             }
             it = node.next;
         }
@@ -202,40 +205,45 @@ pub const Manager = struct {
     }
     pub fn activate(self: *Self, id: u32) !void {
         try self.check();
-        const handle = self.getHandler(id) orelse return;
+        const handle = self.getHandle(id) orelse return;
         handle.activate(self.seat.?);
+        _ = self.display.flush();
     }
     pub fn close(self: *Self, id: u32) !void {
         try self.check();
-        const handle = self.getHandler(id) orelse return;
+        const handle = self.getHandle(id) orelse return;
         handle.close();
+        _ = self.display.flush();
     }
     pub fn setMaximized(self: *Self, id: u32, maximized: bool) !void {
         try self.check();
-        const handle = self.getHandler(id) orelse return;
+        const handle = self.getHandle(id) orelse return;
         if (maximized) {
             handle.setMaximized();
         } else {
             handle.unsetMaximized();
         }
+        _ = self.display.flush();
     }
     pub fn setMinimized(self: *Self, id: u32, minimized: bool) !void {
         try self.check();
-        const handle = self.getHandler(id) orelse return;
+        const handle = self.getHandle(id) orelse return;
         if (minimized) {
             handle.setMinimized();
         } else {
             handle.unsetMinimized();
         }
+        _ = self.display.flush();
     }
     pub fn setFullscreen(self: *Self, id: u32, fullscreen: bool) !void {
         try self.check();
-        const handle = self.getHandler(id) orelse return;
+        const handle = self.getHandle(id) orelse return;
         if (fullscreen) {
             handle.setFullscreen(null);
         } else {
             handle.unsetFullscreen();
         }
+        _ = self.display.flush();
     }
 };
 
