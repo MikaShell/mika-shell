@@ -261,16 +261,10 @@ const SystemInfo = struct {
             info.kernel = try std.fmt.allocPrint(allocator, "{s} {s}", .{ std.mem.sliceTo(&sysinfo.sysname, 0), std.mem.sliceTo(&sysinfo.release, 0) });
         }
         {
-            const uptime = try std.fs.openFileAbsolute("/proc/uptime", .{});
-            defer uptime.close();
-            var buf: [64]u8 = undefined;
-            var reader = uptime.reader(&buf);
-            var r = &reader.interface;
-            const payload = try r.allocRemaining(allocator, .limited(1024 * 1024 * 10));
-            defer allocator.free(payload);
-            var fields = std.mem.splitScalar(u8, payload, ' ');
-            const uptime_seconds = std.fmt.parseFloat(f64, fields.next().?) catch 0;
-            info.uptime = @intFromFloat(uptime_seconds);
+            var sysinfo: std.os.linux.Sysinfo = undefined;
+            if (std.os.linux.sysinfo(&sysinfo) == 0) {
+                info.uptime = @intCast(sysinfo.uptime);
+            }
         }
         {
             var buf: [std.posix.HOST_NAME_MAX]u8 = undefined;

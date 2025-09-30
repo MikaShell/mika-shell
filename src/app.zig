@@ -96,6 +96,7 @@ pub const Webview = struct {
         w.impl = webkit.WebView.new();
         w.id = w.impl.getPageId();
         w.impl.getSettings().setDefaultCharset("utf-8");
+        w.impl.getContext().setCacheModel(.document_browser);
 
         const settings = w.impl.getSettings();
         settings.setEnableDeveloperExtras(1);
