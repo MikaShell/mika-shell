@@ -73,16 +73,16 @@ npm install @mika-shell/extra
 
 ### 依赖
 
-你可以查看 [此处](https://github.com/HumXC/mika-shell/blob/db1586e803b8df7f093aacb772c419162adf8408/.github/workflows/build.yaml#L18C11-L18C13) 来获取 Ubuntu 环境下的依赖。一般来说只需要安装 lib 开头的包
+你可以查看 [此处](https://github.com/MikaShell/mika-shell/blob/db1586e803b8df7f093aacb772c419162adf8408/.github/workflows/build.yaml#L18C11-L18C13) 来获取 Ubuntu 环境下的依赖。一般来说只需要安装 lib 开头的包
 
 ---
 
 ### 启动
 
-你可以从 [Release 页面](https://github.com/HumXC/mika-shell/releases/) 下载预编译的二进制文件，也可以自己编译
+你可以从 [Release 页面](https://github.com/MikaShell/mika-shell/releases/) 下载预编译的二进制文件，也可以自己编译
 `mika-shell-debug` 是调试版本，可以看到更多的日志信息。
 
-对于 Nix 用户， 可以使用 `nix run github:HumXC/mika-shell#packages.x86_64-linux.default -- daemon`
+对于 Nix 用户， 可以使用 `nix run github:MikaShell/mika-shell#packages.x86_64-linux.default -- daemon`
 
 运行 `mika-shell daemon` 启动，第一次运行会在 `~/.config/mika-shell` 目录下生成初始配置文件。如果一切正常，你应该会看见顶部出现一个 bar。
 
@@ -90,7 +90,7 @@ npm install @mika-shell/extra
 
 ### 教程
 
-请查看 [Website](mikashell.github.io/) 和 [Example](https://github.com/HumXC/mika-shell/tree/main/example)!
+请查看 [Website](mikashell.github.io/) 和 [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
 
 ---
 

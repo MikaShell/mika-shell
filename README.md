@@ -73,19 +73,19 @@ Below is a list of modules that are currently implemented or partially implement
 
 ### Dependencies
 
-You can refer to [this section](https://github.com/HumXC/mika-shell/blob/db1586e803b8df7f093aacb772c419162adf8408/.github/workflows/build.yaml#L18C11-L18C13) to see required packages for Ubuntu. In general, you only need to install packages starting with `lib`.
+You can refer to [this section](https://github.com/MikaShell/mika-shell/blob/db1586e803b8df7f093aacb772c419162adf8408/.github/workflows/build.yaml#L18C11-L18C13) to see required packages for Ubuntu. In general, you only need to install packages starting with `lib`.
 
 ---
 
 ### Launching
 
-You can download a prebuilt binary from the [Releases page](https://github.com/HumXC/mika-shell/releases/), or build it from source.
+You can download a prebuilt binary from the [Releases page](https://github.com/MikaShell/mika-shell/releases/), or build it from source.
 The `mika-shell-debug` version provides more verbose logging for debugging purposes.
 
 For Nix users, you can launch it with:
 
 ```bash
-nix run github:HumXC/mika-shell#packages.x86_64-linux.default -- daemon
+nix run github:MikaShell/mika-shell#packages.x86_64-linux.default -- daemon
 ```
 
 Run `mika-shell daemon` to start the service. The first time it runs, it will generate default configuration files in `~/.config/mika-shell`.
@@ -95,7 +95,7 @@ If everything works properly, you should see a bar appear at the top of your scr
 
 ### Tutorial
 
-Please check out [Website](mikashell.github.io/) and [Example](https://github.com/HumXC/mika-shell/tree/main/example)!
+Please check out [Website](mikashell.github.io/) and [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
 
 ---
 

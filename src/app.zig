@@ -103,6 +103,15 @@ pub const Webview = struct {
         const manager = w.impl.getUserContentManager();
         _ = manager.registerScriptMessageHandlerWithReply("mikaShell", null);
 
+        if (@import("builtin").mode != .Debug) {
+            _ = g.signalConnectData(w.impl.as(g.Object), "context-menu", @ptrCast(&struct {
+                fn cb() callconv(.c) c_int {
+                    return 1;
+                }
+            }.cb), null, null, .flags_default);
+            settings.setEnableDeveloperExtras(0);
+        }
+
         const setPropJs = std.fmt.allocPrintSentinel(allocator, "window.mikaShell = {{backendPort: {d}, id: {d}}};", .{ backendPort, w.id }, 0) catch unreachable;
         defer allocator.free(setPropJs);
         const setPortScript = webkit.UserScript.new(setPropJs, .all_frames, .start, null, null);
@@ -165,6 +174,7 @@ pub const Webview = struct {
                 return 0;
             }
         }.f), w, null, .flags_default);
+
         return w;
     }
     pub fn getInfo(self: *Webview) Info {

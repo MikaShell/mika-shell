@@ -30,7 +30,7 @@ linkFarm "zig-packages" [
   {
     name = "gobject-0.3.0-Skun7B3omQB3XhqaKwuLsBMckQrFaNLzBwL5e0j-HNpE";
     path = fetchzip {
-      url = "https://github.com/HumXC/mika-shell-gobject/releases/download/latest/bindings.tar.gz";
+      url = "https://github.com/MikaShell/gobject/releases/download/latest/bindings.tar.gz";
       hash = "sha256-KnyHbHSsuPCsfq4GlqJw2XoQ936OZN1qtvBO1yFLV10=";
     };
   }

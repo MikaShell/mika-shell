@@ -3,16 +3,16 @@
     "version": "0.0.4",
     "description": "MikaShell frontend core library",
     "main": "index.js",
-    "types":"index.d.ts",
+    "types": "index.d.ts",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/HumXC/mika-shell.git"
+        "url": "git+https://github.com/MikaShell/mika-shell.git"
     },
     "author": "HumXC",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/HumXC/mika-shell/issues"
+        "url": "https://github.com/MikaShell/mika-shell/issues"
     },
-    "homepage": "https://github.com/HumXC/mika-shell#readme",
+    "homepage": "https://github.com/MikaShell/mika-shell#readme",
     "dependencies": {}
 }

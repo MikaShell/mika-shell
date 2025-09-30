@@ -71,7 +71,7 @@ in
     ];
     meta = {
       description = "Build your own desktop shell using HTML + CSS + JS";
-      homepage = "https://github.com/HumXC/mika-shell";
+      homepage = "https://github.com/MikaShell/mika-shell";
       mainProgram = "mika-shell";
       platforms = lib.platforms.unix;
     };
