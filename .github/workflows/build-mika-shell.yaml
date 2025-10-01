@@ -1,63 +1,68 @@
 name: Build mika-shell
 
 on:
-    workflow_call:
-    workflow_dispatch:
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
-    build:
-        container: ubuntu:25.04
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-            id-token: write
-        env:
-            DEBIAN_FRONTEND: noninteractive
-            PACKAGES: |
-                xz-utils
-                libgtk4-layer-shell-dev
-                esbuild
-                libgtk-4-dev
-                libwebkitgtk-6.0-dev
-                libwebp-dev
-                zlib1g-dev
-                libssl-dev
-                librsvg2-dev
-                libdbus-1-dev
-                libglib2.0-dev
-                pkg-config
-                libsharpyuv-dev
-                libsystemd-dev
-                libwayland-dev
-                libudev-dev
-                libinput-dev
-                libpng-dev
+  build:
+    container: ubuntu:25.04
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      PACKAGES: |
+        xz-utils
+        libgtk4-layer-shell-dev
+        esbuild
+        libgtk-4-dev
+        libwebkitgtk-6.0-dev
+        libwebp-dev
+        zlib1g-dev
+        libssl-dev
+        librsvg2-dev
+        libdbus-1-dev
+        libglib2.0-dev
+        pkg-config
+        libsharpyuv-dev
+        libsystemd-dev
+        libwayland-dev
+        libudev-dev
+        libinput-dev
+        libpng-dev
 
-        steps:
-            - name: Install packages
-              run: |
-                  apt update
-                  apt install -y $PACKAGES
+    steps:
+      - name: Install packages
+        run: |
+          apt update
+          apt install -y $PACKAGES
 
-            - uses: mlugg/setup-zig@v2
-              with:
-                  version: 0.15.1
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
 
-            - name: Checkout repository
-              uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Build Project
-              run: |
-                  zig build install
-                  mv zig-out/bin/mika-shell zig-out/bin/mika-shell-debug
-                  zig build install --release=fast
+      - name: Set Build Options
+        run: |
+          echo "COMMIT_HASH=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+          echo "VERSION_STRING=$(echo $GITHUB_REF_NAME | cut -c1-7)" >> $GITHUB_ENV
 
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: mika-shell
-                  path: zig-out/bin/mika-shell
+      - name: Build Project
+        run: |
+          zig build install -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH"
+          mv zig-out/bin/mika-shell zig-out/bin/mika-shell-debug
+          zig build install -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH" --release=fast
 
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: mika-shell-debug
-                  path: zig-out/bin/mika-shell-debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mika-shell
+          path: zig-out/bin/mika-shell
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mika-shell-debug
+          path: zig-out/bin/mika-shell-debug

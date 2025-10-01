@@ -37,13 +37,18 @@
     zig_default_flags = "--release=${release} --color off";
   };
 in
-  stdenv.mkDerivation (finalAttrs: {
+  stdenv.mkDerivation (finalAttrs: rec {
     name = "mika-shell";
     pname = "mika-shell";
     version = "0.0.0";
     src = ../.;
     deps = callPackage ../build.zig.zon.nix {};
-    zigBuildFlags = ["--system" "${finalAttrs.deps}"];
+    zigBuildFlags = [
+      "--system"
+      "${finalAttrs.deps}"
+      "-Dversion-string=${version}"
+      "-Dcommit-hash=fffffff"
+    ];
     nativeBuildInputs = [
       custom-pkg-config
       pkg-config

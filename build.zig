@@ -119,6 +119,54 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("gdk-wayland", gobject.module("gdkwayland4"));
     exe_mod.addImport("websocket", websocket.module("websocket"));
 
+    const exe_options = b.addOptions();
+    exe.root_module.addOptions("build-options", exe_options);
+    {
+        const opt_version_string = b.option([]const u8, "version-string", "Override Zig version string. Default is to find out with git.");
+        if (opt_version_string) |version| {
+            exe_options.addOption([]const u8, "version", version);
+        } else {
+            var code: u8 = undefined;
+            const tag = b.runAllowFail(&.{ "git", "describe", "--tags", "--abbrev=0" }, &code, .Ignore) catch unreachable;
+            exe_options.addOption([]const u8, "version", tag[0 .. tag.len - 1]);
+        }
+
+        const opt_commit_string = b.option([]const u8, "commit-hash", "Override commit hash string. Default is to find out with git.");
+        if (opt_commit_string) |commit| {
+            exe_options.addOption([]const u8, "commit", commit);
+        } else {
+            var code: u8 = undefined;
+            const commit = b.runAllowFail(&.{ "git", "rev-parse", "--short", "HEAD" }, &code, .Ignore) catch unreachable;
+            exe_options.addOption([]const u8, "commit", commit[0 .. commit.len - 1]);
+        }
+
+        {
+            const timestamp = blk: {
+                const sourceDateEpoch = std.process.getEnvVarOwned(b.allocator, "SOURCE_DATE_EPOCH") catch "";
+                if (sourceDateEpoch.len == 0) {
+                    break :blk std.time.timestamp();
+                } else {
+                    break :blk (std.fmt.parseInt(i64, sourceDateEpoch, 10) catch unreachable);
+                }
+            };
+            const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
+            const epoch_day = epoch_seconds.getEpochDay();
+            const day_seconds = epoch_seconds.getDaySeconds();
+            const year_day = epoch_day.calculateYearDay();
+            const month_day = year_day.calculateMonthDay();
+
+            const time = std.fmt.allocPrint(b.allocator, "{d:04}-{d:02}-{d:02}T{d:02}:{d:02}:{d:02}Z", .{
+                year_day.year,
+                month_day.month.numeric(),
+                month_day.day_index + 1,
+                day_seconds.getHoursIntoDay(),
+                day_seconds.getMinutesIntoHour(),
+                day_seconds.getSecondsIntoMinute(),
+            }) catch @panic("OOM");
+            exe_options.addOption([]const u8, "buildTime", time);
+        }
+    }
+
     b.installArtifact(exe);
     // CMD
     const run_cmd = b.addRunArtifact(exe);

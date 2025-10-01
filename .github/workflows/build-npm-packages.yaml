@@ -1,4 +1,4 @@
-name: Build mika-shell
+name: Build mika-shell NPM packages
 
 on:
   workflow_call:
