@@ -1,17 +1,22 @@
 const prefix = "example/";
 const filenames = [_][]const u8{
-    "example/config.json",
-    "example/example/debug/style.css",
-    "example/example/debug/index.html",
     "example/example/debug/apps.html",
     "example/example/debug/hyprland.html",
+    "example/example/debug/index.html",
+    "example/example/debug/network.html",
     "example/example/debug/notifd.html",
+    "example/example/debug/screenshot.html",
+    "example/example/debug/style.css",
     "example/example/debug/tray.html",
-    "example/example/extra.js",
+    "example/example/alias.json",
     "example/example/bar.html",
-    "example/example/dock.html",
-    "example/example/showkeys.html",
     "example/example/bongocat.html",
+    "example/example/dock.html",
+    "example/example/extra.js",
+    "example/example/showkeys.html",
+    "example/example/traymenu.html",
+    "example/config.json",
+    "example/notify.html",
 };
 
 const std = @import("std");

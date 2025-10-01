@@ -771,6 +771,7 @@ pub const App = struct {
     }
     /// pageName 开头为 "/" 时，表示 path 直接拼接 url 传递，否则从 alias 中查找
     pub fn open(self: *App, aliasOrPath: []const u8) !*Webview {
+        std.log.scoped(.app).info("open `{s}`", .{aliasOrPath});
         const path = blk: {
             if (aliasOrPath[0] == '/') {
                 break :blk aliasOrPath;
