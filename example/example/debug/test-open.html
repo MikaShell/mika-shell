@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Test open</title>
+        <link rel="stylesheet" href="style.css" />
+        <script>
+            window.mikaShell.window
+                .init({
+                    title: "MikaShell Test",
+                    backgroundTransparent: true,
+                    resizable: false,
+                    width: 800,
+                    height: 500,
+                })
+                .then(() => {
+                    const params = new URLSearchParams(window.location.search);
+                    const start = Number(params.get("start-time"));
+                    const now = Date.now();
+                    const diff = now - start;
+                    document.getElementById("text").innerHTML = `Open this page in ${diff}ms`;
+                });
+        </script>
+    </head>
+    <body>
+        <h1>Test open</h1>
+        <p id="text"></p>
+    </body>
+</html>

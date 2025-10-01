@@ -7,6 +7,7 @@ const filenames = [_][]const u8{
     "example/example/debug/notifd.html",
     "example/example/debug/screenshot.html",
     "example/example/debug/style.css",
+    "example/example/debug/test-open.html",
     "example/example/debug/tray.html",
     "example/example/alias.json",
     "example/example/bar.html",
