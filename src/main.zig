@@ -1,11 +1,6 @@
 const cli = @import("cli.zig");
 const std = @import("std");
 pub fn main() !void {
-    std.debug.print("MikaShell\nBuild time: {s}\nVersion: {s}\nCommit: {s}\n", .{
-        @import("build-options").buildTime,
-        @import("build-options").version,
-        @import("build-options").commit,
-    });
     return cli.run();
 }
 

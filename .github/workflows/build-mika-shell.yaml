@@ -53,9 +53,9 @@ jobs:
 
       - name: Build Project
         run: |
-          zig build install -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH"
+          zig build install -Dcpu=baseline -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH"
           mv zig-out/bin/mika-shell zig-out/bin/mika-shell-debug
-          zig build install -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH" --release=fast
+          zig build install -Dcpu=baseline -Dversion-string="$VERSION_STRING" -Dcommit-hash="$COMMIT_HASH" --release=fast
 
       - uses: actions/upload-artifact@v4
         with:

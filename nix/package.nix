@@ -46,6 +46,7 @@ in
     zigBuildFlags = [
       "--system"
       "${finalAttrs.deps}"
+      "-Dcpu=baseline"
       "-Dversion-string=${version}"
       "-Dcommit-hash=fffffff"
     ];

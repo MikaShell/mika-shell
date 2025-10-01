@@ -237,6 +237,11 @@ const events = @import("events.zig");
 const gtk = @import("gtk");
 const glib = @import("glib");
 pub fn daemon() !void {
+    std.debug.print("MikaShell\nBuild time: {s}\nVersion: {s}\nCommit: {s}\n", .{
+        @import("build-options").buildTime,
+        @import("build-options").version,
+        @import("build-options").commit,
+    });
     gtk.init();
     defer allocator.free(config.daemon.config_dir);
     const configDir = blk: {
