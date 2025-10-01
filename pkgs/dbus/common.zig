@@ -33,7 +33,25 @@ pub fn callN(
     comptime argsType: anytype,
     args: ?Type.getTupleTypes(argsType),
 ) CallNError!void {
-    const request = libdbus.Message.newMethodCall(name, path, iface, method);
+    var name_c: ?[:0]const u8 = null;
+    defer if (name_c) |n| allocator.free(n);
+    var path_c: ?[:0]const u8 = null;
+    defer if (path_c) |p| allocator.free(p);
+    var iface_c: ?[:0]const u8 = null;
+    defer if (iface_c) |i| allocator.free(i);
+    var method_c: ?[:0]const u8 = null;
+    defer if (method_c) |m| allocator.free(m);
+    if (!isCStr(name)) name_c = try allocator.dupeZ(u8, name);
+    if (!isCStr(path)) path_c = try allocator.dupeZ(u8, path);
+    if (!isCStr(iface)) iface_c = try allocator.dupeZ(u8, iface);
+    if (!isCStr(method)) method_c = try allocator.dupeZ(u8, method);
+
+    const request = libdbus.Message.newMethodCall(
+        name_c orelse name,
+        path_c orelse path,
+        iface_c orelse iface,
+        method_c orelse method,
+    );
     defer request.deinit();
     const iter = libdbus.MessageIter.init(allocator);
     defer iter.deinit();
