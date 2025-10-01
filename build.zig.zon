@@ -33,8 +33,8 @@
             .hash = "gobject-0.3.0-Skun7B3omQB3XhqaKwuLsBMckQrFaNLzBwL5e0j-HNpE",
         },
         .websocketz = .{
-            .url = "git+https://github.com/karlseguin/websocket.zig#4deaaef2b4475a63f19c5e2f43e38fd55464b118",
-            .hash = "websocket-0.1.0-ZPISdZJxAwAt6Ys_JpoHQQV3NpWCof_N9Jg-Ul2g7OoV",
+            .url = "git+https://github.com/karlseguin/websocket.zig#2d9ae9b0905c4f902dafabb073ebd54065e839b4",
+            .hash = "websocket-0.1.0-ZPISdbxyAwB8d7my8K95rTDLQjbnw9LEycVFA5QjbW5t",
         },
     },
 

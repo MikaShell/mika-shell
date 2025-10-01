@@ -51,11 +51,11 @@ linkFarm "zig-packages" [
     };
   }
   {
-    name = "websocket-0.1.0-ZPISdZJxAwAt6Ys_JpoHQQV3NpWCof_N9Jg-Ul2g7OoV";
+    name = "websocket-0.1.0-ZPISdbxyAwB8d7my8K95rTDLQjbnw9LEycVFA5QjbW5t";
     path = fetchgit {
       url = "https://github.com/karlseguin/websocket.zig";
-      rev = "4deaaef2b4475a63f19c5e2f43e38fd55464b118";
-      hash = "sha256-lEZNQ+vJR29E6yovJhTsByJK3XZMSqsgF0PjgyFsIjY=";
+      rev = "2d9ae9b0905c4f902dafabb073ebd54065e839b4";
+      hash = "sha256-mS/f6w/NvHhtKmzt38/Mxgt/nSqCYLkJjjRCZ48UGMs=";
     };
   }
 ]
