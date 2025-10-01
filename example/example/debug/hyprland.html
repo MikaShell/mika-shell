@@ -3,8 +3,7 @@
     <head>
         <title>Hyprland</title>
         <link rel="stylesheet" href="style.css" />
-        <style></style>
-        <script>
+        <script type="module">
             window.mikaShell.window.init({
                 title: "MikaShell Hyprland",
                 backgroundTransparent: true,
@@ -17,6 +16,10 @@
             let xdgRuntimeDir = undefined;
             let his = undefined;
             async function hyprctl(msg) {
+                if (his === null) {
+                    console.log("Hyprland is not running");
+                    return;
+                }
                 const promise = new Promise((resolve, reject) => {
                     const ws = window.mikaShell.utils.socket(
                         `/${xdgRuntimeDir}/hypr/${his}/.socket.sock`
@@ -38,6 +41,10 @@
                 his = await os.getEnv("HYPRLAND_INSTANCE_SIGNATURE");
             }
             function listenHyprland() {
+                if (his === null) {
+                    console.log("Hyprland is not running");
+                    return;
+                }
                 const ws = window.mikaShell.utils.socket(
                     `/${xdgRuntimeDir}/hypr/${his}/.socket2.sock`
                 );

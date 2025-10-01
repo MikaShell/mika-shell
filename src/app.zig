@@ -994,6 +994,8 @@ const Handler = struct {
         }
         switch (socketType) {
             .event => {
+                server.mutex.lock();
+                defer server.mutex.unlock();
                 if (server.events.contains(id)) {
                     return error.InvalidRequest;
                 }
@@ -1109,6 +1111,7 @@ const SocketServer = struct {
     events: std.AutoHashMap(u64, *ws.Conn),
     thread: std.Thread,
     server: ws.Server(Handler),
+    mutex: std.Thread.Mutex,
     pub fn init(allocator: Allocator, port: u16) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -1117,6 +1120,7 @@ const SocketServer = struct {
             .allocator = allocator,
             .thread = undefined,
             .server = undefined,
+            .mutex = .{},
         };
         errdefer self.events.deinit();
         self.server = try ws.Server(Handler).init(allocator, .{

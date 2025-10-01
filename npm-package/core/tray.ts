@@ -60,16 +60,19 @@ export interface MenuNode {
     children: MenuNode[];
 }
 import call from "./call";
-export function pickIcon(item: Item, size: number): string | undefined {
-    const icons = item.icon.pixmap;
-    if (!Array.isArray(icons) || icons.length === 0) return undefined;
-    let closest = icons[0];
+import { lookup } from "./icon";
+export async function pickIcon(item: Item, size: number): Promise<string> {
+    const pixmap = item.icon.pixmap;
+    if (!Array.isArray(pixmap) || pixmap.length === 0) {
+        return await lookup(item.icon.name, size);
+    }
+    let closest = pixmap[0];
     let minDiff = Math.abs(closest.width - size);
 
-    for (let i = 1; i < icons.length; i++) {
-        const diff = Math.abs(icons[i].width - size);
+    for (let i = 1; i < pixmap.length; i++) {
+        const diff = Math.abs(pixmap[i].width - size);
         if (diff < minDiff) {
-            closest = icons[i];
+            closest = pixmap[i];
             minDiff = diff;
         }
     }

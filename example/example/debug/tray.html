@@ -32,7 +32,7 @@
                 const tray = mikaShell.tray;
                 const div = document.getElementById("tray");
                 const img = document.createElement("img");
-                img.src = tray.pickIcon(item, 256);
+                img.src = await tray.pickIcon(item, 256);
                 img.className = "tray-icon";
                 img.dataset["service"] = item.service;
                 img.addEventListener("contextmenu", function (e) {
@@ -54,7 +54,7 @@
             mikaShell.tray.on("changed", async (service) => {
                 const tray = mikaShell.tray;
                 const img = document.querySelector(`img[data-service="${service}"]`);
-                img.src = tray.pickIcon(await tray.getItem(service), 256);
+                img.src = await tray.pickIcon(await tray.getItem(service), 256);
             });
             mikaShell.tray.getItems().then((items) => {
                 for (const item of items) {

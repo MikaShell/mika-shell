@@ -32,7 +32,10 @@ pub const OS = struct {
     pub fn getEnv(self: *Self, ctx: *Context) !void {
         const key = try ctx.args.string(0);
         const allocator = self.allocator;
-        const value: []const u8 = try std.process.getEnvVarOwned(allocator, key);
+        const value: []const u8 = std.process.getEnvVarOwned(allocator, key) catch {
+            ctx.commit(null);
+            return;
+        };
         defer allocator.free(value);
         ctx.commit(value);
     }

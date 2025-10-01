@@ -629,7 +629,10 @@ pub const Apps = struct {
         const allocator = self.allocator;
         if (self.entrys == null) {
             self.entrys = try listApps(allocator);
-            const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
+            const xdgDataDirs = std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS") catch |err| {
+                std.log.scoped(.apps).err("Failed to get XDG_DATA_DIRS: {t}", .{err});
+                return err;
+            };
             defer allocator.free(xdgDataDirs);
             var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
             var monitors = std.ArrayList(*gio.FileMonitor){};
@@ -1239,7 +1242,10 @@ fn activateApp(allocator: Allocator, entry: Entry, action: ?Action, urls: []cons
 fn listApps(allocator: Allocator) ![]Entry {
     var entrys = std.ArrayList(Entry){};
     defer entrys.deinit(allocator);
-    const xdgDataDirs = try std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS");
+    const xdgDataDirs = std.process.getEnvVarOwned(allocator, "XDG_DATA_DIRS") catch |err| {
+        std.log.scoped(.apps).err("Failed to get XDG_DATA_DIRS: {t}", .{err});
+        return err;
+    };
     defer allocator.free(xdgDataDirs);
     var paths = std.mem.splitAny(u8, xdgDataDirs, ":");
     const locals = try getPreferredLocales(allocator);
