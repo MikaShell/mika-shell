@@ -209,7 +209,17 @@ const SystemInfo = struct {
     cpu: []const u8,
     hostname: []const u8,
     pub fn init(allocator: Allocator) !SystemInfo {
-        var info: SystemInfo = undefined;
+        var info: SystemInfo = .{
+            .name = "",
+            .version = "",
+            .prettyName = "",
+            .logo = "",
+            .arch = "",
+            .uptime = 0,
+            .kernel = "",
+            .cpu = "",
+            .hostname = "",
+        };
         {
             var osRelease = std.fs.openFileAbsolute("/etc/os-release", .{}) catch try std.fs.openFileAbsolute("/usr/lib/os-release", .{});
             defer osRelease.close();
