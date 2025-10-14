@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
             scanner.generate("wl_shm", 2);
 
             wayland_mod.addImport("zig-wayland", zig_wayland);
-            wayland_mod.linkSystemLibrary("gtk4-wayland", dynamic_link_opts);
+            wayland_mod.linkSystemLibrary("wayland-client", dynamic_link_opts);
             wayland_mod.linkSystemLibrary("libwebp", dynamic_link_opts);
         }
         // Linking

@@ -24,11 +24,11 @@
   libinput,
   librsvg,
   dconf,
-  linuxKernel,
   typescript,
   esbuild,
   nodejs_24,
   zon2nix,
+  perf,
   ...
 }: let
   # zig 不支持 -mfpmath=sse 选项
@@ -84,7 +84,7 @@ in
       # Dev Tools
       devhelp
       d-spy
-      linuxKernel.packages.linux_zen.perf
+      perf
       zon2nix
     ];
     MIKASHELL_CONFIG_DIR = "./example";

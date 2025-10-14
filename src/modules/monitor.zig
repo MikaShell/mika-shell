@@ -129,7 +129,6 @@ pub const Monitor = struct {
         const allocator = self.allocator;
         const monitors = try Monitor_.list(allocator);
         defer allocator.free(monitors);
-        defer for (monitors) |monitor| monitor.deinit();
         ctx.commit(monitors);
     }
     pub fn getCurrent(self: *Self, ctx: *Context) !void {
@@ -150,7 +149,6 @@ pub const Monitor = struct {
             return ctx.errors("can't get monitor from surface", .{});
         }
         const m = try Monitor_.init(monitor.?);
-        defer m.deinit();
         ctx.commit(m);
     }
 };
@@ -191,12 +189,6 @@ const Monitor_ = struct {
             .model = mem.span(model),
             .refreshRate = @as(f64, @floatFromInt(refresh_rate)) / 1000.0,
         };
-    }
-    pub fn deinit(self: Self) void {
-        _ = self;
-        // if (self.connector) |s| glib.free(@ptrCast(@constCast(s.ptr)));
-        // if (self.description) |s| glib.free(@ptrCast(@constCast(s.ptr)));
-        // if (self.model) |s| glib.free(@ptrCast(@constCast(s.ptr)));
     }
     pub fn list(allocator: mem.Allocator) ![]Self {
         const monitors = gdk.Display.getDefault().?.getMonitors();
