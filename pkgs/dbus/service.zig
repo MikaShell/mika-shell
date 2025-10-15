@@ -157,8 +157,12 @@ pub fn publish(
     var iface_dict = try iter.openDict(Type.String, Type.Dict(Type.String, Type.AnyVariant));
     defer iface_dict.close();
     try iface_dict.appendKey(interface.name);
-    var callError: RequstError = undefined;
+    var callError: RequstError = .{};
     try appendAllProperties(iface_dict.currentEntry.?, interface_, self.allocator, &callError);
+    if (callError.name != null and callError.message != null) {
+        std.log.scoped(.dbus).err("Failed to get properties: {s}: {s}", .{ callError.name.?, callError.message.? });
+        return error.FailedToPublish;
+    }
     iface_dict.closeCurrentEntry();
 }
 pub fn unpublish(self: *Service, path: []const u8, interface: []const u8) void {
@@ -197,7 +201,7 @@ fn appendAllProperties(iter: *MessageIter, interface: Service.Interface_, alloca
                 allocator,
                 err,
             ) catch |e| {
-                const err_msg = std.fmt.allocPrint(allocator, "Failed to get property {s}: {t}", .{ prop.name, e }) catch unreachable;
+                const err_msg = std.fmt.allocPrintSentinel(allocator, "Failed to get property {s}: {t}", .{ prop.name, e }, 0) catch unreachable;
                 err.set("org.freedesktop.DBus.Error.Failed", err_msg);
                 return;
             };
@@ -210,12 +214,106 @@ fn appendWithGetter(iter: *MessageIter, getter: Getter(anyopaque), instance: *an
     try iter.closeContainer(variant);
     variant.deinit();
 }
-fn returnError(conn: *libdbus.Connection, message: *libdbus.Message, err: RequstError) void {
-    const e = libdbus.Message.newError(message, err.name, err.message);
-    defer e.deinit();
-    _ = conn.send(e, null);
-    conn.flush();
-}
+
+pub const Context = struct {
+    const Self = @This();
+    pub const Async = struct {
+        ctx: *Context,
+        pub fn finish(self: Async) !void {
+            defer self.ctx.msg.unref();
+            defer self.ctx.deinit();
+            try self.ctx.reply();
+        }
+    };
+    conn: *libdbus.Connection,
+    msg: *Message,
+    sender: []const u8,
+    _gpa: Allocator, // dont use _gpa, use arena
+    arena: Allocator,
+
+    _reply: *Message,
+    _in: ?*MessageIter = null,
+    _out: ?*MessageIter = null,
+    _async: bool = false,
+
+    _errName: ?[]const u8 = null,
+    _errMessage: ?[]const u8 = null,
+
+    fn init(conn: *libdbus.Connection, msg: *Message, gpa: Allocator) *Self {
+        const self = gpa.create(Self) catch unreachable;
+        const arena = gpa.create(std.heap.ArenaAllocator) catch unreachable;
+        arena.* = .init(gpa);
+
+        self.* = .{
+            .conn = conn,
+            .msg = msg,
+            .sender = msg.getSender(),
+            ._gpa = gpa,
+            .arena = arena.allocator(),
+            ._reply = msg.newMethodReturn(),
+        };
+
+        return self;
+    }
+    fn deinit(self: *Self) void {
+        if (self._in) |in| in.deinit();
+        if (self._out) |out| out.deinit();
+        if (self._errName) |name| self._gpa.free(name);
+        if (self._errMessage) |message| self._gpa.free(message);
+        self._reply.unref();
+
+        const arena: *std.heap.ArenaAllocator = @ptrCast(@alignCast(self.arena.ptr));
+        arena.deinit();
+
+        self._gpa.destroy(arena);
+        self._gpa.destroy(self);
+    }
+    pub fn errors(self: *Self, name: [:0]const u8, message: [:0]const u8) void {
+        self._errName = self._gpa.dupe(u8, name) catch unreachable;
+        self._errMessage = self._gpa.dupe(u8, message) catch unreachable;
+    }
+    pub fn getInput(self: *Self) ?*MessageIter {
+        if (self._in == null) {
+            const iter = MessageIter.init(self._gpa);
+            if (iter.fromResult(self.msg)) {
+                self._in = iter;
+            } else {
+                return null;
+            }
+        }
+        return self._in;
+    }
+    pub fn getOutput(self: *Self) *MessageIter {
+        if (self._out == null) {
+            const iter = MessageIter.init(self._gpa);
+            iter.fromAppend(self._reply);
+            self._out = iter;
+        }
+        return self._out.?;
+    }
+    pub fn async(self: *Self) Async {
+        self._async = true;
+        return .{
+            .conn = self.conn,
+            .msg = self.msg.ref(),
+            .gpa = self._gpa,
+        };
+    }
+    fn hasError(self: *Self) bool {
+        return self._errName != null and self._errMessage != null;
+    }
+    fn reply(self: *Self) !void {
+        if (self.hasError()) {
+            const e = libdbus.Message.newError(self.msg, self._errName.?, self._errMessage.?);
+            defer e.unref();
+            _ = self.conn.send(e, null);
+            self.conn.flush();
+            return;
+        }
+        _ = self.conn.send(self._reply, null);
+        self.conn.flush();
+    }
+};
 fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
     const service: *Service = @ptrCast(@alignCast(data));
     const iface_ = msg.getInterface();
@@ -238,17 +336,16 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
         return;
     }
 
+    const gpa = service.allocator;
+
     const conn = service.bus.conn;
-    const reply = Message.newMethodReturn(msg);
-    defer reply.deinit();
-    var callError: RequstError = undefined;
-    callError.isSet = false;
-    const iter = libdbus.MessageIter.init(service.allocator);
-    defer iter.deinit();
+
+    const ctx = Context.init(conn, msg, gpa);
+
     handler: {
         // org.freedesktop.DBus.Introspectable/Introspect
         if (eql(u8, iface, "org.freedesktop.DBus.Introspectable") and eql(u8, member, "Introspect")) {
-            iter.fromAppend(reply);
+            const iter = ctx.getOutput();
             const alloc = std.heap.page_allocator;
             var xml = std.Io.Writer.Allocating.init(alloc);
             defer xml.deinit();
@@ -294,18 +391,22 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                     break;
                 }
             }
-            callError.set("org.freedesktop.DBus.Error.NotSupported", "Ping is not supported");
+            ctx.errors("org.freedesktop.DBus.Error.NotSupported", "Ping is not supported");
             break :handler;
         }
         // org.freedesktop.DBus.Peer/GetMachineId
         if (eql(u8, iface, "org.freedesktop.DBus.Peer") and eql(u8, member, "GetMachineId")) {
-            iter.fromAppend(reply);
+            const iter = ctx.getOutput();
             iter.append(Type.String, service.machineId) catch unreachable;
             break :handler;
         }
         // org.freedesktop.DBus.Properties/Get|Set|GetAll
         if (eql(u8, iface, "org.freedesktop.DBus.Properties")) {
-            _ = iter.fromResult(msg);
+            const iter = ctx.getInput() orelse {
+                ctx.errors("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+                break :handler;
+            };
+            var resultError: RequstError = .{};
             const iface__ = iter.next(Type.String).?;
             var arena = std.heap.ArenaAllocator.init(service.allocator);
             defer arena.deinit();
@@ -313,20 +414,19 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                 for (service.interfaces.items) |interface| {
                     if (!eql(u8, interface.path, path)) continue;
                     if (!eql(u8, interface.name, iface__)) continue;
-                    iter.fromAppend(reply);
+                    const output = ctx.getOutput();
                     appendAllProperties(
-                        iter,
+                        output,
                         interface,
                         arena.allocator(),
-                        &callError,
+                        &resultError,
                     ) catch unreachable;
-                    if (callError.isSet) {
-                        returnError(conn, msg, callError);
-                        break :handler;
+                    if (resultError.name != null and resultError.message != null) {
+                        ctx.errors(resultError.name.?, resultError.message.?);
                     }
                     break :handler;
                 }
-                callError.set("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
+                ctx.errors("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
                 break :handler;
             }
             const name = iter.next(Type.String).?;
@@ -336,7 +436,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
             } else if (eql(u8, member, "Set")) {
                 op = .set;
             } else {
-                callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+                ctx.errors("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
                 break :handler;
             }
 
@@ -348,22 +448,20 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                         if (std.mem.eql(u8, property.name, name)) {
                             if (property.access == .readwrite) break;
                             if ((eql(u8, member, "Get") and property.access != .read) or (eql(u8, member, "Set") and property.access != .write)) {
-                                callError.set("org.freedesktop.DBus.Error.AccessDenied", "Property is not readable");
+                                ctx.errors("org.freedesktop.DBus.Error.AccessDenied", "Property is not readable");
                                 break :handler;
                             }
                             break :blk property;
                         }
                     }
-                    callError.set("org.freedesktop.DBus.Error.UnknownProperty", "Unknown property");
+                    ctx.errors("org.freedesktop.DBus.Error.UnknownProperty", "Unknown property");
                     break :handler;
                 };
                 const property = property_.?;
                 switch (op) {
                     .get => {
                         const getter = interface.getter.?;
-                        const out = libdbus.MessageIter.init(service.allocator);
-                        defer out.deinit();
-                        out.fromAppend(reply);
+                        const out = ctx.getOutput();
                         appendWithGetter(
                             out,
                             getter,
@@ -371,36 +469,43 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                             name,
                             property.signature,
                             arena.allocator(),
-                            &callError,
+                            &resultError,
                         ) catch |err| {
-                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to get property {s}: {t}", .{ name, err }) catch unreachable;
-                            callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
+                            const err_msg = std.fmt.allocPrintSentinel(arena.allocator(), "Failed to get property {s}: {t}", .{ name, err }, 0) catch unreachable;
+                            ctx.errors("org.freedesktop.DBus.Error.Failed", err_msg);
                             break :handler;
                         };
+                        if (resultError.name != null and resultError.message != null) {
+                            ctx.errors(resultError.name.?, resultError.message.?);
+                        }
                         break :handler;
                     },
                     .set => {
                         var value = iter.next(Type.AnyVariant).?;
                         if (!eql(u8, property.signature, value.iter.getSignature())) {
-                            callError.set("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
+                            ctx.errors("org.freedesktop.DBus.Error.InvalidArgs", "Invalid arguments");
                             break :handler;
                         }
                         const setter = interface.setter.?;
-                        setter(interface.instance, name, value, &callError) catch |err| {
-                            const err_msg = std.fmt.allocPrint(arena.allocator(), "Failed to set property {s}: {t}", .{ name, err }) catch unreachable;
-                            callError.set("org.freedesktop.DBus.Error.Failed", err_msg);
+                        setter(interface.instance, name, value, &resultError) catch |err| {
+                            const err_msg = std.fmt.allocPrintSentinel(arena.allocator(), "Failed to set property {s}: {t}", .{ name, err }, 0) catch unreachable;
+                            ctx.errors("org.freedesktop.DBus.Error.Failed", err_msg);
                             break :handler;
                         };
+                        if (resultError.name != null and resultError.message != null) {
+                            ctx.errors(resultError.name.?, resultError.message.?);
+                        }
                         break :handler;
                     },
                 }
             }
-            callError.set("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
+            ctx.errors("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
             break :handler;
         }
         // org.freedesktop.DBus.ObjectManager/GetManagedObjects
         if (eql(u8, iface, "org.freedesktop.DBus.ObjectManager") and eql(u8, member, "GetManagedObjects") and eql(u8, "/", path)) {
-            iter.fromAppend(reply);
+            const iter = ctx.getOutput();
+            var resultError: RequstError = .{};
             var node_dict = iter.openDict(Type.ObjectPath, Type.Dict(Type.String, Type.Dict(Type.String, Type.AnyVariant))) catch unreachable;
             defer node_dict.close();
             var arena = std.heap.ArenaAllocator.init(service.allocator);
@@ -421,10 +526,11 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
                         iface_dict.currentEntry.?,
                         interface,
                         arena.allocator(),
-                        &callError,
+                        &resultError,
                     ) catch unreachable;
-                    if (callError.isSet) {
-                        returnError(conn, msg, callError);
+
+                    if (resultError.name != null and resultError.message != null) {
+                        ctx.errors(resultError.name.?, resultError.message.?);
                         break :handler;
                     }
                 }
@@ -435,32 +541,29 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
             if (!eql(u8, interface.path, path)) continue;
             for (interface.method) |method| {
                 if (!eql(u8, method.name, member)) continue;
-                const in = libdbus.MessageIter.init(service.allocator);
-                const out = libdbus.MessageIter.init(service.allocator);
-                defer in.deinit();
-                defer out.deinit();
-                _ = in.fromResult(msg);
-                out.fromAppend(reply);
-                var arena = std.heap.ArenaAllocator.init(service.allocator);
-                defer arena.deinit();
-                method.func(interface.instance, msg.getSender(), arena.allocator(), in, out, &callError) catch |e| {
-                    callError.set("org.freedesktop.DBus.Error.Failed", @errorName(e));
+
+                const arena = gpa.create(std.heap.ArenaAllocator) catch unreachable;
+                arena.* = .init(gpa);
+
+                method.func(interface.instance, ctx) catch |e| {
+                    ctx.errors("org.freedesktop.DBus.Error.Failed", @errorName(e));
                     break :handler;
                 };
                 break :handler;
             }
-            callError.set("org.freedesktop.DBus.Error.UnknownMethod", "Unknown method");
+            ctx.errors("org.freedesktop.DBus.Error.UnknownMethod", "Unknown method");
             break :handler;
         }
-        callError.set("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
+        ctx.errors("org.freedesktop.DBus.Error.UnknownInterface", "Unknown interface");
         break :handler;
     }
-    if (callError.isSet) {
-        returnError(conn, msg, callError);
-        return;
+
+    if (!ctx._async) {
+        ctx.reply() catch |err| {
+            std.log.scoped(.dbus).err("Failed to send reply: {t}. interface: {s}, path: {s}, member: {s}, destination: {s}", .{ err, iface, path, member, destination orelse "?" });
+        };
+        ctx.deinit();
     }
-    _ = conn.send(reply, null);
-    conn.flush();
     return;
 }
 pub const MethodArgs = struct {
@@ -470,7 +573,7 @@ pub const MethodArgs = struct {
     annotations: []const Annotation = &.{},
 };
 pub fn MethodFunc(T: type) type {
-    return *const fn (self: *T, sender: []const u8, allocator: Allocator, in: *MessageIter, out: *MessageIter, err: *RequstError) anyerror!void;
+    return *const fn (self: *T, ctx: *Context) anyerror!void;
 }
 pub fn Method(T: type) type {
     return struct {
@@ -500,7 +603,7 @@ pub const Emitter = struct {
 
     pub fn emit(self: Emitter, name: []const u8, comptime Args: anytype, args: ?Type.getTupleTypes(Args)) void {
         const msg = libdbus.Message.newSignal(self.path, self.iface, name);
-        defer msg.deinit();
+        defer msg.unref();
         if (args != null) {
             const iter = libdbus.MessageIter.init(std.heap.page_allocator);
             defer iter.deinit();
@@ -520,7 +623,7 @@ pub const Emitter = struct {
         var err: ?anyerror = null;
         defer if (err) |e| std.log.err("Failed to emit PropertiesChanged signal, error: {any}", .{e});
         const msg = libdbus.Message.newSignal(self.path, "org.freedesktop.DBus.Properties", "PropertiesChanged");
-        defer msg.deinit();
+        defer msg.unref();
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const allocator = arena.allocator();
@@ -537,7 +640,7 @@ pub const Emitter = struct {
             return;
         };
         defer array.deinit();
-        var callError: RequstError = undefined;
+        var callError: RequstError = .{};
         for (changed) |name| {
             const signature: []const u8 = blk: {
                 for (self.property) |prop| {
@@ -567,8 +670,8 @@ pub const Emitter = struct {
                 err = e;
                 return;
             };
-            if (callError.isSet) {
-                @panic(std.fmt.allocPrint(std.heap.page_allocator, "cannot emit PropertiesChanged signal, error: {s}: {s}", .{ callError.name, callError.message }) catch unreachable);
+            if (callError.name != null and callError.message != null) {
+                @panic(std.fmt.allocPrint(std.heap.page_allocator, "cannot emit PropertiesChanged signal, error: {s}: {s}", .{ callError.name.?, callError.message.? }) catch unreachable);
             }
             entry.closeContainer(variant) catch |e| {
                 err = e;
@@ -619,7 +722,7 @@ pub fn Interface(comptime T: type) type {
         annotations: []const Annotation = &.{},
     };
 }
-fn makeIntrospect(comptime T: type, comptime introspect: Interface(T)) []const u8 {
+inline fn makeIntrospect(comptime T: type, comptime introspect: Interface(T)) []const u8 {
     const baseInterface = @embedFile("base-interface.xml");
     comptime var result: []const u8 = baseInterface ++ "\n";
     comptime {
@@ -679,13 +782,11 @@ const testing = std.testing;
 const print = std.debug.print;
 
 pub const RequstError = struct {
-    isSet: bool,
-    name: []const u8,
-    message: []const u8,
-    pub fn set(self: *@This(), name: []const u8, message: []const u8) void {
+    name: ?[:0]const u8 = null,
+    message: ?[:0]const u8 = null,
+    pub fn set(self: *@This(), name: [:0]const u8, message: [:0]const u8) void {
         self.name = name;
         self.message = message;
-        self.isSet = true;
     }
 };
 const withGLibLoop = @import("bus.zig").withGLibLoop;
@@ -693,11 +794,11 @@ const withGLibLoop = @import("bus.zig").withGLibLoop;
 test "service" {
     const TestInterface = struct {
         emitter: Emitter = undefined,
-        fn tests(self: *@This(), _: []const u8, allocator: Allocator, in: *MessageIter, _: *MessageIter, err: *RequstError) !void {
-            const str = try std.fmt.allocPrint(allocator, "test method called {s}", .{in.next(Type.String).?});
+        fn tests(self: *@This(), ctx: *Context) !void {
+            const str = try std.fmt.allocPrint(ctx.arena, "test method called {s}", .{ctx.getInput().?.next(Type.String).?});
             self.emitter.emit("TestSignal", .{Type.String}, .{"hello"});
             print("test method called {s}\n", .{str});
-            err.set("org.freedesktop.DBus.Error.Failed", "test error");
+            ctx.errors("org.freedesktop.DBus.Error.Failed", "test error");
         }
         fn get(_: *@This(), _: []const u8, _: Allocator, out: *MessageIter, _: *RequstError) !void {
             try out.append(Type.String, "test property value");

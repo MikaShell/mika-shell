@@ -158,8 +158,8 @@ pub const Notifd = struct {
     pub fn activationToken(self: *Notifd, id: u32, activation_token: []const u8) void {
         self.emitter.emit("ActivationToken", .{ dbus.UInt32, dbus.String }, .{ id, activation_token });
     }
-    fn getCapabilities(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
-        try out.append(dbus.Array(dbus.String), &.{
+    fn getCapabilities(_: *Self, ctx: *dbus.Context) !void {
+        try ctx.getOutput().append(dbus.Array(dbus.String), &.{
             "action-icons",
             "actions",
             "body",
@@ -185,7 +185,9 @@ pub const Notifd = struct {
     pub fn dismiss(self: *Self, id: u32) void {
         self.closeNotification_(id, .dismissed);
     }
-    fn closeNotificationDBus(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
+    fn closeNotificationDBus(self: *Self, ctx: *dbus.Context) !void {
+        const in = ctx.getInput().?;
+
         const id = in.next(dbus.UInt32) orelse return error.InvalidArgs;
         if (id == 0) return error.InvalidArgs; // 0 is not a valid notification ID
         self.closeNotification_(id, .closed);
@@ -202,7 +204,10 @@ pub const Notifd = struct {
         }
         if (self.onAdded) |f| f(self.listener, n.id);
     }
-    fn notify(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
+    fn notify(self: *Self, ctx: *dbus.Context) !void {
+        const in = ctx.getInput().?;
+        const out = ctx.getOutput();
+
         const app_name = in.next(dbus.String) orelse return error.InvalidArgs;
         const replaces_id = in.next(dbus.UInt32) orelse return error.InvalidArgs;
         const app_icon = in.next(dbus.String) orelse return error.InvalidArgs;
@@ -292,7 +297,8 @@ pub const Notifd = struct {
         try self.setupNotification(n);
         try out.append(dbus.UInt32, id);
     }
-    fn getServerInformation(_: *Self, _: []const u8, _: Allocator, _: *dbus.MessageIter, out: *dbus.MessageIter, _: *dbus.RequstError) !void {
+    fn getServerInformation(_: *Self, ctx: *dbus.Context) !void {
+        const out = ctx.getOutput();
         try out.append(dbus.String, "notifd");
         try out.append(dbus.String, "mika-shell");
         try out.append(dbus.String, "0.1");

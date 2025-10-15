@@ -47,6 +47,7 @@ pub const MethodArgs = service.MethodArgs;
 pub const MethodFunc = service.MethodFunc;
 pub const SignalArgs = service.SignalArgs;
 pub const Signal = service.Signal;
+pub const Context = service.Context;
 
 const object = @import("object.zig");
 pub const Object = object.Object;

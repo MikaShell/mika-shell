@@ -52,7 +52,7 @@ pub fn callN(
         iface_c orelse iface,
         method_c orelse method,
     );
-    defer request.deinit();
+    defer request.unref();
     const iter = libdbus.MessageIter.init(allocator);
     defer iter.deinit();
     iter.fromAppend(request);
@@ -70,7 +70,7 @@ pub const Result = struct {
     iter: *libdbus.MessageIter,
     hasResult: bool,
     pub fn deinit(self: @This()) void {
-        self.response.deinit();
+        self.response.unref();
         self.iter.deinit();
     }
     pub fn as(self: @This(), comptime T: anytype) Type.getTupleTypes(T) {
@@ -150,7 +150,7 @@ pub fn call(
         iface_c orelse iface,
         method_c orelse method,
     );
-    defer request.deinit();
+    defer request.unref();
     const iter = libdbus.MessageIter.init(allocator);
     errdefer iter.deinit();
     iter.fromAppend(request);

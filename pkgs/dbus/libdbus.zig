@@ -195,8 +195,9 @@ pub const Message = extern struct {
     extern fn dbus_message_get_no_reply(message: *Message) c.dbus_bool_t;
     extern fn dbus_message_get_serial(message: *Message) c_uint;
     extern fn dbus_message_get_reply_serial(message: *Message) c_uint;
+    extern fn dbus_message_set_serial(message: *Message, serial: u32) void;
     pub fn new(message_type: MType) *Message {
-        return dbus_message_new(message_type);
+        return dbus_message_new(@intFromEnum(message_type));
     }
     pub fn newMethodCall(bus_name: []const u8, path: []const u8, iface: []const u8, method: []const u8) *Message {
         return dbus_message_new_method_call(bus_name.ptr, path.ptr, iface.ptr, method.ptr).?;
@@ -216,7 +217,7 @@ pub const Message = extern struct {
     pub fn ref(message: *Message) *Message {
         return dbus_message_ref(message);
     }
-    pub fn deinit(message: *Message) void {
+    pub fn unref(message: *Message) void {
         dbus_message_unref(message);
     }
     pub fn getType(message: *Message) MType {
@@ -257,6 +258,9 @@ pub const Message = extern struct {
     }
     pub fn getSerial(message: *Message) u32 {
         return @intCast(dbus_message_get_serial(message));
+    }
+    pub fn setSerial(message: *Message, serial: u32) void {
+        dbus_message_set_serial(message, serial);
     }
     pub fn getReplySerial(message: *Message) u32 {
         return @intCast(dbus_message_get_reply_serial(message));
@@ -762,8 +766,8 @@ test "method-call-result" {
             return self.iter.next(T).?;
         }
         fn deinit(self: *@This()) void {
-            if (self.req) |req| req.deinit();
-            if (self.res) |res| res.deinit();
+            if (self.req) |req| req.unref();
+            if (self.res) |res| res.unref();
             self.res = null;
             self.req = null;
         }
@@ -826,8 +830,8 @@ test "method-call-result" {
     {
         const req = test_method_call("GetNothing");
         const res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(false, iter.fromResult(res));
     }
     // GetArrayString
@@ -904,8 +908,8 @@ test "method-call-result" {
     {
         const req = test_method_call("GetDict3");
         const res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const r = iter.getAll(.{Types.Dict(Types.String, Types.AnyVariant)})[0];
         try testing.expectEqualStrings("name", r[0].key);
@@ -918,7 +922,7 @@ test "method-call-result" {
     // GetError
     {
         const req = test_method_call("GetError");
-        defer req.deinit();
+        defer req.unref();
         _ = conn.sendWithReplyAndBlock(req, -1, &err) catch {};
         try testing.expectEqualStrings("ATestError", err.message());
         try testing.expectEqual(true, conn.send(req, null));
@@ -944,8 +948,8 @@ test "method-call-with-args" {
         try iter.append(Types.Int32, 1);
         try iter.append(Types.Int32, 2);
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.Int32).?;
         try testing.expectEqual(3, result);
@@ -959,8 +963,8 @@ test "method-call-with-args" {
             "World",
         });
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.String).?;
         try testing.expectEqualStrings("Hello World", result);
@@ -972,8 +976,8 @@ test "method-call-with-args" {
         const bytes: [5160]u8 = [_]u8{'k'} ** 5160;
         try iter.append(Types.Array(Types.Byte), &bytes);
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
@@ -986,8 +990,8 @@ test "method-call-with-args" {
         const Variant = Types.Variant(Types.Int32);
         try iter.append(Variant, Variant.init(&114514));
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
@@ -1001,8 +1005,8 @@ test "method-call-with-args" {
             .{ "foo", 123, true },
         );
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);
@@ -1016,8 +1020,8 @@ test "method-call-with-args" {
             .{ .key = "home", .value = "bar" },
         });
         res = conn.sendWithReplyAndBlock(req, -1, &err) catch unreachable;
-        defer req.deinit();
-        defer res.deinit();
+        defer req.unref();
+        defer res.unref();
         try testing.expectEqual(true, iter.fromResult(res));
         const result = iter.next(Types.Boolean).?;
         try testing.expectEqual(true, result);

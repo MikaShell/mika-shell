@@ -88,7 +88,10 @@ pub const Watcher = struct {
         try self.bus.publish(Watcher, "/StatusNotifierWatcher", Interface, self, &self.emiter);
         try self.bus.dbus.connect("NameOwnerChanged", Watcher.onNameOwnerChanged, self);
     }
-    fn registerItem(self: *Self, sender: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
+    fn registerItem(self: *Self, ctx: *dbus.Context) !void {
+        const in = ctx.getInput().?;
+        const sender = ctx.sender;
+
         const service = in.next(dbus.String).?;
         var busName: []const u8 = service;
         var path: []const u8 = "/StatusNotifierItem";
@@ -100,7 +103,9 @@ pub const Watcher = struct {
         try self.items.append(self.allocator, item);
         self.emiter.emit("StatusNotifierItemRegistered", .{dbus.String}, .{item});
     }
-    fn registerHost(self: *Self, _: []const u8, _: Allocator, in: *dbus.MessageIter, _: *dbus.MessageIter, _: *dbus.RequstError) !void {
+    fn registerHost(self: *Self, ctx: *dbus.Context) !void {
+        const in = ctx.getInput().?;
+
         const host = in.next(dbus.String).?;
         try self.hosts.append(self.allocator, try self.allocator.dupe(u8, host));
         self.emiter.emit("StatusNotifierHostRegistered", .{}, null);
