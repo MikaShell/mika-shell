@@ -165,6 +165,16 @@ pub fn build(b: *std.Build) void {
             }) catch @panic("OOM");
             exe_options.addOption([]const u8, "buildTime", time);
         }
+
+        {
+            const opt_polkit_agent_helper = b.option([]const u8, "polkit-agent-helper", "Override polkit-agent-helper path. Default is `/usr/lib/polkit-1/polkit-agent-helper-1`.");
+            if (opt_polkit_agent_helper) |polkit_agent_helper| {
+                exe_options.addOption([]const u8, "polkitAgentHelper", polkit_agent_helper);
+            } else {
+                const path = std.process.getEnvVarOwned(b.allocator, "POLKIT_AGENT_HELPER_PATH") catch "/usr/lib/polkit-1/polkit-agent-helper-1";
+                exe_options.addOption([]const u8, "polkitAgentHelper", path);
+            }
+        }
     }
 
     b.installArtifact(exe);

@@ -31,8 +31,8 @@ export type ExecOptions = {
 export function getSystemInfo(): Promise<SystemInfo> {
     return call("os.getSystemInfo");
 }
-export function getUserInfo(): Promise<UserInfo> {
-    return call("os.getUserInfo");
+export function getUserInfo(uid: number = -1): Promise<UserInfo> {
+    return call("os.getUserInfo", uid);
 }
 // 阻塞执行命令，进程退出时返回输出
 // 重载签名

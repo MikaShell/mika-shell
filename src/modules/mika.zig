@@ -54,6 +54,10 @@ pub const Mika = struct {
     }
     pub fn subscribe(self: *Self, ctx: *CallContext) !void {
         const event = try ctx.args.uInteger(0);
+        // 禁止页面通过 js 订阅 polkitAgent.begin 事件，只允许通过配置文件订阅该事件
+        if (@as(events.Events, @enumFromInt(event)) == .@"polkitAgent.begin") {
+            return error.NotAllowed;
+        }
         try self.app.emitter.subscribe(ctx.caller, @enumFromInt(event));
     }
     pub fn unsubcribe(self: *Self, ctx: *CallContext) !void {

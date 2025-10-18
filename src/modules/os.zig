@@ -45,7 +45,8 @@ pub const OS = struct {
         ctx.commit(info);
     }
     pub fn getUserInfo(self: *Self, ctx: *Context) !void {
-        const info = try UserInfo.init(self.allocator);
+        const uid = try ctx.args.integer(0);
+        const info = try UserInfo.init(self.allocator, if (uid <= 0) null else @intCast(uid));
         defer info.deinit(self.allocator);
         ctx.commit(info);
     }
@@ -315,10 +316,10 @@ const UserInfo = struct {
     uid: u32,
     gid: u32,
     avatar: ?[]const u8,
-    pub fn init(allocator: Allocator) !UserInfo {
+    pub fn init(allocator: Allocator, uid: ?u32) !UserInfo {
         var info: UserInfo = undefined;
         info.avatar = null;
-        info.uid = c.getuid();
+        info.uid = uid orelse c.getuid();
         info.gid = c.getgid();
         const pw = c.getpwuid(info.uid) orelse return error.InvalidUid;
         info.name = try allocator.dupe(u8, std.mem.sliceTo(pw.*.pw_name, 0));

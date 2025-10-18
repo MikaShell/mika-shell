@@ -8,6 +8,7 @@
   webkitgtk_6_0,
   gtk4-layer-shell,
   zlib,
+  polkit,
   glib-networking,
   openssl,
   devhelp,
@@ -102,5 +103,6 @@ in
     TERMINAL = "kitty";
     shellHook = ''
       export XDG_DATA_DIRS=${docs}:$XDG_DATA_DIRS
+      export POLKIT_AGENT_HELPER_PATH="$(strings ${polkit.out}/lib/libpolkit-agent-1.so | grep "polkit-agent-helper-1")"
     '';
   }

@@ -3,5 +3,15 @@
         "bongocat": "/example/bongocat.html"
     },
     "startup": ["example.bar", "example.dock"],
-    "services": ["notifd.added:/notify.html"]
+    "services": [
+        {
+            "event": "notifd.added",
+            "page": "/notify.html"
+        },
+        {
+            "event": "polkitAgent.begin",
+            "page": "/example/polkitAgent.html",
+            "single": false
+        }
+    ]
 }

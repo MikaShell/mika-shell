@@ -112,14 +112,14 @@ pub const MatchRule = struct {
         return true;
     }
 };
-pub const Filter = *const fn (data: ?*anyopaque, msg: *Message) void;
+pub const Filter = *const fn (data: ?*anyopaque, msg: *Message) libdbus.HandlerResult;
 const FilterWrapper = struct {
     rule: MatchRule,
     filter: Filter,
     data: ?*anyopaque,
     fn call(_: ?*libdbus.Connection, msg: ?*libdbus.Message, self: ?*anyopaque) callconv(.c) libdbus.HandlerResult {
         const wrapper: *FilterWrapper = @ptrCast(@alignCast(self));
-        if (msg == null) return .NotYetHandled;
+        if (msg == null) return .notYetHandled;
         const m = msg.?;
         const rule = wrapper.rule;
         const type_ = m.getType();
@@ -128,23 +128,23 @@ const FilterWrapper = struct {
         const path = m.getPath();
         const member = m.getMember();
         const eql = std.mem.eql;
-        if (rule.type != null and !eql(u8, @tagName(type_), @tagName(rule.type.?))) return .NotYetHandled;
-        if (rule.sender != null and !eql(u8, sender, rule.sender.?)) return .NotYetHandled;
+        if (rule.type != null and !eql(u8, @tagName(type_), @tagName(rule.type.?))) return .notYetHandled;
+        if (rule.sender != null and !eql(u8, sender, rule.sender.?)) return .notYetHandled;
         if (rule.interface != null) {
-            if (iface == null) return .NotYetHandled;
-            if (!eql(u8, iface.?, rule.interface.?)) return .NotYetHandled;
+            if (iface == null) return .notYetHandled;
+            if (!eql(u8, iface.?, rule.interface.?)) return .notYetHandled;
         }
         if (rule.member != null) {
-            if (member == null) return .NotYetHandled;
-            if (!eql(u8, member.?, rule.member.?)) return .NotYetHandled;
+            if (member == null) return .notYetHandled;
+            if (!eql(u8, member.?, rule.member.?)) return .notYetHandled;
         }
         if (rule.path != null) {
-            if (path == null) return .NotYetHandled;
-            if (!eql(u8, path.?, rule.path.?)) return .NotYetHandled;
+            if (path == null) return .notYetHandled;
+            if (!eql(u8, path.?, rule.path.?)) return .notYetHandled;
         }
         if (rule.path_namespace != null) {
-            if (path == null) return .NotYetHandled;
-            if (!eql(u8, path.?, rule.path_namespace.?)) return .NotYetHandled;
+            if (path == null) return .notYetHandled;
+            if (!eql(u8, path.?, rule.path_namespace.?)) return .notYetHandled;
         }
         var iter: ?*libdbus.MessageIter = null;
         defer if (iter) |i| i.deinit();
@@ -170,24 +170,24 @@ const FilterWrapper = struct {
                 .uint64,
                 .unix_fd,
                 => {
-                    const d = iter.?.next(Type.Int64) orelse return .NotYetHandled;
+                    const d = iter.?.next(Type.Int64) orelse return .notYetHandled;
                     str = std.fmt.allocPrint(allocator, "{}", .{d}) catch @panic("OOM");
                 },
                 .double => {
-                    const f = iter.?.next(Type.Double) orelse return .NotYetHandled;
+                    const f = iter.?.next(Type.Double) orelse return .notYetHandled;
                     str = std.fmt.allocPrint(allocator, "{}", .{f}) catch @panic("OOM");
                 },
                 .boolean => {
-                    const b = iter.?.next(Type.Boolean) orelse return .NotYetHandled;
+                    const b = iter.?.next(Type.Boolean) orelse return .notYetHandled;
                     str = std.fmt.allocPrint(allocator, "{}", .{b}) catch @panic("OOM");
                 },
                 .string, .object_path, .signature => {
-                    const s = iter.?.next(Type.String) orelse return .NotYetHandled;
+                    const s = iter.?.next(Type.String) orelse return .notYetHandled;
                     str = allocator.dupe(u8, s) catch @panic("OOM");
                 },
-                else => return .NotYetHandled,
+                else => return .notYetHandled,
             }
-            if (!std.mem.eql(u8, a.?, str.?)) return .NotYetHandled;
+            if (!std.mem.eql(u8, a.?, str.?)) return .notYetHandled;
         }
         for (rule.arg_path) |a| {
             if (a == null) {
@@ -200,15 +200,14 @@ const FilterWrapper = struct {
             switch (t) {
                 .object_path,
                 => {
-                    const s = iter.?.next(Type.String) orelse return .NotYetHandled;
+                    const s = iter.?.next(Type.String) orelse return .notYetHandled;
                     str = allocator.dupe(u8, s) catch @panic("OOM");
                 },
-                else => return .NotYetHandled,
+                else => return .notYetHandled,
             }
-            if (!std.mem.startsWith(u8, str.?, a.?)) return .NotYetHandled;
+            if (!std.mem.startsWith(u8, str.?, a.?)) return .notYetHandled;
         }
-        wrapper.filter(wrapper.data, msg.?);
-        return .NotYetHandled;
+        return wrapper.filter(wrapper.data, msg.?);
     }
 };
 pub const Bus = struct {

@@ -13,6 +13,8 @@ import * as _foreignToplevel from "./foreign-toplevel";
 import * as _libinput from "./libinput";
 import * as _utils from "./utils";
 import * as _workspace from "./workspace";
+import * as _polkitAgent from "./polkit-agent";
+
 const core = {
     mika: _mika,
     tray: _tray,
@@ -29,13 +31,16 @@ const core = {
     libinput: _libinput,
     workspace: _workspace,
     utils: _utils,
+    polkitAgent: _polkitAgent,
 };
+
 declare global {
     var mikaShell: typeof core & {
         backendPort: number;
         id: number;
     };
 }
+
 export default core;
 export * as mika from "./mika";
 export * as tray from "./tray";
@@ -52,3 +57,4 @@ export * as foreignToplevel from "./foreign-toplevel";
 export * as libinput from "./libinput";
 export * as workspace from "./workspace";
 export * as utils from "./utils";
+export * as polkitAgent from "./polkit-agent";

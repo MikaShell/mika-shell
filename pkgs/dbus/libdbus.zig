@@ -44,9 +44,9 @@ pub const Error = extern struct {
 };
 
 pub const HandlerResult = enum(c_int) {
-    Handled = c.DBUS_HANDLER_RESULT_HANDLED,
-    NotYetHandled = c.DBUS_HANDLER_RESULT_NOT_YET_HANDLED,
-    NeedMemory = c.DBUS_HANDLER_RESULT_NEED_MEMORY,
+    handled = c.DBUS_HANDLER_RESULT_HANDLED,
+    notYetHandled = c.DBUS_HANDLER_RESULT_NOT_YET_HANDLED,
+    needMemory = c.DBUS_HANDLER_RESULT_NEED_MEMORY,
 };
 
 pub const DispatchStatus = enum(c_int) {

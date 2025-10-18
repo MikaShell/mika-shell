@@ -154,6 +154,7 @@ pub fn Callable(comptime T: type) type {
     return *const fn (self: T, ctx: *Context) anyerror!void;
 }
 const App = @import("../app.zig").App;
+const Config = @import("../app.zig").Config;
 const Webview = @import("../app.zig").Webview;
 pub const InitContext = struct {
     allocator: std.mem.Allocator,
@@ -335,7 +336,8 @@ pub const Emitter = struct {
     const Service = struct {
         event: events.Events,
         path: []const u8,
-        webview: ?*Webview,
+        single: bool,
+        webviews: std.ArrayList(*Webview),
     };
     allocator: Allocator,
     app: *App,
@@ -349,9 +351,7 @@ pub const Emitter = struct {
         options: struct {
             app: *App,
             eventGroups: []Modules.EventGroup,
-            // [event, path, event, path, ...]
-            // e.g. ["notifd.add:/notification.html", "window.close:/app/window2"]
-            services: []const []const u8,
+            services: []const Config.Service,
             emitFunc: *const fn (userdata: ?*anyopaque, dist: u64, data: [:0]const u8) void,
             userdata: ?*anyopaque,
         },
@@ -377,18 +377,16 @@ pub const Emitter = struct {
         errdefer self.services.deinit(self.allocator);
 
         for (options.services) |service| {
-            const i = std.mem.indexOf(u8, service, ":").?;
-
             const event: events.Events = blk: {
                 inline for (@typeInfo(events.Events).@"enum".fields) |field| {
-                    if (std.mem.eql(u8, field.name, service[0..i])) {
+                    if (std.mem.eql(u8, field.name, service.event)) {
                         break :blk @enumFromInt(field.value);
                     }
                 }
                 return error.InvalidEventName;
             };
 
-            const path = try self.allocator.dupe(u8, service[i + 1 ..]);
+            const path = try self.allocator.dupe(u8, service.path);
             errdefer self.allocator.free(path);
 
             self.subscribe(0, event) catch |err| {
@@ -400,7 +398,8 @@ pub const Emitter = struct {
             try self.services.append(self.allocator, Service{
                 .event = event,
                 .path = path,
-                .webview = null,
+                .single = service.single,
+                .webviews = .{},
             });
         }
 
@@ -415,7 +414,10 @@ pub const Emitter = struct {
 
         allocator.free(self.groups);
 
-        for (self.services.items) |service| allocator.free(service.path);
+        for (self.services.items) |*service| {
+            allocator.free(service.path);
+            service.webviews.deinit(self.allocator);
+        }
         self.services.deinit(allocator);
 
         allocator.destroy(self);
@@ -503,7 +505,7 @@ pub const Emitter = struct {
             if (id == 0) {
                 for (self.services.items) |*service| {
                     if (service.event != event) continue;
-                    if (service.webview != null) continue;
+                    if (service.single and service.webviews.items.len > 0) continue;
                     var args = std.Io.Writer.Allocating.init(self.allocator);
                     defer args.deinit();
 
@@ -514,17 +516,24 @@ pub const Emitter = struct {
 
                     const path = std.fmt.allocPrint(self.allocator, "{s}?data={s}", .{ service.path, args.written() }) catch unreachable;
                     defer self.allocator.free(path);
-                    service.webview = self.app.open(path) catch |err| {
+                    const webview = self.app.open(path) catch |err| {
                         std.log.err("Cannot wake up service `{t}:{s}`, failed to open url: {t}", .{ service.event, service.path, err });
                         continue;
                     };
                     std.log.debug("Service `{t}:{s}` woken up", .{ service.event, service.path });
+                    service.webviews.append(self.allocator, webview) catch unreachable;
 
                     const g = @import("gobject");
-                    _ = g.signalConnectData(service.webview.?.impl.as(g.Object), "destroy", @ptrCast(&struct {
-                        fn cb(_: *g.Object, s: *Service) callconv(.c) void {
+                    _ = g.signalConnectData(webview.impl.as(g.Object), "destroy", @ptrCast(&struct {
+                        fn cb(o: *g.Object, s: *Service) callconv(.c) void {
+                            const impl = g.ext.cast(webkit.WebView, o).?;
+                            for (s.webviews.items, 0..) |w, i| {
+                                if (w.impl == impl) {
+                                    _ = s.webviews.swapRemove(i);
+                                    break;
+                                }
+                            }
                             std.log.debug("Service `{t}:{s}` destroyed", .{ s.event, s.path });
-                            s.webview = null;
                         }
                     }.cb), service, null, .flags_default);
                 }

@@ -40,3 +40,7 @@ export const Workspace = {
     "group-workspace-enter": 26,
     "group-workspace-leave": 27,
 };
+export const PolkitAgent = {
+    begin: 28,
+    cancel: 29,
+};

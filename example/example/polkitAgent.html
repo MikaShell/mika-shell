@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Polkit Agent Example</title>
+        <script>
+            mikaShell.window.init({});
+            mikaShell.polkitAgent.on("cancel", () => {
+                mikaShell.window.close();
+            });
+            let user = null;
+            const $ = document.querySelector.bind(document);
+            const auth = () => {
+                $("#error").textContent = "Authenticating...";
+                $("#approve").disabled = true;
+                if (user === null) {
+                    $("#error").textContent = "User not found.";
+                    $("#approve").disabled = false;
+                    return;
+                }
+                const password = $("#password").value;
+                mikaShell.polkitAgent
+                    .auth(data.cookie, user.name, password)
+                    .then((result) => {
+                        if (result.ok) {
+                            mikaShell.window.close();
+                        } else {
+                            $("#error").textContent = result.err;
+                        }
+                    })
+                    .finally(() => {
+                        $("#approve").disabled = false;
+                    });
+            };
+            const cancel = () => {
+                mikaShell.polkitAgent.cancel(data.cookie);
+                mikaShell.window.close();
+            };
+        </script>
+    </head>
+    <body>
+        <h1>Polkit Agent Example</h1>
+        <p id="actionId"></p>
+        <p id="message"></p>
+        <p>Enter your password to approve the action:</p>
+        <p>User: <span id="username"></span></p>
+        <input id="password" type="password" />
+        <button onclick="cancel()">Cancel</button>
+        <button id="approve" onclick="auth()">Approve</button>
+        <br />
+        <p id="error"></p>
+        <script>
+            const data = JSON.parse(new URLSearchParams(window.location.search).get("data"));
+            console.log(data);
+            $("#actionId").textContent = data.actionId;
+            $("#message").textContent = data.message;
+            for (const identity of data.identities) {
+                if (identity["unixUser"]) {
+                    mikaShell.os.getUserInfo(identity["unixUser"]).then((u) => {
+                        user = u;
+                        $("#username").textContent = u.name;
+                    });
+                    break;
+                }
+            }
+        </script>
+    </body>
+</html>

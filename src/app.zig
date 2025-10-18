@@ -156,7 +156,11 @@ pub const Webview = struct {
                     return 0;
                 };
                 defer ctx.deinit();
-                std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
+                if (std.mem.eql(u8, method_, "polkitAgent.auth")) {
+                    std.log.scoped(.webview).debug("Received message from JS: [{d}] {{\"method\":\"polkitAgent.auth\"}}", .{wv.id});
+                } else {
+                    std.log.scoped(.webview).debug("Received message from JS: [{d}] {s}", .{ wv.id, v.toJson(0) });
+                }
                 wv._modules.call(method_, ctx) catch |err| {
                     std.log.scoped(.webview).err("Failed to call method {s}: {t}", .{ method_, err });
                     if (ctx.reply != null) {
@@ -219,13 +223,22 @@ pub const Error = error{
     WebviewNotExists,
 };
 pub const Config = struct {
+    pub const Service = struct {
+        event: []const u8,
+        path: []const u8,
+        single: bool,
+        fn deinit(self: *Service, gpa: Allocator) void {
+            gpa.free(self.event);
+            gpa.free(self.path);
+        }
+    };
     // host: url e.g. "dev_server": "http://localhost:5000"
     dev: std.StringHashMap([]const u8),
     // name: path e.g. "bar": "/bar.html"
     alias: std.StringHashMap([]const u8),
     startup: [][]const u8 = &.{},
     // event:path/alias e.g. ["notifd.added:/notify.html", "notifyd.added:notify"]
-    services: [][]const u8 = &.{},
+    services: []Service = &.{},
     pub fn load(allocator: Allocator, configDir: []const u8) !*Config {
         const configJson = blk: {
             const config_path = try std.fs.path.join(allocator, &.{ configDir, "config.json" });
@@ -393,9 +406,9 @@ pub const Config = struct {
             allocator.free(cfg.startup);
         }
         // load services
-        var services = std.ArrayList([]const u8){};
+        var services = std.ArrayList(Service){};
         errdefer {
-            for (services.items) |p| allocator.free(p);
+            for (services.items) |*p| p.deinit(allocator);
             services.deinit(allocator);
         }
         if (value.get("services")) |services_| {
@@ -408,24 +421,46 @@ pub const Config = struct {
             }
 
             for (services_.array.items) |item| switch (item) {
-                .string => {
-                    const i = std.mem.indexOf(u8, item.string, ":") orelse {
-                        std.log.err("Invalid `services` value, expected 'event:path/alias', got: {s}", .{item.string});
+                .object => |obj| {
+                    const event = obj.get("event") orelse {
+                        std.log.err("Invalid `services` value, service field 'event' not found", .{});
                         return error.InvalidConfigJson;
                     };
-                    const event = item.string[0..i];
-                    if (item.string[i..].len == 0) {
-                        std.log.err("Invalid `services` value, expected 'event:path/alias', got: {s}", .{item.string});
+                    if (event != .string) {
+                        std.log.err("Invalid `services` value, expected string for 'event' field, got: {t}", .{event});
                         return error.InvalidConfigJson;
                     }
-                    var path = item.string[i + 1 ..];
-                    if (path[0] != '/') {
-                        path = cfg.alias.get(path) orelse {
-                            std.log.err("Invalid `services` value, alias '{s}' not found", .{path});
-                            return error.InvalidConfigJson;
-                        };
+
+                    const page = obj.get("page") orelse {
+                        std.log.err("Invalid `services` value, service field 'page' not found", .{});
+                        return error.InvalidConfigJson;
+                    };
+                    if (page != .string) {
+                        std.log.err("Invalid `services` value, expected string for 'page' field, got: {t}", .{page});
+                        return error.InvalidConfigJson;
                     }
-                    try services.append(allocator, try std.fmt.allocPrint(allocator, "{s}:{s}", .{ event, path }));
+                    if (page.string[0] != '/') {
+                        if (!cfg.alias.contains(page.string)) {
+                            std.log.err("Invalid `services` value, alias '{s}' not found", .{page.string});
+                            return error.InvalidConfigJson;
+                        }
+                    }
+
+                    const single = blk: {
+                        const single_ = obj.get("single") orelse {
+                            break :blk true;
+                        };
+                        if (single_ != .bool) {
+                            std.log.err("Invalid `services` value, expected boolean for 'single' field, got: {t}", .{single_});
+                            return error.InvalidConfigJson;
+                        }
+                        break :blk single_.bool;
+                    };
+                    try services.append(allocator, .{
+                        .event = try allocator.dupe(u8, event.string),
+                        .path = try allocator.dupe(u8, cfg.alias.get(page.string) orelse page.string),
+                        .single = single,
+                    });
                 },
                 else => {
                     std.log.err("Invalid `services` value type, expected string", .{});
@@ -457,7 +492,7 @@ pub const Config = struct {
         for (self.startup) |p| allocator.free(p);
         allocator.free(self.startup);
 
-        for (self.services) |s| allocator.free(s);
+        for (self.services) |*s| s.deinit(allocator);
         allocator.free(self.services);
 
         allocator.destroy(self);
@@ -590,6 +625,7 @@ pub const App = struct {
         try modules.mount(@import("modules/foreign-toplevel.zig").ForeignToplevel, "foreignToplevel");
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
         try modules.mount(@import("modules/workspace.zig").Workspace, "workspace");
+        try modules.mount(@import("modules/polkit-agent.zig").PolkitAgent, "polkitAgent");
 
         app.websocket = try SocketServer.init(allocator, option.port);
         errdefer app.websocket.deinit();

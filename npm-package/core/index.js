@@ -13,3 +13,4 @@ export const network = globalThis.mikaShell.network;
 export const foreignToplevel = globalThis.mikaShell.foreignToplevel;
 export const libinput = globalThis.mikaShell.libinput;
 export const workspace = globalThis.mikaShell.workspace;
+export const polkitAgent = globalThis.mikaShell.polkitAgent;

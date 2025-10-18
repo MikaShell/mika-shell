@@ -100,7 +100,7 @@ pub const CallError = libdbus.Errors || libdbus.MessageIter.IterError;
 ///
 /// example:
 /// ```
-/// const result = try baseCall(
+/// const result = try call(
 ///     allocator,
 ///     conn,
 ///     err,

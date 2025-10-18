@@ -285,23 +285,23 @@ pub const Object = struct {
         return error.SignalOrHandlerNotFound;
     }
 };
-fn signalHandler(data: ?*anyopaque, msg: *Message) void {
+fn signalHandler(data: ?*anyopaque, msg: *Message) libdbus.HandlerResult {
     const obj: *Object = @ptrCast(@alignCast(data));
     const sender: []const u8 = msg.getSender();
     const iface_ = msg.getInterface();
     const path_ = msg.getPath();
     const member_ = msg.getMember();
-    if (iface_ == null) return;
-    if (path_ == null) return;
-    if (member_ == null) return;
+    if (iface_ == null) return .notYetHandled;
+    if (path_ == null) return .notYetHandled;
+    if (member_ == null) return .notYetHandled;
     const iface = iface_.?;
     const path = path_.?;
     const member = member_.?;
     const destination = msg.getDestination();
     const eql = std.mem.eql;
-    if (!eql(u8, iface, obj.iface)) return;
-    if (!eql(u8, path, obj.path)) return;
-    if (!(eql(u8, sender, obj.uniqueName) or std.mem.eql(u8, sender, obj.name))) return;
+    if (!eql(u8, iface, obj.iface)) return .notYetHandled;
+    if (!eql(u8, path, obj.path)) return .notYetHandled;
+    if (!(eql(u8, sender, obj.uniqueName) or std.mem.eql(u8, sender, obj.name))) return .notYetHandled;
     var event = common.Event{
         .sender = sender,
         .iface = iface,
@@ -318,6 +318,7 @@ fn signalHandler(data: ?*anyopaque, msg: *Message) void {
         _ = event.iter.fromResult(msg);
         listener.handler(event, listener.data);
     }
+    return .handled;
 }
 const testing = std.testing;
 const print = std.debug.print;

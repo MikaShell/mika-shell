@@ -220,7 +220,6 @@ pub const Context = struct {
     pub const Async = struct {
         ctx: *Context,
         pub fn finish(self: Async) !void {
-            defer self.ctx.msg.unref();
             defer self.ctx.deinit();
             try self.ctx.reply();
         }
@@ -293,11 +292,7 @@ pub const Context = struct {
     }
     pub fn async(self: *Self) Async {
         self._async = true;
-        return .{
-            .conn = self.conn,
-            .msg = self.msg.ref(),
-            .gpa = self._gpa,
-        };
+        return .{ .ctx = self };
     }
     fn hasError(self: *Self) bool {
         return self._errName != null and self._errMessage != null;
@@ -314,26 +309,26 @@ pub const Context = struct {
         self.conn.flush();
     }
 };
-fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
+fn serviceHandler(data: ?*anyopaque, msg: *Message) libdbus.HandlerResult {
     const service: *Service = @ptrCast(@alignCast(data));
     const iface_ = msg.getInterface();
     const path_ = msg.getPath();
     const member_ = msg.getMember();
-    if (iface_ == null) return;
-    if (path_ == null) return;
-    if (member_ == null) return;
+    if (iface_ == null) return .notYetHandled;
+    if (path_ == null) return .notYetHandled;
+    if (member_ == null) return .notYetHandled;
     const iface = iface_.?;
     const path = path_.?;
     const member = member_.?;
     const destination = msg.getDestination();
-    if (destination == null) return;
+    if (destination == null) return .notYetHandled;
     const eql = std.mem.eql;
     blk: {
         if ((eql(u8, destination.?, service.uniqueName))) break :blk;
         for (service.bus.ownerNames.items) |name| {
             if (eql(u8, name, destination.?)) break :blk;
         }
-        return;
+        return .notYetHandled;
     }
 
     const gpa = service.allocator;
@@ -542,9 +537,6 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
             for (interface.method) |method| {
                 if (!eql(u8, method.name, member)) continue;
 
-                const arena = gpa.create(std.heap.ArenaAllocator) catch unreachable;
-                arena.* = .init(gpa);
-
                 method.func(interface.instance, ctx) catch |e| {
                     ctx.errors("org.freedesktop.DBus.Error.Failed", @errorName(e));
                     break :handler;
@@ -564,7 +556,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) void {
         };
         ctx.deinit();
     }
-    return;
+    return .handled;
 }
 pub const MethodArgs = struct {
     direction: enum { in, out },

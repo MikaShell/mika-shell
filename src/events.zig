@@ -28,6 +28,8 @@ pub const Events = enum(u32) {
     @"workspace.group-leave",
     @"workspace.group-workspace-enter",
     @"workspace.group-workspace-leave",
+    @"polkitAgent.begin",
+    @"polkitAgent.cancel",
 };
 pub const ChangeState = enum {
     add,
