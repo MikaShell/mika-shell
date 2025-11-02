@@ -127,8 +127,8 @@ pub const Window = struct {
         if (w.container.window.getResizable() == 1) {
             return ctx.errors("setSize is not allowed for resizable window", .{});
         }
-        const width = try ctx.args.integer(1);
-        const height = try ctx.args.integer(2);
+        const width = try ctx.args.integer(0);
+        const height = try ctx.args.integer(1);
         w.container.window.setDefaultSize(@intCast(width), @intCast(height));
     }
     pub fn getSize(self: *Self, ctx: *Context) !void {
