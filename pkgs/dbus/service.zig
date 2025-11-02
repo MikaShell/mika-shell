@@ -344,7 +344,7 @@ fn serviceHandler(data: ?*anyopaque, msg: *Message) libdbus.HandlerResult {
             const alloc = std.heap.page_allocator;
             var xml = std.Io.Writer.Allocating.init(alloc);
             defer xml.deinit();
-            var writer = xml.writer;
+            var writer = &xml.writer;
             writer.writeAll(
                 \\<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"><node>
             ) catch unreachable;
