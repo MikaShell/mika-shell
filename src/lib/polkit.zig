@@ -100,17 +100,17 @@ pub const Agent = struct {
             const identities = in.next(DirectionDBus).?;
 
             var ctx: Context = .{
-                .actionId = actionId,
-                .message = message,
-                .iconName = iconName,
-                .cookie = cookie,
+                .actionId = try gpa.dupe(u8, actionId),
+                .message = try gpa.dupe(u8, message),
+                .iconName = try gpa.dupe(u8, iconName),
+                .cookie = try gpa.dupe(u8, cookie),
                 .details = std.StringHashMap([]const u8).init(gpa),
                 .identities = undefined,
             };
             errdefer ctx.details.deinit();
 
             for (details) |detail| {
-                try ctx.details.put(detail.key, detail.value);
+                try ctx.details.put(try gpa.dupe(u8, detail.key), try gpa.dupe(u8, detail.value));
             }
             const eql = std.mem.eql;
             var identitiesList = std.ArrayList(Identitie){};
@@ -132,6 +132,15 @@ pub const Agent = struct {
             return ctx;
         }
         fn deinit(self: *Context, gpa: Allocator) void {
+            gpa.free(self.actionId);
+            gpa.free(self.message);
+            gpa.free(self.iconName);
+            gpa.free(self.cookie);
+            var it = self.details.iterator();
+            while (it.next()) |entry| {
+                gpa.free(entry.key_ptr.*);
+                gpa.free(entry.value_ptr.*);
+            }
             self.details.deinit();
             gpa.free(self.identities);
         }
