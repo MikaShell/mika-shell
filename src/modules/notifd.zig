@@ -38,6 +38,7 @@ pub const Notifd = struct {
                 .{ "dismiss", dismiss },
                 .{ "activate", activate },
                 .{ "getAll", getAll },
+                .{ "setId", setId },
             },
             .events = &.{
                 .@"notifd.added",
@@ -92,6 +93,12 @@ pub const Notifd = struct {
         } else {
             return error.NotificationNotFound;
         }
+    }
+    pub fn setId(self: *Self, ctx: *Context) !void {
+        try self.setup(ctx);
+        const notifd = self.notifd.?;
+        const id = try ctx.args.uInteger(0);
+        notifd.id = @intCast(id);
     }
     pub fn getAll(self: *Self, ctx: *Context) !void {
         try self.setup(ctx);
