@@ -89,6 +89,9 @@ const VariantContainer = struct {
     pub fn as(self: Self, T: type) T.Type {
         return self.iter.next(T).?;
     }
+    pub fn getType(self: Self) Tags {
+        return self.iter.getArgType();
+    }
 };
 
 /// 在没法确定 Variant 的值类型时，可以用 `AnyVariant` 来表示。
@@ -104,7 +107,7 @@ pub fn Variant(comptime Sub_: type) type {
             return Type{
                 .iter = undefined,
                 .tag = Sub.tag,
-                .value = @constCast(@ptrCast(value)),
+                .value = @ptrCast(@constCast(value)),
                 .appendTo = appendTo,
             };
         }

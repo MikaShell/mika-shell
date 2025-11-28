@@ -82,6 +82,7 @@ pub const JSValue = struct {
                             break;
                         }
                     } else {
+                        std.debug.print("Unsupported Type: {s}\n", .{@typeName(T)});
                         unreachable; // No active tag?
                     }
                     return obj;

@@ -57,6 +57,7 @@ pub const Urgency = enum {
 };
 
 pub const Hint = union(enum) {
+    empty: void,
     actionIcons: bool,
     category: []const u8,
     desktopEntry: []const u8,
@@ -284,10 +285,24 @@ pub const Notifd = struct {
             } else if (eql(u8, key, "y")) {
                 hint.* = Hint{ .y = variant.as(dbus.Int32) };
             } else if (eql(u8, key, "urgency")) {
-                const u = variant.as(dbus.Byte);
-                hint.* = Hint{ .urgency = @enumFromInt(u) };
+                // 有些软件会发送 uint32 类型，这里做兼容
+                // 例如 bytedance lark
+                switch (variant.getType()) {
+                    .byte => {
+                        const u = variant.as(dbus.Byte);
+                        hint.* = Hint{ .urgency = @enumFromInt(u) };
+                    },
+                    .uint32 => {
+                        const u = variant.as(dbus.UInt32);
+                        hint.* = Hint{ .urgency = @enumFromInt(u) };
+                    },
+                    else => return error.InvalidArgs,
+                }
             } else if (eql(u8, key, "sender-pid")) {
                 hint.* = Hint{ .senderPID = variant.as(dbus.Int64) };
+            } else {
+                std.log.scoped(.notifd).warn("unknown hint: `{s}`, please report this issue", .{key});
+                hint.* = Hint{ .empty = {} };
             }
         }
         self.id += 1;

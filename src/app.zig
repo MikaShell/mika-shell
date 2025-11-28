@@ -199,7 +199,6 @@ pub const Webview = struct {
     pub fn forceClose(self: *Webview) void {
         if (self.alias) |alias| self.allocator.free(alias);
         self.container.destroy();
-        self.allocator.destroy(self); // BUG: double free?
     }
     pub fn forceShow(self: *Webview) void {
         if (self.container == .none) {
@@ -794,6 +793,7 @@ pub const App = struct {
         std.mem.sort(*Webview, self.webviews.items, {}, sortPopoverFirst);
         for (self.webviews.items) |webview| {
             webview.forceClose();
+            webview.allocator.destroy(webview);
         }
         self.webviews.deinit(self.allocator);
 
@@ -873,6 +873,7 @@ pub const App = struct {
                     if (w_.id == id) {
                         _ = app_inner.webviews.orderedRemove(i);
                         app_inner.emitEventUseJS(null, .@"mika.close", id);
+                        w_.allocator.destroy(w_);
                         break;
                     }
                 }

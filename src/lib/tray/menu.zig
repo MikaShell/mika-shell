@@ -84,8 +84,7 @@ const Properties = struct {
             if (eql(u8, v.key, "icon-data")) {
                 // TODO: 尝试解析其他格式的 icon-data
                 // TODO: 编码 icon-data 到 base64
-                if (value.tag != .string) @panic("icon-data must be a string, other types not supported");
-                self.iconData = try allocator.dupe(u8, value.as(dbus.String));
+                std.log.scoped(.tray).warn("icon-data not supported, please report this issue", .{});
                 continue;
             }
             if (eql(u8, v.key, "icon-size")) {
