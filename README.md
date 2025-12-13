@@ -95,7 +95,9 @@ If everything works properly, you should see a bar appear at the top of your scr
 
 ### Tutorial
 
-Please check out [Website](mikashell.github.io/) and [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
+Please check out [Website](https://mikashell.github.io/) and [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
+
+Additionally, here is my configuration that you can use directly or refer to: [Mikami](https://github.com/HumXC/mikami)
 
 ---
 

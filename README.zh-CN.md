@@ -90,7 +90,9 @@ npm install @mika-shell/extra
 
 ### 教程
 
-请查看 [Website](mikashell.github.io/) 和 [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
+请查看 [Website](https://mikashell.github.io/) 和 [Example](https://github.com/MikaShell/mika-shell/tree/main/example)!
+
+另外，这是我的配置，你可以直接拿去用或者进行参考 [Mikami](https://github.com/HumXC/mikami)
 
 ---
 
