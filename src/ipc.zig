@@ -112,16 +112,12 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         };
     }
     if (eql(r.type, "toggle")) {
-        var i = app.webviews.items.len - 1;
-        while (i >= 0) {
-            const w = app.webviews.items[i];
+        for (app.webviews.items) |w| {
             if (w.alias == null) continue;
             if (mem.eql(u8, w.alias.?, r.pageName.?)) {
                 app.closeRequest(w);
                 return;
             }
-            if (i == 0) break;
-            i -= 1;
         }
         _ = app.open(r.pageName.?) catch |err| switch (err) {
             error.AliasNotFound => {
