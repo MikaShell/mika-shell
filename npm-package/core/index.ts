@@ -14,6 +14,7 @@ import * as _libinput from "./libinput";
 import * as _utils from "./utils";
 import * as _workspace from "./workspace";
 import * as _polkitAgent from "./polkit-agent";
+import * as _mpris from "./mpris";
 
 const core = {
     mika: _mika,
@@ -32,6 +33,7 @@ const core = {
     workspace: _workspace,
     utils: _utils,
     polkitAgent: _polkitAgent,
+    mpris: _mpris,
 };
 
 declare global {
@@ -58,3 +60,4 @@ export * as libinput from "./libinput";
 export * as workspace from "./workspace";
 export * as utils from "./utils";
 export * as polkitAgent from "./polkit-agent";
+export * as mpris from "./mpris";

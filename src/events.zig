@@ -30,6 +30,7 @@ pub const Events = enum(u32) {
     @"workspace.group-workspace-leave",
     @"polkitAgent.begin",
     @"polkitAgent.cancel",
+    @"mpris.seeked",
 };
 pub const ChangeState = enum {
     add,

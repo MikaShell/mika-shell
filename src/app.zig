@@ -625,6 +625,7 @@ pub const App = struct {
         try modules.mount(@import("modules/libinput.zig").Libinput, "libinput");
         try modules.mount(@import("modules/workspace.zig").Workspace, "workspace");
         try modules.mount(@import("modules/polkit-agent.zig").PolkitAgent, "polkitAgent");
+        try modules.mount(@import("modules/mpris.zig").Mpris, "mpris");
 
         app.websocket = try SocketServer.init(allocator, option.port);
         errdefer app.websocket.deinit();

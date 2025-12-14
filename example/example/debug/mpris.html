@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>MPRIS Media Player</title>
+        <link rel="stylesheet" href="style.css" />
+        <style>
+            .player-card {
+                border: 1px solid #555;
+                border-radius: 8px;
+                padding: 16px;
+                margin: 12px 0;
+                background: rgba(70, 70, 70, 0.9);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            }
+            .player-title {
+                font-size: 18px;
+                font-weight: bold;
+                margin-bottom: 8px;
+                color: beige;
+            }
+            .player-info {
+                font-size: 14px;
+                margin: 4px 0;
+                color: #ccc;
+            }
+            .capability {
+                display: inline-block;
+                margin-right: 12px;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                background: #4a4a4a;
+                color: #aaa;
+            }
+            .capability.supported {
+                background: #2d5f2d;
+                color: #90ee90;
+            }
+            .capability.unsupported {
+                background: #5f2d2d;
+                color: #ff8080;
+            }
+            .controls {
+                margin-top: 12px;
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .btn {
+                padding: 8px 12px;
+                border: none;
+                border-radius: 4px;
+                background: rgb(100, 100, 100);
+                color: white;
+                cursor: pointer;
+                font-size: 12px;
+                transition: background 0.2s;
+            }
+            .btn:hover {
+                background: rgb(50, 50, 50);
+            }
+            .btn:disabled {
+                background: #3a3a3a;
+                color: #666;
+                cursor: not-allowed;
+            }
+            .btn.danger {
+                background: #8b3a3a;
+            }
+            .btn.danger:hover {
+                background: #6b2a2a;
+            }
+            .metadata {
+                margin-top: 12px;
+                padding: 12px;
+                background: rgba(50, 50, 50, 0.9);
+                border-left: 4px solid #666;
+                border-radius: 4px;
+            }
+            .metadata-item {
+                font-size: 13px;
+                margin: 4px 0;
+                color: beige;
+            }
+            .slider-container {
+                margin-top: 8px;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .slider-container input {
+                flex: 1;
+            }
+            .slider-container span {
+                font-size: 12px;
+                min-width: 40px;
+                text-align: right;
+                color: beige;
+            }
+            .slider-container label {
+                color: beige;
+            }
+            .error {
+                color: #ff8080;
+                padding: 8px;
+                margin: 8px 0;
+                background: rgba(90, 40, 40, 0.9);
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            .loading {
+                text-align: center;
+                padding: 20px;
+                color: #999;
+            }
+        </style>
+        <script>
+            window.mikaShell.window.init({
+                title: "MPRIS Media Player",
+                backgroundTransparent: true,
+                resizable: false,
+                width: 600,
+                height: 800,
+            });
+
+            const mpris = window.mikaShell.mpris;
+            const $ = document.querySelector.bind(document);
+            const container = document.createElement("div");
+
+            // Helper function to call backend methods
+            const call = (method, ...args) => {
+                const parts = method.split(".");
+                let obj = window.mikaShell;
+                for (const part of parts) {
+                    obj = obj[part];
+                }
+                return obj(...args);
+            };
+
+            const renderPlayer = (player) => {
+                const card = document.createElement("div");
+                card.className = "player-card";
+
+                const title = document.createElement("div");
+                title.className = "player-title";
+                title.textContent = player.identity || player.busName;
+
+                const busInfo = document.createElement("div");
+                busInfo.className = "player-info";
+                busInfo.textContent = `Bus: ${player.busName}`;
+
+                const capDiv = document.createElement("div");
+                capDiv.className = "player-info";
+                capDiv.innerHTML = "<strong>Capabilities:</strong><br>";
+
+                const caps = [
+                    { name: "Play", value: player.canPlay },
+                    { name: "Pause", value: player.canPause },
+                    { name: "Next", value: player.canGoNext },
+                    { name: "Previous", value: player.canGoPrevious },
+                    { name: "Seek", value: player.canSeek },
+                    { name: "Control", value: player.canControl },
+                    { name: "Quit", value: player.canQuit },
+                    { name: "Raise", value: player.canRaise },
+                ];
+
+                const capsContainer = document.createElement("div");
+                capsContainer.style.marginTop = "4px";
+                caps.forEach((cap) => {
+                    const span = document.createElement("span");
+                    span.className = `capability ${cap.value ? "supported" : "unsupported"}`;
+                    span.textContent = cap.name;
+                    capsContainer.appendChild(span);
+                });
+
+                const controls = document.createElement("div");
+                controls.className = "controls";
+
+                const createBtn = (label, disabled, onClick) => {
+                    const btn = document.createElement("button");
+                    btn.className = "btn";
+                    btn.textContent = label;
+                    btn.disabled = disabled;
+                    if (!disabled) {
+                        btn.onclick = onClick;
+                    }
+                    return btn;
+                };
+
+                if (player.canPlay) {
+                    controls.appendChild(
+                        createBtn("▶ Play", false, () => {
+                            player.play().catch((e) => showError(player.busName, e.message));
+                        })
+                    );
+                }
+                if (player.canPause) {
+                    controls.appendChild(
+                        createBtn("⏸ Pause", false, () => {
+                            player.pause().catch((e) => showError(player.busName, e.message));
+                        })
+                    );
+                }
+                if (player.canGoNext) {
+                    controls.appendChild(
+                        createBtn("⏭ Next", false, () => {
+                            player.next().catch((e) => showError(player.busName, e.message));
+                        })
+                    );
+                }
+                if (player.canGoPrevious) {
+                    controls.appendChild(
+                        createBtn("⏮ Previous", false, () => {
+                            player.previous().catch((e) => showError(player.busName, e.message));
+                        })
+                    );
+                }
+                if (player.canRaise) {
+                    controls.appendChild(
+                        createBtn("⬆ Raise", false, () => {
+                            player.raise().catch((e) => showError(player.busName, e.message));
+                        })
+                    );
+                }
+
+                controls.appendChild(
+                    createBtn("Refresh", false, async () => {
+                        await player.refresh();
+                        renderPlayers();
+                    })
+                );
+
+                const volDiv = document.createElement("div");
+                volDiv.className = "slider-container";
+                if (player.canControl) {
+                    const label = document.createElement("label");
+                    label.textContent = "Volume:";
+                    label.style.fontSize = "12px";
+                    const slider = document.createElement("input");
+                    slider.type = "range";
+                    slider.min = "0";
+                    slider.max = "100";
+                    slider.value = "50";
+
+                    const valueSpan = document.createElement("span");
+                    valueSpan.textContent = "50%";
+
+                    slider.onchange = async (e) => {
+                        const vol = parseInt(e.target.value) / 100;
+                        try {
+                            await player.setVolume(vol);
+                            valueSpan.textContent = `${e.target.value}%`;
+                        } catch (err) {
+                            showError(player.busName, err.message);
+                        }
+                    };
+
+                    slider.oninput = (e) => {
+                        valueSpan.textContent = `${e.target.value}%`;
+                    };
+
+                    volDiv.appendChild(label);
+                    volDiv.appendChild(slider);
+                    volDiv.appendChild(valueSpan);
+                }
+
+                const metaDiv = document.createElement("div");
+                metaDiv.className = "metadata";
+                metaDiv.style.display = "none";
+
+                const statusBtn = document.createElement("button");
+                statusBtn.className = "btn";
+                statusBtn.textContent = "Show Status";
+                statusBtn.onclick = async () => {
+                    try {
+                        const status = await player.getPlayerStatus();
+                        metaDiv.innerHTML = "<strong>Current Status:</strong><br>";
+                        const items = [
+                            `Status: ${status.playbackStatus}`,
+                            `Position: ${Math.round(status.position / 1000)}ms`,
+                            `Volume: ${Math.round(status.volume * 100)}%`,
+                            `Rate: ${status.rate}x`,
+                            `Loop: ${status.loopStatus}`,
+                            `Shuffle: ${status.shuffle}`,
+                        ];
+                        if (status.metadata) {
+                            items.push(`Track: ${status.metadata.title || "Unknown"}`);
+                            items.push(
+                                `Artist: ${status.metadata.artist?.join(", ") || "Unknown"}`
+                            );
+                            items.push(`Album: ${status.metadata.album || "Unknown"}`);
+                        }
+                        items.forEach((item) => {
+                            const div = document.createElement("div");
+                            div.className = "metadata-item";
+                            div.textContent = item;
+                            metaDiv.appendChild(div);
+                        });
+                        metaDiv.style.display = "block";
+                    } catch (err) {
+                        showError(player.busName, err.message);
+                    }
+                };
+                controls.appendChild(statusBtn);
+
+                card.appendChild(title);
+                card.appendChild(busInfo);
+                card.appendChild(capDiv);
+                card.appendChild(capsContainer);
+                if (volDiv.hasChildNodes()) {
+                    card.appendChild(volDiv);
+                }
+                card.appendChild(controls);
+                card.appendChild(metaDiv);
+
+                return card;
+            };
+
+            let errorTimeout;
+            const showError = (player, msg) => {
+                const errorDiv = document.createElement("div");
+                errorDiv.className = "error";
+                errorDiv.textContent = `${player}: ${msg}`;
+                container.insertBefore(errorDiv, container.firstChild);
+                clearTimeout(errorTimeout);
+                errorTimeout = setTimeout(() => errorDiv.remove(), 5000);
+            };
+
+            const renderPlayers = async () => {
+                try {
+                    container.innerHTML = '<div class="loading">Loading players...</div>';
+                    const players = await mpris.list();
+                    container.innerHTML = "";
+
+                    if (players.length === 0) {
+                        const empty = document.createElement("div");
+                        empty.className = "loading";
+                        empty.textContent = "No media players found";
+                        container.appendChild(empty);
+                        return;
+                    }
+
+                    players.forEach((player) => {
+                        container.appendChild(renderPlayer(player));
+                    });
+                } catch (err) {
+                    container.innerHTML = `<div class="error">Failed to load players: ${err.message}</div>`;
+                    console.error(err);
+                }
+            };
+
+            document.addEventListener("DOMContentLoaded", () => {
+                document.body.appendChild(container);
+                renderPlayers();
+            });
+        </script>
+    </head>
+    <body></body>
+</html>
