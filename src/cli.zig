@@ -10,6 +10,7 @@ var config = struct {
     } = undefined,
     open: struct {
         pageName: []const u8 = undefined,
+        queries: []const []const u8 = &[_][]const u8{},
     } = undefined,
     toggle: struct {
         pageName: []const u8 = undefined,
@@ -87,6 +88,12 @@ fn cmdOpen(r: *cli.AppRunner) !cli.Command {
         .description = .{
             .one_line = "Open a webview with the page name",
         },
+        .options = try r.allocOptions(&.{.{
+            .long_name = "query",
+            .short_alias = 'q',
+            .help = "query parameters in format 'key=value', can be specified multiple times",
+            .value_ref = r.mkRef(&config.open.queries),
+        }}),
         .target = .{
             .action = .{
                 .exec = open,
@@ -318,9 +325,32 @@ pub fn daemon() !void {
 }
 fn open() !void {
     defer allocator.free(config.open.pageName);
+    defer {
+        for (config.open.queries) |query| {
+            allocator.free(query);
+        }
+        allocator.free(config.open.queries);
+    }
+
+    // 构建查询字符串
+    var queryString: ?[]const u8 = null;
+    defer if (queryString) |qs| allocator.free(qs);
+
+    if (config.open.queries.len > 0) {
+        var queryList = std.ArrayList(u8){};
+        defer queryList.deinit(allocator);
+
+        for (config.open.queries, 0..) |query, i| {
+            if (i > 0) try queryList.append(allocator, '&');
+            try queryList.appendSlice(allocator, query);
+        }
+        queryString = try queryList.toOwnedSlice(allocator);
+    }
+
     try ipc.request(.{
         .type = "open",
         .pageName = config.open.pageName,
+        .query = queryString,
     }, config.port);
 }
 fn toggle() !void {

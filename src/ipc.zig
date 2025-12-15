@@ -70,6 +70,7 @@ fn eql(a: []const u8, b: []const u8) bool {
 pub const Request = struct {
     type: []const u8,
     pageName: ?[]const u8 = null,
+    query: ?[]const u8 = null,
     id: ?u64 = null,
     force: ?bool = null,
 };
@@ -104,7 +105,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "open")) {
-        _ = app.open(r.pageName.?) catch |err| switch (err) {
+        _ = app.open(r.pageName.?, r.query) catch |err| switch (err) {
             error.AliasNotFound => {
                 try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
             },
@@ -119,7 +120,7 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
                 return;
             }
         }
-        _ = app.open(r.pageName.?) catch |err| switch (err) {
+        _ = app.open(r.pageName.?, r.query) catch |err| switch (err) {
             error.AliasNotFound => {
                 try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});
             },

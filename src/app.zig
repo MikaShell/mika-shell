@@ -767,7 +767,7 @@ pub const App = struct {
         gtk.StyleContext.addProviderForDisplay(@import("gdk").Display.getDefault().?, cssProvider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
 
         for (app.config.startup) |startup| {
-            _ = try app.open(startup);
+            _ = try app.open(startup, null);
         }
 
         return app;
@@ -807,7 +807,7 @@ pub const App = struct {
         self.allocator.destroy(self);
     }
     /// pageName 开头为 "/" 时，表示 path 直接拼接 url 传递，否则从 alias 中查找
-    pub fn open(self: *App, aliasOrPath: []const u8) !*Webview {
+    pub fn open(self: *App, aliasOrPath: []const u8, query: ?[]const u8) !*Webview {
         std.log.scoped(.app).info("open `{s}`", .{aliasOrPath});
         const path = blk: {
             if (aliasOrPath[0] == '/') {
@@ -817,7 +817,15 @@ pub const App = struct {
                 return error.AliasNotFound;
             }
         };
-        const uri = std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
+        const uri = if (query) |q| blk: {
+            // 基础部分用 joinZ，避免出现 mika-shell:///xxx
+            const base = std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
+            defer self.allocator.free(base);
+            const separator = if (std.mem.indexOf(u8, path, "?")) |_| "&" else "?";
+            const uriStr = try std.fmt.allocPrint(self.allocator, "{s}{s}{s}", .{ std.mem.sliceTo(base, 0), separator, q });
+            defer self.allocator.free(uriStr);
+            break :blk try self.allocator.dupeZ(u8, uriStr);
+        } else std.fs.path.joinZ(self.allocator, &.{ "mika-shell://", path }) catch unreachable;
         defer self.allocator.free(uri);
         return self.openS(uri, if (aliasOrPath[0] == '/') null else aliasOrPath);
     }

@@ -516,7 +516,7 @@ pub const Emitter = struct {
 
                     const path = std.fmt.allocPrint(self.allocator, "{s}?data={s}", .{ service.path, args.written() }) catch unreachable;
                     defer self.allocator.free(path);
-                    const webview = self.app.open(path) catch |err| {
+                    const webview = self.app.open(path, null) catch |err| {
                         std.log.err("Cannot wake up service `{t}:{s}`, failed to open url: {t}", .{ service.event, service.path, err });
                         continue;
                     };

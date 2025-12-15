@@ -66,7 +66,7 @@ pub const Mika = struct {
     }
     pub fn openAsync(self: *Self, ctx: *CallContext) !void {
         const pageName = try ctx.args.string(0);
-        const webview = try self.app.open(pageName);
+        const webview = try self.app.open(pageName, null);
         ctx.commit(webview.id);
     }
     pub fn openDevTools(self: *Self, ctx: *CallContext) !void {
@@ -77,7 +77,7 @@ pub const Mika = struct {
     }
     pub fn open(self: *Self, ctx: *CallContext) !void {
         const pageName = try ctx.args.string(0);
-        const webview = try self.app.open(pageName);
+        const webview = try self.app.open(pageName, null);
         const gtk = @import("gtk");
         const g = @import("gobject");
 
