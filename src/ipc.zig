@@ -73,6 +73,7 @@ pub const Request = struct {
     query: ?[]const u8 = null,
     id: ?u64 = null,
     force: ?bool = null,
+    noDuplicate: ?bool = null,
 };
 
 const app_ = @import("app.zig");
@@ -105,6 +106,16 @@ fn handle(app: *App, r: Request, s: std.net.Stream) !void {
         }
     }
     if (eql(r.type, "open")) {
+        const noDuplicate = r.noDuplicate orelse false;
+        if (noDuplicate and r.pageName != null) {
+            // 检查是否已经有一个与该别名匹配的打开的 webview
+            for (app.webviews.items) |w| {
+                if (w.alias != null and mem.eql(u8, w.alias.?, r.pageName.?)) {
+                    // webview 已经打开，不启动新的
+                    return;
+                }
+            }
+        }
         _ = app.open(r.pageName.?, r.query) catch |err| switch (err) {
             error.AliasNotFound => {
                 try out.print("Can`t find page with name: {s}\n", .{r.pageName.?});

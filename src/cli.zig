@@ -11,6 +11,7 @@ var config = struct {
     open: struct {
         pageName: []const u8 = undefined,
         queries: []const []const u8 = &[_][]const u8{},
+        noDuplicate: bool = false,
     } = undefined,
     toggle: struct {
         pageName: []const u8 = undefined,
@@ -88,12 +89,20 @@ fn cmdOpen(r: *cli.AppRunner) !cli.Command {
         .description = .{
             .one_line = "Open a webview with the page name",
         },
-        .options = try r.allocOptions(&.{.{
-            .long_name = "query",
-            .short_alias = 'q',
-            .help = "query parameters in format 'key=value', can be specified multiple times",
-            .value_ref = r.mkRef(&config.open.queries),
-        }}),
+        .options = try r.allocOptions(&.{
+            .{
+                .long_name = "query",
+                .short_alias = 'q',
+                .help = "query parameters in format 'key=value', can be specified multiple times",
+                .value_ref = r.mkRef(&config.open.queries),
+            },
+            .{
+                .long_name = "no-duplicate",
+                .short_alias = 'n',
+                .help = "if activated and webview is already open, do not start a new webview",
+                .value_ref = r.mkRef(&config.open.noDuplicate),
+            },
+        }),
         .target = .{
             .action = .{
                 .exec = open,
@@ -351,6 +360,7 @@ fn open() !void {
         .type = "open",
         .pageName = config.open.pageName,
         .query = queryString,
+        .noDuplicate = config.open.noDuplicate,
     }, config.port);
 }
 fn toggle() !void {
