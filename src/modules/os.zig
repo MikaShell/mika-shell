@@ -195,7 +195,7 @@ pub const OS = struct {
         defer self.allocator.free(data);
         const base64 = try std.fmt.allocPrint(self.allocator, "{b64}", .{data});
         defer self.allocator.free(base64);
-        ctx.commit(base64);
+        ctx.commit(@as([]const u8, base64));
     }
 };
 const Allocator = std.mem.Allocator;

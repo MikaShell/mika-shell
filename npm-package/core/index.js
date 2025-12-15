@@ -16,3 +16,4 @@ export const workspace = globalThis.mikaShell.workspace;
 export const polkitAgent = globalThis.mikaShell.polkitAgent;
 export const popover = globalThis.mikaShell.popover;
 export const utils = globalThis.mikaShell.utils;
+export const mpris = globalThis.mikaShell.mpris;
